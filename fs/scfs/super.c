@@ -657,6 +657,9 @@ static void scfs_d_release(struct dentry *dentry)
 	return;
 }
 
+#ifdef CONFIG_RKP_NS_PROT
+extern void rkp_assign_mnt_flags(struct vfsmount *,int);
+#endif
 static int scfs_remount_fs(struct super_block *sb, int *flags, char *options)
 {
 	struct scfs_sb_info *sbi = SCFS_S(sb);
@@ -695,8 +698,13 @@ static int scfs_remount_fs(struct super_block *sb, int *flags, char *options)
 		printk("scfs-remount fail : %d\n", ret);
 	else {
 		br_write_lock(&vfsmount_lock);
+#ifdef CONFIG_RKP_NS_PROT
+		mnt_flags |= mnt->mnt->mnt_flags & ~MNT_USER_SETTABLE_MASK;
+		rkp_assign_mnt_flags(mnt->mnt,mnt_flags);
+#else
 		mnt_flags |= mnt->mnt.mnt_flags & ~MNT_USER_SETTABLE_MASK;
 		mnt->mnt.mnt_flags = mnt_flags;
+#endif
 		br_write_unlock(&vfsmount_lock);
 	}
 	up_write(&lower_sb->s_umount);

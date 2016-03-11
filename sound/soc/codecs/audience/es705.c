@@ -163,8 +163,10 @@ struct es705_priv es705_priv = {
 #if defined(SAMSUNG_ES705_FEATURE)
 	.voice_wakeup_enable = 0,
 	.voice_lpm_enable = 0,
+#if defined(CONFIG_SND_SOC_ESXXX_UART_WAKEUP)
 	/* for tuning : 1 */
 	.change_uart_config = 0,
+#endif
 	.internal_route_num = ROUTE_MAX,
 #endif
 #if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)
@@ -256,10 +258,13 @@ int es705_write_block(struct es705_priv *es705, const u32 *cmd_block)
 				     preset_delay_time * 1000);
 		else
 			usleep_range(1000, 1100);
-
+#if defined(CONFIG_SND_SOC_ES_SLIM)
 		dev_dbg(es705->dev, "%s(): msg = 0x%02x%02x%02x%02x\n",
 			__func__, msg[3], msg[2], msg[1], msg[0]);
-
+#else
+		dev_dbg(es705->dev, "%s(): msg = 0x%02x%02x%02x%02x\n",
+			__func__, msg[0], msg[1], msg[2], msg[3]);
+#endif
 		cmd_block++;
 	}
 	mutex_unlock(&es705->api_mutex);
@@ -636,6 +641,8 @@ static int es705_chk_route_id_for_dhwpt(long route_index)
 		case ROUTE_CT_WB_NS_ON:
 		case ROUTE_FT_WB_NS_OFF:
 		case ROUTE_CT_WB_NS_OFF:
+		case ROUTE_FT_EVS_NS_ON:
+		case ROUTE_CT_EVS_NS_ON:
 			es705_enable_dhwpt(0);
 			break;
 
@@ -706,7 +713,9 @@ static void es705_switch_route(long route_index)
 	if (es705->internal_route_num == ROUTE_FT_NB_NS_ON ||
 		es705->internal_route_num == ROUTE_CT_NB_NS_ON ||
 		es705->internal_route_num == ROUTE_FT_WB_NS_ON ||
-		es705->internal_route_num == ROUTE_CT_WB_NS_ON )
+		es705->internal_route_num == ROUTE_CT_WB_NS_ON ||
+		es705->internal_route_num == ROUTE_FT_EVS_NS_ON ||
+		es705->internal_route_num == ROUTE_CT_EVS_NS_ON )
 		schedule_delayed_work(&chk_route_st_and_recfg_work,
 			msecs_to_jiffies(600));
 #endif
@@ -1253,6 +1262,91 @@ static ssize_t es705_clock_on_show(struct device *dev,
 static DEVICE_ATTR(clock_on, 0444, es705_clock_on_show, NULL);
 /* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/clock_on */
 
+static ssize_t es705_ping_status_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct es705_priv *es705 = &es705_priv;
+	int rc = 0;
+	u32 sync_cmd = (ES705_SYNC_CMD << 16) | ES705_SYNC_POLLING;
+	u32 sync_ack;
+	char msg[4];
+	char *status_name = "Ping";
+
+	cpu_to_le32s(&sync_cmd);
+	memcpy(msg, (char *)&sync_cmd, 4);
+
+	rc = es705->dev_write(es705, msg, 4);
+	if (rc < 0) {
+		dev_err(es705->dev, "%s(): firmware load failed sync write\n",
+			__func__);
+	}
+
+	msleep(20);
+	memset(msg, 0, 4);
+
+	rc = es705->dev_read(es705, msg, 4);
+	if (rc < 0) {
+		dev_err(es705->dev, "%s(): error reading sync ack rc=%d\n",
+			__func__, rc);
+	}
+
+	memcpy((char *)&sync_ack, msg, 4);
+	le32_to_cpus(&sync_ack);
+	dev_dbg(es705->dev, "%s(): sync_ack = 0x%08x\n", __func__, sync_ack);
+
+	rc = snprintf(buf, PAGE_SIZE, "%s=0x%08x\n", status_name, sync_ack);
+
+	return rc;
+}
+
+static DEVICE_ATTR(ping_status, 0444, es705_ping_status_show, NULL);
+/* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/ping_status */
+
+static ssize_t es705_gpio_reset_set(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
+{
+	struct es705_priv *es705 = &es705_priv;
+
+	dev_dbg(es705->dev, "%s(): GPIO reset\n", __func__);
+
+	es705->mode = SBL;
+	es705_gpio_reset(es705);
+
+	dev_dbg(es705->dev, "%s(): Ready for STANDARD download by proxy\n",
+		__func__);
+
+	return count;
+}
+
+static DEVICE_ATTR(gpio_reset, 0644, NULL, es705_gpio_reset_set);
+/* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/gpio_reset */
+
+#if defined(CONFIG_SND_SOC_ESXXX_UART_WAKEUP)
+static ssize_t es705_tuning_set(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct es705_priv *es705 = &es705_priv;
+	unsigned int value = 0;
+
+	sscanf(buf, "%d", &value);
+
+	pr_info("%s : [ES705] uart_pin_config = %d\n", __func__, value);
+
+	if (value == 0)
+		es705->change_uart_config = 0;
+	else
+		es705->change_uart_config = 1;
+
+	return count;
+}
+
+static DEVICE_ATTR(tuning, 0644, NULL, es705_tuning_set);
+/* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/tuning */
+#endif
+
+#if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)
 static ssize_t es705_vs_keyword_parameters_show(struct device *dev,
 						struct device_attribute *attr,
 						char *buf)
@@ -1319,66 +1413,6 @@ static ssize_t es705_vs_status_show(struct device *dev,
 static DEVICE_ATTR(vs_status, 0444, es705_vs_status_show, NULL);
 /* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/vs_status */
 
-static ssize_t es705_ping_status_show(struct device *dev,
-				      struct device_attribute *attr, char *buf)
-{
-	struct es705_priv *es705 = &es705_priv;
-	int rc = 0;
-	u32 sync_cmd = (ES705_SYNC_CMD << 16) | ES705_SYNC_POLLING;
-	u32 sync_ack;
-	char msg[4];
-	char *status_name = "Ping";
-
-	cpu_to_le32s(&sync_cmd);
-	memcpy(msg, (char *)&sync_cmd, 4);
-
-	rc = es705->dev_write(es705, msg, 4);
-	if (rc < 0) {
-		dev_err(es705->dev, "%s(): firmware load failed sync write\n",
-			__func__);
-	}
-
-	msleep(20);
-	memset(msg, 0, 4);
-
-	rc = es705->dev_read(es705, msg, 4);
-	if (rc < 0) {
-		dev_err(es705->dev, "%s(): error reading sync ack rc=%d\n",
-			__func__, rc);
-	}
-
-	memcpy((char *)&sync_ack, msg, 4);
-	le32_to_cpus(&sync_ack);
-	dev_dbg(es705->dev, "%s(): sync_ack = 0x%08x\n", __func__, sync_ack);
-
-	rc = snprintf(buf, PAGE_SIZE, "%s=0x%08x\n", status_name, sync_ack);
-
-	return rc;
-}
-
-static DEVICE_ATTR(ping_status, 0444, es705_ping_status_show, NULL);
-/* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/ping_status */
-
-static ssize_t es705_gpio_reset_set(struct device *dev,
-				    struct device_attribute *attr,
-				    const char *buf, size_t count)
-{
-	struct es705_priv *es705 = &es705_priv;
-
-	dev_dbg(es705->dev, "%s(): GPIO reset\n", __func__);
-
-	es705->mode = SBL;
-	es705_gpio_reset(es705);
-
-	dev_dbg(es705->dev, "%s(): Ready for STANDARD download by proxy\n",
-		__func__);
-
-	return count;
-}
-
-static DEVICE_ATTR(gpio_reset, 0644, NULL, es705_gpio_reset_set);
-/* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/gpio_reset */
-
 static ssize_t es705_overlay_mode_set(struct device *dev,
 				      struct device_attribute *attr,
 				      const char *buf, size_t count)
@@ -1435,29 +1469,7 @@ static ssize_t es705_vs_event_set(struct device *dev,
 static DEVICE_ATTR(vs_event, 0644, NULL, es705_vs_event_set);
 /* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/vs_event */
 
-static ssize_t es705_tuning_set(struct device *dev,
-				struct device_attribute *attr, const char *buf,
-				size_t count)
-{
-	struct es705_priv *es705 = &es705_priv;
-	unsigned int value = 0;
-
-	sscanf(buf, "%d", &value);
-
-	pr_info("%s : [ES705] uart_pin_config = %d\n", __func__, value);
-
-	if (value == 0)
-		es705->change_uart_config = 0;
-	else
-		es705->change_uart_config = 1;
-
-	return count;
-}
-
-static DEVICE_ATTR(tuning, 0644, NULL, es705_tuning_set);
-/* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/tuning */
 #define PATH_SIZE 100
-
 static ssize_t es705_keyword_grammar_path_set(struct device *dev,
 					      struct device_attribute *attr,
 					      const char *buf, size_t count)
@@ -1533,6 +1545,8 @@ static ssize_t es705_keyword_net_path_set(struct device *dev,
 
 static DEVICE_ATTR(keyword_net_path, 0664, NULL, es705_keyword_net_path_set);
 /* /sys/devices/platform/msm_slim_ctrl.1/es705-codec-gen0/keyword_net_path */
+#endif
+
 static ssize_t es705_sleep_delay_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
@@ -1592,15 +1606,19 @@ static struct attribute *core_sysfs_attrs[] = {
 	&dev_attr_rate.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_clock_on.attr,
-	&dev_attr_vs_keyword_parameters.attr,
-	&dev_attr_vs_status.attr,
 	&dev_attr_ping_status.attr,
 	&dev_attr_gpio_reset.attr,
+#if defined(CONFIG_SND_SOC_ESXXX_UART_WAKEUP)
+	&dev_attr_tuning.attr,
+#endif
+#if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)
+	&dev_attr_vs_keyword_parameters.attr,
+	&dev_attr_vs_status.attr,
 	&dev_attr_overlay_mode.attr,
 	&dev_attr_vs_event.attr,
-	&dev_attr_tuning.attr,
 	&dev_attr_keyword_grammar_path.attr,
 	&dev_attr_keyword_net_path.attr,
+#endif
 	&dev_attr_sleep_delay.attr,
 	&dev_attr_preset_delay.attr,
 	NULL
@@ -1949,36 +1967,6 @@ static ssize_t es705_veq_table_print(struct device *dev,
 static DEVICE_ATTR(veq_table_print, 0664, NULL, es705_veq_table_print);
 
 #if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
-static ssize_t es705_enable_i2c_stream_fs(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	struct es705_priv *es705 = &es705_priv;
-	int value = 0;
-	int ret;
-
-	ret = sscanf(buf, "%d", &value);
-
-	dev_info(es705->dev, "%s(): Input value=(%d)\n",
-		__func__, value);
-
-	if (value == 1) {
-		dev_info(es705->dev, "%s(): i2c_stream_fs enabled\n"
-			, __func__);
-		es705->streamdev = i2c_streamdev;
-	} else if (value == 0) {
-		dev_info(es705->dev, "%s(): uart_stream_fs enabled\n"
-			, __func__);
-		es705->streamdev = uart_streamdev;
-	} else {
-		dev_info(es705->dev, "%s(): Invalid value\n"
-			, __func__);
-	}
- 
-	return count;
-}
-static DEVICE_ATTR(i2c_streaming_on, 0664, NULL, es705_enable_i2c_stream_fs);
-
 static ssize_t es705_get_stream_fs_always(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -2002,6 +1990,9 @@ static ssize_t es705_set_stream_fs_always(struct device *dev,
 	dev_info(es705->dev, "%s(): Input value=(%d)\n",
 		__func__, value);
 
+	if (es705->streamdev.intf == ES705_UART_INTF)
+		es705->streamdev = i2c_streamdev;
+
 	if (value == 0) {
 		dev_info(es705->dev, "%s(): stream_fs_always off\n"
 			, __func__);
@@ -2012,7 +2003,8 @@ static ssize_t es705_set_stream_fs_always(struct device *dev,
 		dev_info(es705->dev, "%s(): stream_fs_always on\n"
 			, __func__);
 		es705->streamdev.always_on = 1;
-		es705_stream_fs_storer_run(es705);
+		if (es705->streamdev.streaming == 0)
+			es705_stream_fs_storer_run(es705);
 	} else {
 		dev_info(es705->dev, "%s(): Invalid value\n"
 			, __func__);
@@ -2030,15 +2022,19 @@ static struct attribute *earsmart_sysfs_attrs[] = {
 	&dev_attr_rate.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_clock_on.attr,
-	&dev_attr_vs_keyword_parameters.attr,
-	&dev_attr_vs_status.attr,
 	&dev_attr_ping_status.attr,
 	&dev_attr_gpio_reset.attr,
+#if defined(CONFIG_SND_SOC_ESXXX_UART_WAKEUP)
+	&dev_attr_tuning.attr,
+#endif
+#if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)
+	&dev_attr_vs_keyword_parameters.attr,
+	&dev_attr_vs_status.attr,
 	&dev_attr_overlay_mode.attr,
 	&dev_attr_vs_event.attr,
-	&dev_attr_tuning.attr,
 	&dev_attr_keyword_grammar_path.attr,
 	&dev_attr_keyword_net_path.attr,
+#endif
 	&dev_attr_sleep_delay.attr,
 	&dev_attr_preset_delay.attr,
 	&dev_attr_power_control_set.attr,
@@ -2047,7 +2043,6 @@ static struct attribute *earsmart_sysfs_attrs[] = {
 	&dev_attr_extra_volume.attr,
 	&dev_attr_veq_table_print.attr,
 #if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
-	&dev_attr_i2c_streaming_on.attr,
 	&dev_attr_always_stream_fs_on.attr,
 #endif
 	NULL
@@ -2305,6 +2300,8 @@ static void es705_vs_fw_loaded(const struct firmware *fw, void *context)
 	es705->vs = fw;
 	dev_info(es705->dev, "%s: Done!\n", __func__);
 
+	return;
+
 request_firmware_error:
 	es705->vs = NULL;
 }
@@ -2340,17 +2337,21 @@ static void es705_std_fw_loaded(const struct firmware *fw, void *context)
 		goto err;
 	}
 	dev_info(es705->dev, "%s: Done!\n", __func__);
-err:
-	release_firmware(es705->standard);
-request_firmware_error:
-	es705->standard = NULL;
 
 	if (es705_priv.power_control) {
 		dev_info(es705->dev, "%s(): is going to sleep\n", __func__);
 		es705_priv.power_control(ES705_SET_POWER_STATE_SLEEP,
 					ES705_POWER_STATE);
 	}
+
+	return;
+
+err:
+	release_firmware(es705->standard);
+request_firmware_error:
+	es705->standard = NULL;	
 }
+
 #if defined(CONFIG_SND_SOC_ESXXX_UPDATE_VEQ_TABLE)
 static void es705_veq_table_update(const struct firmware *fw, void *context)
 {
@@ -5861,11 +5862,12 @@ int es705_core_init(struct device *dev)
 	es705_priv.current_veq_preset = 0;
 	es705_priv.current_bwe = 0;
 #endif
+	es705_priv.streamdev = uart_streamdev;
 	es705_priv.datablockdev = uart_datablockdev;
+
 	es705_priv.detected_vs_keyword = 0xFFFF;
 	/* default : 1000 ms (for "Hi Galaxy") */
 	es705_priv.vs_keyword_length = 1000;
-
 	/* No keyword parameters available until set. */
 	es705_priv.vs_keyword_param_size = 0;
 
@@ -5919,13 +5921,6 @@ int es705_core_init(struct device *dev)
 	INIT_WORK(&es705_priv.stream_fs_stop,
 		stream_fs_stop_work);
 #endif
-
-#if defined(SAMSUNG_ES705_FEATURE)
-	rc = es705_init_input_device(&es705_priv);
-	if (rc < 0)
-		goto init_input_device_error;
-#endif
-
 	rc = es705_gpio_init(&es705_priv);
 	if (rc)
 		goto gpio_init_error;
@@ -6001,9 +5996,6 @@ request_vs_firmware_error:
 request_firmware_error:
 #endif
 gpio_init_error:
-#if defined(SAMSUNG_ES705_FEATURE)
-init_input_device_error:
-#endif
 pdata_error:
 	dev_dbg(es705_priv.dev, "%s(): exit with error\n", __func__);
 	return rc;
@@ -6051,6 +6043,7 @@ void stream_fs_close(struct es705_priv *es705)
 {
 	if (es705->streamdev.fp != NULL) {
 		filp_close(es705->streamdev.fp, 0);
+		es705->streamdev.fp = NULL;
 	}
 }
 
@@ -6161,13 +6154,11 @@ module_init(es705_init);
 
 static __exit void es705_exit(void)
 {
-#if defined(SAMSUNG_ES705_FEATURE)
-	es705_unregister_input_device(&es705_priv);
-#endif
-
 	if (es705_priv.fw_requested) {
 		release_firmware(es705_priv.standard);
+#if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)
 		release_firmware(es705_priv.vs);
+#endif
 	}
 
 	es705_cleanup_cdev(&es705_priv);

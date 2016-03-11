@@ -23,9 +23,9 @@
 #include <linux/err.h>
 #include <linux/scatterlist.h>
 #include <linux/smc.h>
+#include "fmpdev_int.h" //for FIPS_FMP_FUNC_TEST macro
 
 //#define FIPS_DEBUG
-#define FIPS_FUNC_TEST 0
 
 static const char *symtab[][3] =
 		{{".text",	"first_fmp_text",	"last_fmp_text"  },
@@ -138,7 +138,7 @@ static int update_hash(struct hash_desc *desc, unsigned char *start_addr, unsign
 	unsigned int bytes_remaining;
 	unsigned int bytes;
 	int ret = -1;
-#if FIPS_FUNC_TEST == 2
+#if FIPS_FMP_FUNC_TEST == 5
 	static int total = 0;
 #endif
 
@@ -161,7 +161,7 @@ static int update_hash(struct hash_desc *desc, unsigned char *start_addr, unsign
 
 		sg_init_one(&sg, buf, bytes);
 
-#if FIPS_FUNC_TEST == 2
+#if FIPS_FMP_FUNC_TEST == 5
 		if (total == 0) {
 			printk(KERN_INFO "FIPS : Failing Integrity Test");
 			buf[bytes / 2] += 1;
@@ -179,7 +179,7 @@ static int update_hash(struct hash_desc *desc, unsigned char *start_addr, unsign
 		cur += bytes;
 		bytes_remaining -= bytes;
 
-#if FIPS_FUNC_TEST == 2
+#if FIPS_FMP_FUNC_TEST == 5
 		total += bytes;
 #endif
 	}

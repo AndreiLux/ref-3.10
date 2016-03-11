@@ -26,7 +26,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmpcie.h 542048 2015-03-18 15:37:26Z $
+ * $Id: bcmpcie.h 604490 2015-12-07 15:48:45Z $
  */
 
 
@@ -276,7 +276,7 @@ extern pciedev_shared_t pciedev_shared;
 #define H2D_HOST_DS_ACK		0x00000002
 #define H2D_HOST_DS_NAK		0x00000004
 #define H2D_HOST_CONS_INT	0x80000000	/**< h2d int for console cmds  */
-#define H2D_FW_TRAP		0x20000000	/**< h2d force TRAP */
+#define H2D_FW_TRAP			0x20000000	/**< dump HW reg info for Livelock issue */
 #define H2D_HOST_D0_INFORM_IN_USE	0x00000008
 #define H2D_HOST_D0_INFORM	0x00000010
 

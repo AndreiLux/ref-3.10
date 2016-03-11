@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linuxver.h 514727 2014-11-12 03:02:48Z $
+ * $Id: linuxver.h 604758 2015-12-08 12:01:08Z $
  */
 
 #ifndef _linuxver_h_
@@ -613,10 +613,16 @@ static inline bool binary_sema_up(tsk_ctl_t *tsk)
 	(tsk_ctl)->proc_name = name;  \
 	(tsk_ctl)->terminated = FALSE; \
 	(tsk_ctl)->p_task  = kthread_run(thread_func, tsk_ctl, (char*)name); \
-	(tsk_ctl)->thr_pid = (tsk_ctl)->p_task->pid; \
-	spin_lock_init(&((tsk_ctl)->spinlock)); \
-	DBG_THR(("%s(): thread:%s:%lx started\n", __FUNCTION__, \
-		(tsk_ctl)->proc_name, (tsk_ctl)->thr_pid)); \
+	if (IS_ERR((tsk_ctl)->p_task)) { \
+		(tsk_ctl)->thr_pid = DHD_PID_KT_INVALID; \
+		DBG_THR(("%s(): thread:%s:%lx failed\n", __FUNCTION__, \
+			(tsk_ctl)->proc_name, (tsk_ctl)->thr_pid)); \
+	} else { \
+		(tsk_ctl)->thr_pid = (tsk_ctl)->p_task->pid; \
+		spin_lock_init(&((tsk_ctl)->spinlock)); \
+		DBG_THR(("%s(): thread:%s:%lx started\n", __FUNCTION__, \
+			(tsk_ctl)->proc_name, (tsk_ctl)->thr_pid)); \
+	} \
 }
 
 #define PROC_STOP(tsk_ctl) \
@@ -757,5 +763,12 @@ not match our unaligned address for < 2.6.24
 #if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6)
 #pragma GCC diagnostic pop
 #endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0))
+static inline struct inode *file_inode(const struct file *f)
+{
+	return f->f_dentry->d_inode;
+}
+#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0)) */
 
 #endif /* _linuxver_h_ */

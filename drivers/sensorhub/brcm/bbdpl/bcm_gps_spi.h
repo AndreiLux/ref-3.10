@@ -17,6 +17,7 @@ enum
 	,SSI_INPUT_ROUTINE_BUFFER_SIZE = 2000
 };
 
+#if 0
 enum
 {
     SSI_MODE_STREAM = 0
@@ -34,7 +35,7 @@ enum
     SSI_WRITE_TRANS = 0x0
     ,SSI_READ_TRANS  = 0x20
 };
-
+#endif
 
 //struct bcm_gps_platform_data {
 struct bcm4773_gps_platform_data {

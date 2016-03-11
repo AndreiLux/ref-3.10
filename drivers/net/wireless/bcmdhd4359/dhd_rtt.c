@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_rtt.c 558438 2015-05-22 06:05:11Z $
+ * $Id: dhd_rtt.c 606280 2015-12-15 05:28:25Z $
  */
 #ifdef RTT_SUPPORT
 #include <typedefs.h>
@@ -202,7 +202,7 @@ dhd_rtt_start(dhd_pub_t *dhd)
 	rtt_status = GET_RTTSTATE(dhd);
 	NULL_CHECK(rtt_status, "rtt_status is NULL", err);
 	/* turn off mpc in case of non-associted */
-	if (!dhd_is_associated(dhd, NULL, NULL)) {
+	if (!dhd_is_associated(dhd, 0, NULL)) {
 		err = dhd_iovar(dhd, 0, "mpc", (char *)&mpc, sizeof(mpc), 1);
 		if (err < 0) {
 			DHD_ERROR(("%s : failed to set proxd_tune\n", __FUNCTION__));

@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux.h 399301 2013-04-29 21:41:52Z $
+ * $Id: dhd_linux.h 591285 2015-10-07 11:56:29Z $
  */
 
 /* wifi platform functions for power, interrupt and pre-alloc, either

@@ -104,6 +104,8 @@ fw-shipped-$(CONFIG_USB_EMI62) += emi62/loader.fw emi62/bitstream.fw \
 fw-shipped-$(CONFIG_USB_KAWETH) += kaweth/new_code.bin kaweth/trigger_code.bin \
 				   kaweth/new_code_fix.bin \
 				   kaweth/trigger_code_fix.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_MMS438) += tsp_melfas/mms438_w2016.fw
+
 ifdef CONFIG_FIRMWARE_IN_KERNEL
 fw-shipped-$(CONFIG_EXYNOS_MBOX) += apm_0116_fw_v0.h
 fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_MPR) += keyspan/mpr.fw
@@ -160,8 +162,17 @@ else
 $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
 endif
 
+TSPFIRMWARE_DIRECTORY = firmware/tsp_sec
+ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
+fw-shipped-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/s6smc43_s6_img_REL.bin
+else
+$(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
+endif
+
 fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH) += abov/abov_noble.fw abov/abov_zen.fw \
 							abov/abov_valley.fw
+fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH_FOLDER) += abov/abov_tk_royce.fw
+fw-shipped-$(CONFIG_KEYBOARD_ABOV_FT16XX_TOUCH_VALLEY) += abov/abov_valley.fw
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_MBR31X5) += cypress/cypress_zerof.fw \
 							cypress/cypress_vlte.fw cypress/cypress_noble.fw
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20075) += cypress/cypress_k.fw
@@ -182,16 +193,20 @@ ifdef CONFIG_SENSORS_SSP_STM
 	ifdef CONFIG_SENSORS_SSP_VLTE
 		fw-shipped-y += ssp_stm_v.fw ssp_crashed.fw
 	endif
+
+	ifdef CONFIG_SENSORS_SSP_ROYCELTE
+		fw-shipped-y += ssp_stm_royce.fw ssp_crashed.fw
+	endif
 endif
 
 # Wireless charger
-# fw-shipped-$(CONFIG_WIRELESS_FIRMWARE_UPDATE) += idt/p9220_otp.bin idt/p9220_sram.bin
+#fw-shipped-$(CONFIG_WIRELESS_FIRMWARE_UPDATE) += idt/p9220_otp.bin idt/p9220_sram.bin
 
 # IrDA FPGA
 fw-shipped-$(CONFIG_SEC_FPGA_ICE40XX) += ice40xx/i2c_top_bitmap_1.fw
 
 #for ice5 led matrix
-fw-shipped-$(CONFIG_ICE5_FPGA_LED_MATRIX) += ice50/EINK0.fw ice50/EINK1.fw
+fw-shipped-$(CONFIG_ICE5_FPGA_LED_MATRIX) += ice50/EINK0.fw ice50/EINK1.fw ice50/EINK0_05T.fw ice50/EINK1_05T.fw
 
 # Directories which we _might_ need to create, so we have a rule for them.
 firmware-dirs := $(sort $(addprefix $(objtree)/$(obj)/,$(dir $(fw-external-y) $(fw-shipped-all))))

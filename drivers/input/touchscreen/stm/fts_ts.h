@@ -224,7 +224,7 @@
 #define FTS_MODE_DIRECT_INDICATOR			(1 << 3)
 
 #define TSP_BUF_SIZE 2048
-#define CMD_STR_LEN 32
+#define CMD_STR_LEN 256
 #define CMD_RESULT_STR_LEN 2048
 #define CMD_PARAM_NUM 8
 

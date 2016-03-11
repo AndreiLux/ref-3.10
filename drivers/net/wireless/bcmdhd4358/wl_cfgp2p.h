@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfgp2p.h 525774 2015-01-12 12:51:24Z $
+ * $Id: wl_cfgp2p.h 602251 2015-11-25 11:28:15Z $
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -96,7 +96,7 @@ struct p2p_info {
 	wlc_ssid_t ssid;
 };
 
-#define MAX_VNDR_IE_NUMBER	5
+#define MAX_VNDR_IE_NUMBER	7
 
 struct parsed_vndr_ie_info {
 	char *ie_ptr;
@@ -152,7 +152,18 @@ enum wl_cfgp2p_status {
 #define CFGP2P_ERROR_TEXT		"CFGP2P-ERROR) "
 #endif
 
-
+#ifdef DHD_LOG_DUMP
+#define CFGP2P_ERR(args)									\
+	do {										\
+		if (wl_dbg_level & WL_DBG_ERR) {				\
+			printk(KERN_INFO CFGP2P_ERROR_TEXT "%s : ", __func__);	\
+			printk args;						\
+			dhd_log_dump_print("[%s] %s: ",	\
+			dhd_log_dump_get_timestamp(), __func__);	\
+			dhd_log_dump_print args;	\
+		}									\
+	} while (0)
+#else
 #define CFGP2P_ERR(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_ERR) {				\
@@ -160,6 +171,7 @@ enum wl_cfgp2p_status {
 			printk args;						\
 		}									\
 	} while (0)
+#endif /* DHD_LOG_DUMP */
 #define	CFGP2P_INFO(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_INFO) {				\

@@ -175,8 +175,7 @@ extern struct s3c64xx_spi_info s3c64xx_spi1_pdata;
 extern struct s3c64xx_spi_info s3c64xx_spi2_pdata;
 
 /* Using Oberhur ESE with exynos7420 SPI */
-#if defined(CONFIG_SOC_EXYNOS7420) && defined(CONFIG_ESE_P3_LSI) && \
-	(!defined(CONFIG_ESE_FACTORY_ONLY) || defined(CONFIG_SEC_FACTORY))
+#if defined(CONFIG_ESE_P3_LSI) && defined(CONFIG_SEC_FACTORY)
 #define ENABLE_ESE_P3_EXYNO_SPI
 #endif
 

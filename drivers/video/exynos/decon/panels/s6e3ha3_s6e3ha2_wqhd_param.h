@@ -58,18 +58,19 @@ enum
         HBM_STATUS_MAX,
 };
 
-enum
+enum 
 {
-        ACL_STATUS_0P,
-        ACL_STATUS_8P,
-        ACL_STATUS_MAX
+	ACL_STATUS_OFF,
+	ACL_STATUS_ON,
+	ACL_STATUS_MAX
 };
 
-enum
+enum 
 {
-        ACL_OPR_16_FRAME,
-        ACL_OPR_32_FRAME,
-        ACL_OPR_MAX
+	ACL_OPR_OFF,
+	ACL_OPR_8P,
+	ACL_OPR_15P,
+	ACL_OPR_MAX
 };
 
 struct aid_dimming_dynamic_var
@@ -101,13 +102,13 @@ extern struct aid_dimming_dynamic_var aid_dimming_dynamic;
 #define USE_VINT_REG2
 
 static const unsigned int VINT_DIM_TABLE[] = {  /* HA2*/
-        5, 6, 7, 8, 9,
-        10, 11, 12, 13, 14
+	5, 6, 7, 8, 9,
+	10, 11, 12, 13, 14
 };
 
 static const unsigned char VINT_TABLE_HA2[] = {     /* S6E3HA2*/
-        0x18, 0x19, 0x1A, 0x1B, 0x1C,
-        0x1D, 0x1E, 0x1F, 0x20, 0x21
+	0x18, 0x19, 0x1A, 0x1B, 0x1C,
+	0x1D, 0x1E, 0x1F, 0x20, 0x21
 };
 
 static const unsigned char VINT_TABLE_HF3[] = {     /* HF3 */
@@ -116,8 +117,8 @@ static const unsigned char VINT_TABLE_HF3[] = {     /* HF3 */
 };
 
 static const unsigned char VINT_TABLE_HA3[] = {     /* HA3 */
-        0x15, 0x16, 0x17, 0x18, 0x19,
-        0x1A, 0x1B, 0x1C, 0x1D, 0x1E
+	0x15, 0x16, 0x17, 0x18, 0x19,
+	0x1A, 0x1B, 0x1C, 0x1D, 0x1E
 };
 
 static const char ELVSS_OFFSET_HA2[][5] = {
@@ -351,24 +352,44 @@ static const unsigned char S6E3HA2_SEQ_ERR_FG_SETTING[] = {
 };
 
 static const unsigned char S6E3HA2_SEQ_ACL_OFF[] = {
-        0x55,
-        0x00
+	0x55,
+	0x00
 };
-static const unsigned char S6E3HA2_SEQ_ACL_8[] = {
-        0x55,
-        0x02,
+static const unsigned char S6E3HA2_SEQ_ACL_ON[] = {
+	0x55,
+	0x02,
 };
 
+// parameter : 2nd : start 60% = 0x99, start 50% = 0x7F
+// parameter : 4nd : ACL 5%=0x06, 8%=0x09, 12%=0x0E, 15%=0x12
 static const unsigned char S6E3HA2_SEQ_ACL_OFF_OPR[] = {
-        0xB5,
-        0x40
+	0xB5,
+	0x40, 0x7F, 0x27, 0x12
 };
 
-static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR[] = {
-        0xB5,
-        0x50
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_5[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x06
 };
 
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_8[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x09
+};
+
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_12[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x0E
+};
+
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_15[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x12
+};
+
+
+#define ACL_OPR_LEN		ARRAY_SIZE(S6E3HA2_SEQ_ACL_ON_OPR_15)
+#define ACL_CMD_LEN		ARRAY_SIZE(S6E3HA2_SEQ_ACL_ON)
 
 static const unsigned char S6E3HA2_SEQ_TSET[] = {
         0xB8,
@@ -394,7 +415,7 @@ static const unsigned char SEQ_HMT_AID_FORWARD1[] = {   /* G.Param */
     0xCB,
     0x18, 0x01, 0x80, 0x00, 0x00, 0x60, 0x80, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A, 0x05,
-    0x00, 0x19, 0x99, 0x00, 0x00, 0x00, 0x00, 0x18,
+    0x00, 0x19, 0x99, 0x00, 0x00, 0x00, 0x00, 0x08,
     0x00, 0x00, 0x00, 0x04, 0xAE, 0x00, 0x00, 0xC0,
 	0x0F, 0x11, 0x0D, 0x44, 0x45, 0xC3, 0x00, 0x00,
     0xC0, 0xC0, 0xC0, 0xC0, 0xCF, 0x51, 0xCD, 0xC4,
@@ -583,14 +604,41 @@ static const unsigned char S6E3HA3_SEQ_ACL_OFF[] = {
         0x00                    /* off = 00, on = 02 */
 };
 
-static const unsigned char S6E3HA3_SEQ_ACL_OFF_OPR[] = {
-        0xB4,
-        0x40                    /* 360nit = 0x40, else = 0x50 */
+static const unsigned char S6E3HA3_SEQ_ACL_ON[] = {
+        0x55,
+        0x02                    /* off = 00, on = 02 */
 };
 
-static const unsigned char S6E3HA3_SEQ_ACL_ON_OPR[] = {
+// parameter : 2nd : start 60% = 0x99, start 50% = 0x7F
+static const unsigned char S6E3HA3_SEQ_ACL_OFF_OPR[] = {
         0xB4,
-        0x50
+        0x40, 0x7F, 0x27, 0x12
+};
+
+
+static const unsigned char S6E3HA3_SEQ_ACL_ON_OPR_5[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x06
+};
+
+static const unsigned char S6E3HA3_SEQ_ACL_ON_OPR_8[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x09
+};
+
+static const unsigned char S6E3HA3_SEQ_ACL_ON_OPR_12[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x0E
+};
+
+static const unsigned char S6E3HA3_SEQ_ACL_ON_OPR_15[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x12
+};
+
+static const unsigned char S6E3HA3_SEQ_ACL_ON_OPR_30[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x26
 };
 
 static const unsigned char S6E3HA3_SEQ_TE_ON[] = {
@@ -786,8 +834,8 @@ static const unsigned char S6E3HF3_SEQ_GAMMA_CONDITION_SET[] = {
 
 static const unsigned char S6E3HF3_SEQ_AOR[] = {	/* AOR 10% */
         0xB1,
-       	0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-       	0x10, 0x03
+       	0x54, 0x20, 0x1A, 0x35, 0x5E, 0x8C, 0xB3, 0xD9,
+       	0x00, 0x0A
 };
 
 static const unsigned char S6E3HF3_SEQ_MPS_ELVSS_SET[] = {
@@ -807,14 +855,40 @@ static const unsigned char S6E3HF3_SEQ_ACL_OFF[] = {
         0x00                    /* off = 00, on = 02 */
 };
 
-static const unsigned char S6E3HF3_SEQ_ACL_OFF_OPR[] = {
-        0xB4,
-        0x40                    /* 360nit = 0x40, else = 0x50 */
+static const unsigned char S6E3HF3_SEQ_ACL_ON[] = {
+        0x55,
+        0x02                    /* off = 00, on = 02 */
 };
 
-static const unsigned char S6E3HF3_SEQ_ACL_ON_OPR[] = {
+// parameter : 2nd : start 60% = 0x99, start 50% = 0x7F
+static const unsigned char S6E3HF3_SEQ_ACL_OFF_OPR[] = {
         0xB4,
-        0x50
+        0x40, 0x7F, 0x27, 0x12
+};
+
+static const unsigned char S6E3HF3_SEQ_ACL_ON_OPR_5[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x06
+};
+
+static const unsigned char S6E3HF3_SEQ_ACL_ON_OPR_8[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x09
+};
+
+static const unsigned char S6E3HF3_SEQ_ACL_ON_OPR_12[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x0E
+};
+
+static const unsigned char S6E3HF3_SEQ_ACL_ON_OPR_15[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x12
+};
+
+static const unsigned char S6E3HF3_SEQ_ACL_ON_OPR_30[] = {
+        0xB4,
+        0x50, 0x7F, 0x27, 0x26
 };
 
 static const unsigned char S6E3HF3_SEQ_TE_ON[] = {

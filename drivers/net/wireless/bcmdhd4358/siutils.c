@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: siutils.c 548451 2015-04-13 08:20:45Z $
+ * $Id: siutils.c 571881 2015-07-16 09:49:56Z $
  */
 
 #include <bcm_cfg.h>
@@ -483,6 +483,7 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, void *regs,
 	sii->curmap = regs;
 	sii->sdh = sdh;
 	sii->osh = osh;
+	sii->second_bar0win = ~0x0;
 
 
 	/* check to see if we are a si core mimic'ing a pci core */
@@ -1215,7 +1216,105 @@ si_wrapperreg(si_t *sih, uint32 offset, uint32 mask, uint32 val)
 		return (ai_wrap_reg(sih, offset, mask, val));
 	return 0;
 }
+/* si_backplane_access is used to read full backplane address from host for PCIE FD
+ * it uses secondary bar-0 window which lies at an offset of 16K from primary bar-0
+ * Provides support for read/write of 1/2/4 bytes of backplane address
+ * Can be used to read/write
+ *	1. core regs
+ *	2. Wrapper regs
+ *	3. memory
+ *	4. BT area
+ * For accessing any 32 bit backplane address, [31 : 12] of backplane should be given in "region"
+ * [11 : 0] should be the "regoff"
+ * for reading  4 bytes from reg 0x200 of d11 core use it like below
+ * : si_backplane_access(sih, 0x18001000, 0x200, 4, 0, TRUE)
+ */
+int
+static si_backplane_addr_sane(uint addr, uint size)
+{
+	int bcmerror = BCME_OK;
 
+	/* For 2 byte access, address has to be 2 byte aligned */
+	if (size == 2) {
+		if (addr & 0x1) {
+			bcmerror = BCME_ERROR;
+		}
+	}
+	/* For 4 byte access, address has to be 4 byte aligned */
+	if (size == 4) {
+		if (addr & 0x3) {
+			bcmerror = BCME_ERROR;
+		}
+	}
+	return bcmerror;
+}
+uint
+si_backplane_access(si_t *sih, uint addr, uint size, uint *val, bool read)
+{
+	uint32 *r = NULL;
+	uint32 region = 0;
+	si_info_t *sii = SI_INFO(sih);
+
+	/* Valid only for pcie bus */
+	if (BUSTYPE(sih->bustype) != PCI_BUS) {
+		SI_ERROR(("Valid only for pcie bus \n"));
+		return BCME_ERROR;
+	}
+
+	/* Split adrr into region and address offset */
+	region = (addr & (0xFFFFF << 12));
+	addr = addr & 0xFFF;
+
+	/* check for address and size sanity */
+	if (si_backplane_addr_sane(addr, size) != BCME_OK) {
+		return BCME_ERROR;
+	}
+
+	/* Update window if required */
+	if (sii->second_bar0win != region) {
+		OSL_PCI_WRITE_CONFIG(sii->osh, PCIE2_BAR0_CORE2_WIN, 4, region);
+		sii->second_bar0win = region;
+	}
+
+	/* Estimate effective address
+	 * sii->curmap   : bar-0 virtual address
+	 * PCI_SECOND_BAR0_OFFSET  : secondar bar-0 offset
+	 * regoff : actual reg offset
+	 */
+	r = (uint32 *)((char *)sii->curmap + PCI_SECOND_BAR0_OFFSET + addr);
+
+	SI_VMSG(("si curmap %p  region %x regaddr %x effective addr %p READ %d\n",
+		(char*)sii->curmap, region, addr, r, read));
+
+	switch (size) {
+	case sizeof(uint8):
+		if (read) {
+			*val = R_REG(sii->osh, (uint8*)r);
+		} else {
+			W_REG(sii->osh, (uint8*)r, *val);
+		}
+		break;
+	case sizeof(uint16):
+		if (read) {
+			*val = R_REG(sii->osh, (uint16*)r);
+		} else {
+			W_REG(sii->osh, (uint16*)r, *val);
+		}
+		break;
+	case sizeof(uint32):
+		if (read) {
+			*val = R_REG(sii->osh, (uint32*)r);
+		} else {
+			W_REG(sii->osh, (uint32*)r, *val);
+		}
+		break;
+	default:
+		SI_ERROR(("Invalid  size %d \n", size));
+		return (BCME_ERROR);
+	}
+
+	return (BCME_OK);
+}
 uint
 si_corereg(si_t *sih, uint coreidx, uint regoff, uint mask, uint val)
 {

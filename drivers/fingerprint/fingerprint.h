@@ -44,9 +44,12 @@ static char sensor_status[SENSOR_STATUS_SIZE][8] ={"unknown", "failed",
 extern int FP_CHECK; /* extern variable */
 #endif
 
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
 #define MC_FC_FP_PM_SUSPEND ((uint32_t)(0x83000021))
 #define MC_FC_FP_PM_RESUME ((uint32_t)(0x83000022))
 #define MC_FC_FP_BTP_OCP_HIGH ((uint32_t)(0x83000023))
 #define MC_FC_FP_BTP_OCP_LOW ((uint32_t)(0x83000024))
 #define MC_FC_FP_BTP_OCP_NONE ((uint32_t)(0x83000025))
+#endif
+
 #endif

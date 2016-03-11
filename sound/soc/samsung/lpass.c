@@ -94,7 +94,7 @@
 #define AUD_INT_FREQ_UHQA	(0)
 #define AUD_CPU_FREQ_HIGH	(0)
 #define AUD_KFC_FREQ_HIGH	(0)
-#define AUD_MIF_FREQ_HIGH	(0)
+#define AUD_MIF_FREQ_HIGH	(416000)
 #define AUD_INT_FREQ_HIGH	(0)
 #define AUD_CPU_FREQ_NORM	(0)
 #define AUD_KFC_FREQ_NORM	(0)

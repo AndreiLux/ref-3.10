@@ -21,6 +21,7 @@
 #include <linux/atomic.h>
 #include <linux/scatterlist.h>
 #include <linux/smc.h>
+#include <linux/spinlock.h>
 #include <asm/page.h>
 #include <asm/unaligned.h>
 #include <crypto/hash.h>
@@ -32,6 +33,13 @@
 
 #define DM_MSG_PREFIX "crypt"
 #define FMP_KEY_STORAGE_OFFSET 0x0FC0
+
+volatile unsigned int disk_key_flag;
+DEFINE_SPINLOCK(disk_key_lock);
+
+#if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_DM_CRYPT)
+extern int fmp_clear_disk_key(void);
+#endif
 
 /*
  * context holding the current state of a multi-part conversion
@@ -1340,6 +1348,9 @@ static int crypt_setkey_allcpus(struct crypt_config *cc)
 			pr_err("dm-crypt: unsupported SoC type\n");
 			return -EINVAL;
 		}
+		spin_lock(&disk_key_lock);
+		disk_key_flag = 1;
+		spin_unlock(&disk_key_lock);
 
 		err = ((r == (u32)-1) ? r : 0);
 	} else {
@@ -1392,6 +1403,7 @@ static int crypt_wipe_key(struct crypt_config *cc)
 
 static void crypt_dtr(struct dm_target *ti)
 {
+	int r;
 	struct crypt_config *cc = ti->private;
 
 	ti->private = NULL;
@@ -1432,6 +1444,10 @@ static void crypt_dtr(struct dm_target *ti)
 
 	/* Must zero key material before freeing */
 	kzfree(cc);
+
+	r = fmp_clear_disk_key();
+	if (r)
+		pr_err("dm-crypt: Fail to clear FMP disk key.\n");
 }
 
 static int crypt_ctr_cipher(struct dm_target *ti,

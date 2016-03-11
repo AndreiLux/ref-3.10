@@ -23,7 +23,6 @@
 #include <linux/lcd.h>
 #include <linux/rtc.h>
 #include <linux/fb.h>
-//#include <mach/gpio.h>
 
 #include <linux/errno.h>
 #include <linux/fs.h>
@@ -115,29 +114,36 @@ int mdnie_open_file(const char *path, char **fp)
 
 int mdnie_check_firmware(const char *path, char *name)
 {
-	char *ptr = NULL;
-	int ret = 0, size;
+	char *fp, *p = NULL;
+	int count = 0, size;
 
-	size = mdnie_open_file(path, &ptr);
-	if (IS_ERR_OR_NULL(ptr) || size <= 0) {
+	size = mdnie_open_file(path, &fp);
+	if (IS_ERR_OR_NULL(fp) || size <= 0) {
 		pr_err("%s: file open skip %s\n", __func__, path);
-		kfree(ptr);
+		kfree(p);
 		return -EPERM;
 	}
 
-	ret = (strstr(ptr, name) != NULL) ? 1 : 0;
+	p = fp;
+	while ((p = strstr(p, name)) != NULL) {
+		count++;
+		p++;
+	}
 
-	kfree(ptr);
+	kfree(fp);
 
-	return ret;
+	pr_info("%s found %d times in %s\n", name, count, path);
+
+	/* if count is 1, it means tuning header. if count is 0, it means tuning data */
+	return count;
 }
 
-static int mdnie_request_firmware(char *path, char *name, mdnie_t **buf)
+static int mdnie_request_firmware(char *path, char *name, unsigned int **buf)
 {
 	char *token, *ptr = NULL;
-	int ret = 0, size;
-	unsigned int data[2], i = 0, j;
-	mdnie_t *dp;
+	int ret = 0, size, data[2];
+	unsigned int count = 0, i;
+	unsigned int *dp;
 
 	size = mdnie_open_file(path, &ptr);
 	if (IS_ERR_OR_NULL(ptr) || size <= 0) {
@@ -153,124 +159,85 @@ static int mdnie_request_firmware(char *path, char *name, mdnie_t **buf)
 		return -ENOMEM;
 	}
 
-	if (name) {
-		if (strstr(ptr, name) != NULL) {
-			pr_info("found %s in %s\n", name, path);
-			ptr = strstr(ptr, name);
+	while (!IS_ERR_OR_NULL(ptr)) {
+		ptr = (name) ? strstr(ptr, name) : ptr;
+		while ((token = strsep(&ptr, "\n")) != NULL) {
+			ret = sscanf(token, "%i, %i", &data[0], &data[1]);
+			pr_info("sscanf: %2d, strlen: %2d, %s\n", ret, (int)strlen(token), token);
+			if (!ret && strlen(token) <= 1) {
+				dp[count] = 0xffff;
+				pr_info("stop at %d\n", count);
+				if (count)
+					count = (dp[count - 1] == dp[count]) ? count : count + 1;
+				break;
+			}
+			for (i = 0; i < ret; count++, i++)
+				dp[count] = data[i];
 		}
-	}
-
-	while ((token = strsep(&ptr, "\r\n")) != NULL) {
-		if (name && !strncmp(token, "};", 2)) {
-			pr_info("found %s end in local, stop searching\n", name);
-			break;
-		}
-		ret = sscanf(token, "%x, %x", &data[0], &data[1]);
-		for (j = 0; j < ret; i++, j++)
-			dp[i] = data[j];
 	}
 
 	*buf = dp;
 
+	for (i = 0; i < count; i++)
+		pr_info("[%4d] %04x\n", i, dp[i]);
+
 	kfree(ptr);
 
-	return i;
+	return count;
 }
 
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-
-struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s)
+/* this function is not official one. its only purpose is for tuning */
+uintptr_t mdnie_request_table(char *path, struct mdnie_table *org)
 {
-	char string[50];
-	unsigned int i, j, size;
-	mdnie_t *buf = NULL;
-	struct mdnie_table *t;
-	int ret = 0;
+	unsigned int i, j = 0, k = 0, len;
+	unsigned int *buf = NULL;
+	mdnie_t *cmd = 0;
+	int size, ret = 0, cmd_found = 0;
 
-	ret = mdnie_check_firmware(path, s->name);
+	ret = mdnie_check_firmware(path, org->name);
 	if (ret < 0)
-		return NULL;
+		goto exit;
 
-	t = kzalloc(sizeof(struct mdnie_table), GFP_KERNEL);
-	t->name = kzalloc(strlen(s->name) + 1, GFP_KERNEL);
-	strcpy(t->name, s->name);
-	memcpy(t, s, sizeof(struct mdnie_table));
+	size = mdnie_request_firmware(path, ret ? org->name : NULL, &buf);
+	if (size <= 0)
+		goto exit;
 
-	if (ret > 0) {
-		for (j = 1, i = MDNIE_CMD1; i <= MDNIE_CMD3; i++, j++) {
-			memset(string, 0, sizeof(string));
-			sprintf(string, "%s_%d", t->name, j);
-			size = mdnie_request_firmware(path, string, &buf);
-			t->tune[i].sequence = buf;
-			t->tune[i].size = size;
-			pr_info("%s: size is %d\n", string, t->tune[i].size);
-		}
-		pr_info("%s ret : %d 1\n", __func__, ret);
-	} else if (ret == 0) {
-		size = mdnie_request_firmware(path, NULL, &buf);
-#if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
-		for (i = 0; i < size; i++) {
-			if (buf[i] == 0xDE)
+	cmd = kzalloc(size * sizeof(mdnie_t), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(cmd))
+		goto exit;
+
+	for (i = 0; org->seq[i].len; i++) {
+		if (!org->update_flag[i])
+			continue;
+		for (len = 0; k < size; len++, j++, k++) {
+			if (buf[k] == 0xffff) {
+				pr_info("stop at %d, %d, %d\n", k, j, len);
+				k++;
 				break;
+			}
+			cmd[j] = buf[k];
+			pr_info("seq[%d].len[%3d], cmd[%3d]: %02x, buf[%3d]: %02x\n", i, len, j, cmd[j], k, buf[k]);
 		}
-		t->tune[MDNIE_CMD1].sequence = &buf[0];
-		t->tune[MDNIE_CMD1].size = i;
-		while(i < size) {
-			if(buf[i] == 0xDD)
-				break;
-			i++;
-		}
-		t->tune[MDNIE_CMD2].sequence = &buf[t->tune[MDNIE_CMD1].size];
-		t->tune[MDNIE_CMD2].size = i - t->tune[MDNIE_CMD1].size;
-#endif
-		t->tune[MDNIE_CMD3].sequence = &buf[i];
-		t->tune[MDNIE_CMD3].size = size - i + 1;
+		org->seq[i].cmd = &cmd[j - len];
+		org->seq[i].len = len;
+		cmd_found = 1;
+		pr_info("seq[%d].cmd: &cmd[%3d], seq[%d].len: %d\n", i, j - len, i, len);
 	}
 
-	return t;
-}
-#else
-struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s)
-{
-	char string[50];
-	unsigned int i, j, size;
-	mdnie_t *buf = NULL;
-	struct mdnie_table *t;
-	int ret = 0;
+	kfree(buf);
 
-	ret = mdnie_check_firmware(path, s->name);
-	if (ret < 0)
-		return NULL;
-
-	t = kzalloc(sizeof(struct mdnie_table), GFP_KERNEL);
-	t->name = kzalloc(strlen(s->name) + 1, GFP_KERNEL);
-	strcpy(t->name, s->name);
-	memcpy(t, s, sizeof(struct mdnie_table));
-
-	if (ret > 0) {
-		for (j = 1, i = MDNIE_CMD1; i <= MDNIE_CMD2; i++, j++) {
-			memset(string, 0, sizeof(string));
-			sprintf(string, "%s_%d", t->name, j);
-			size = mdnie_request_firmware(path, string, &buf);
-			t->tune[i].sequence = buf;
-			t->tune[i].size = size;
-			pr_info("%s: size is %d\n", string, t->tune[i].size);
-		}
-	} else if (ret == 0) {
-		size = mdnie_request_firmware(path, NULL, &buf);
-#if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
-		for (i = 0; i < size; i++) {
-			if (buf[i] == 0xEC)
-				break;
-		}
-		t->tune[MDNIE_CMD1].sequence = &buf[0];
-		t->tune[MDNIE_CMD1].size = i;
-#endif
-		t->tune[MDNIE_CMD2].sequence = &buf[i];
-		t->tune[MDNIE_CMD2].size = size - i + 1;
+	if (!cmd_found) {
+		kfree(cmd);
+		cmd = 0;
 	}
 
-	return t;
-}
+	for (i = 0; org->seq[i].len; i++) {
+		pr_info("%d: size is %d\n", i, org->seq[i].len);
+		for (j = 0; j < org->seq[i].len; j++)
+			pr_info("%d: %03d: %02x\n", i, j, org->seq[i].cmd[j]);
+	}
 
-#endif
+exit:
+	/* return allocated address for prevent */
+	return (uintptr_t)cmd;
+}

@@ -52,6 +52,7 @@
 #include "crc32.h"
 #include "fimc-is-companion.h"
 #include "fimc-is-device-from.h"
+#include "fimc-is-dt.h"
 
 #define FW_CORE_VER		0
 #define FW_PIXEL_SIZE		1
@@ -161,11 +162,6 @@
 
 #define SETFILE_SIZE	0x6000
 #define READ_SIZE	0x100
-
-#define FROM_VERSION_V002 '2'
-#define FROM_VERSION_V003 '3'
-#define FROM_VERSION_V004 '4'
-#define FROM_VERSION_V005 '5'
 
 #define FIMC_IS_HEADER_VER_SIZE      11
 #define FIMC_IS_OEM_VER_SIZE         11
@@ -353,4 +349,8 @@ int fimc_is_sec_gpio_enable(struct exynos_platform_fimc_is *pdata, char *name, b
 int fimc_is_sec_core_voltage_select(struct device *dev, char *header_ver);
 int fimc_is_sec_ldo_enable(struct device *dev, char *name, bool on);
 int fimc_is_sec_ldo_enabled(struct device *dev, char *name);
+int fimc_is_sec_rom_power_on(struct fimc_is_core *core, int position);
+int fimc_is_sec_rom_power_off(struct fimc_is_core *core, int position);
+int fimc_is_sec_hw_init(struct fimc_is_core *core);
+void fimc_is_sec_check_hw_init_running(void);
 #endif /* FIMC_IS_SEC_DEFINE_H */

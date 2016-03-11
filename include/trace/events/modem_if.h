@@ -51,24 +51,27 @@ TRACE_EVENT(send_sig,
 
 TRACE_EVENT(mif_log,
 
-	TP_PROTO(const char *tag, long dlen,
-		unsigned char *str),
+	TP_PROTO(const char *tag, u8 ch, unsigned int len,
+		long dlen, unsigned char *str),
 
-	TP_ARGS(tag, dlen, str),
+	TP_ARGS(tag, ch, len, dlen, str),
 
 	TP_STRUCT__entry(
 		__array(char, tag, SZ_16)
-		__field(long, len)
+		__field(u8, ch)
+		__field(unsigned int, len)
 		__array(char, str, SZ_256)
 	),
 
 	TP_fast_assign(
 		memcpy(__entry->tag, tag, SZ_16);
-		__entry->len = dlen;
+		__entry->ch = ch;
+		__entry->len = len;
 		memcpy(__entry->str, str, dlen);
 	),
 
-	TP_printk("%s(%ld): %s\n", __entry->tag, __entry->len, __entry->str)
+	TP_printk("%s(%u:%d): %s\n", __entry->tag, __entry->ch,
+				     __entry->len, __entry->str)
 );
 #endif
 

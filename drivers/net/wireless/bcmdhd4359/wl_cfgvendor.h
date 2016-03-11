@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgvendor.h 455257 2014-02-20 08:10:24Z $
+ * $Id: wl_cfgvendor.h 605796 2015-12-11 13:45:36Z $
  */
 
 
@@ -213,7 +213,8 @@ typedef enum wl_vendor_event {
 	GOOGLE_SCAN_FULL_RESULTS_EVENT,
 	GOOGLE_RTT_COMPLETE_EVENT,
 	GOOGLE_SCAN_COMPLETE_EVENT,
-	GOOGLE_GSCAN_GEOFENCE_LOST_EVENT
+	GOOGLE_GSCAN_GEOFENCE_LOST_EVENT,
+	BRCM_VENDOR_EVENT_IDSUP_STATUS
 } wl_vendor_event_t;
 
 enum andr_wifi_attr {

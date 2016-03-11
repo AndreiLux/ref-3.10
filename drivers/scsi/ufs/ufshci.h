@@ -330,6 +330,11 @@ enum {
 /* The granularity of the data byte count field in the PRDT is 32-bit */
 #define PRDT_DATA_BYTE_COUNT_PAD	4
 
+/* FMP bypass/encrypt mode */
+#define CLEAR		0
+#define AES_CBC		1
+#define AES_XTS		2
+
 /**
  * struct ufshcd_sg_entry - UFSHCI PRD Entry
  * @base_addr: Lower 32bit physical address DW-0
@@ -342,13 +347,13 @@ struct ufshcd_sg_entry {
 	__le32	upper_addr;
 	__le32	reserved;
 	__le32	size;
-#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 #define FKL	BIT(26)
 #define DKL	BIT(27)
 #define SET_FAS(d, v) \
 	((d)->size = ((d)->size & 0xcfffffff) | v << 28)
 #define SET_DAS(d, v) \
 	((d)->size = ((d)->size & 0x3fffffff) | v << 30)
+#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 	__le32	file_iv0;
 	__le32	file_iv1;
 	__le32	file_iv2;

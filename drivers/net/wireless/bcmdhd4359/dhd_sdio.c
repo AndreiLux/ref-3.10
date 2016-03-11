@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_sdio.c 558958 2015-05-26 06:30:29Z $
+ * $Id: dhd_sdio.c 593728 2015-10-19 09:20:32Z $
  */
 
 #include <typedefs.h>
@@ -935,11 +935,11 @@ dhdsdio_clk_kso_init(dhd_bus_t *bus)
 #define KSO_WAKE_RETRY_COUNT 100
 #define ERROR_BCME_NODEVICE_MAX 1
 
-#if defined(CUSTOMER_HW4)
-#define MAX_KSO_ATTEMPTS 64
-#else
-#define MAX_KSO_ATTEMPTS (PMU_MAX_TRANSITION_DLY/KSO_WAIT_US)
-#endif /* CUSTOMER_HW4 */
+#define DEFAULT_MAX_KSO_ATTEMPTS (PMU_MAX_TRANSITION_DLY/KSO_WAIT_US)
+#ifndef CUSTOM_MAX_KSO_ATTEMPTS
+#define CUSTOM_MAX_KSO_ATTEMPTS DEFAULT_MAX_KSO_ATTEMPTS
+#endif
+
 static int
 dhdsdio_clk_kso_enab(dhd_bus_t *bus, bool on)
 {
@@ -978,14 +978,14 @@ dhdsdio_clk_kso_enab(dhd_bus_t *bus, bool on)
 			OSL_DELAY(KSO_WAIT_US);
 
 		bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_SLEEPCSR, wr_val, &err);
-	} while (try_cnt++ < MAX_KSO_ATTEMPTS);
+	} while (try_cnt++ < CUSTOM_MAX_KSO_ATTEMPTS);
 
 
 	if (try_cnt > 2)
 		KSO_DBG(("%s> op:%s, try_cnt:%d, rd_val:%x, ERR:%x \n",
 			__FUNCTION__, (on ? "KSO_SET" : "KSO_CLR"), try_cnt, rd_val, err));
 
-	if (try_cnt > MAX_KSO_ATTEMPTS)  {
+	if (try_cnt > CUSTOM_MAX_KSO_ATTEMPTS)  {
 		DHD_ERROR(("%s> op:%s, ERROR: try_cnt:%d, rd_val:%x, ERR:%x \n",
 			__FUNCTION__, (on ? "KSO_SET" : "KSO_CLR"), try_cnt, rd_val, err));
 	}
@@ -1253,6 +1253,7 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
 			else if (ht_avail_error == HT_AVAIL_ERROR_MAX) {
+				bus->dhd->hang_reason = HANG_REASON_HT_AVAIL_ERROR;
 				dhd_os_send_hang_message(bus->dhd);
 			}
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27) */
@@ -1545,12 +1546,12 @@ dhdsdio_bussleep(dhd_bus_t *bus, bool sleep)
 	/* Going to sleep: set the alarm and turn off the lights... */
 	if (sleep) {
 		/* Don't sleep if something is pending */
-#if defined(CUSTOMER_HW4)
+#ifdef DHD_USE_IDLECOUNT
 		if (bus->dpc_sched || bus->rxskip || pktq_len(&bus->txq) || bus->readframes ||
 			bus->ctrl_frame_stat)
 #else
 		if (bus->dpc_sched || bus->rxskip || pktq_len(&bus->txq))
-#endif 
+#endif /* DHD_USE_IDLECOUNT */
 			return BCME_BUSY;
 
 
@@ -1632,7 +1633,7 @@ dhdsdio_bussleep(dhd_bus_t *bus, bool sleep)
 	return err;
 }
 
-#if defined(CUSTOMER_HW4) && defined(USE_DYNAMIC_F2_BLKSIZE)
+#ifdef USE_DYNAMIC_F2_BLKSIZE
 int dhdsdio_func_blocksize(dhd_pub_t *dhd, int function_num, int block_size)
 {
 	int func_blk_size = function_num;
@@ -1661,7 +1662,7 @@ int dhdsdio_func_blocksize(dhd_pub_t *dhd, int function_num, int block_size)
 
 	return BCME_OK;
 }
-#endif /* CUSTOMER_HW4 && USE_DYNAMIC_F2_BLKSIZE */
+#endif /* USE_DYNAMIC_F2_BLKSIZE */
 
 #if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 void
@@ -2458,14 +2459,14 @@ dhd_bus_txctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 		} else {
 			bus->dhd->txcnt_timeout++;
 			if (!bus->dhd->hang_was_sent) {
-#ifdef CUSTOMER_HW4
+#ifdef CUSTOMER_HW4_DEBUG
 				uint32 status, retry = 0;
 				R_SDREG(status, &bus->regs->intstatus, retry);
 				DHD_TRACE_HW4(("%s: txcnt_timeout, INT status=0x%08X\n",
 					__FUNCTION__, status));
 				DHD_TRACE_HW4(("%s : tx_max : %d, tx_seq : %d, clkstate : %d \n",
 					__FUNCTION__, bus->tx_max, bus->tx_seq, bus->clkstate));
-#endif /* CUSTOMER_HW4 */
+#endif /* CUSTOMER_HW4_DEBUG */
 				DHD_ERROR(("%s: ctrl_frame_stat == TRUE txcnt_timeout=%d\n",
 					__FUNCTION__, bus->dhd->txcnt_timeout));
 			}
@@ -6189,9 +6190,9 @@ dhdsdio_dpc(dhd_bus_t *bus)
 	uint framecnt = 0;		  /* Temporary counter of tx/rx frames */
 	bool rxdone = TRUE;		  /* Flag for no more read data */
 	bool resched = FALSE;	  /* Flag indicating resched wanted */
-#if defined(CUSTOMER_HW4)
+#ifdef DEBUG_DPC_THREAD_WATCHDOG
 	bool is_resched_by_readframe = FALSE;
-#endif 
+#endif /* DEBUG_DPC_THREAD_WATCHDOG */
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 	dhd_os_sdlock(bus->dhd);
@@ -6444,14 +6445,14 @@ exit:
 	if (!resched && dhd_dpcpoll) {
 		if (dhdsdio_readframes(bus, dhd_rxbound, &rxdone) != 0) {
 			resched = TRUE;
-#if defined(CUSTOMER_HW4)
+#ifdef DEBUG_DPC_THREAD_WATCHDOG
 			is_resched_by_readframe = TRUE;
-#endif 
+#endif /* DEBUG_DPC_THREAD_WATCHDOG */
 		}
 	}
 
 	dhd_os_sdunlock(bus->dhd);
-#if defined(CUSTOMER_HW4)
+#ifdef DEBUG_DPC_THREAD_WATCHDOG
 	if (bus->dhd->dhd_bug_on) {
 		DHD_INFO(("%s: resched = %d ctrl_frame_stat = %d intstatus 0x%08x"
 			" ipend = %d pktq_mlen = %d is_resched_by_readframe = %d \n",
@@ -6461,7 +6462,7 @@ exit:
 
 			bus->dhd->dhd_bug_on = FALSE;
 	}
-#endif
+#endif /* DEBUG_DPC_THREAD_WATCHDOG */
 	return resched;
 }
 
@@ -7211,10 +7212,8 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	dhd_readahead = TRUE;
 	retrydata = FALSE;
 
-#if defined(DISBALE_FLOW_CONTROL) || (!defined(PLATFORM_MPS) && !defined(CUSTOMER_HW4))
+#ifdef DISABLE_FLOW_CONTROL
 	dhd_doflow = FALSE;
-#else
-	dhd_doflow = TRUE;
 #endif /* DISABLE_FLOW_CONTROL */
 	dhd_dongle_ramsize = 0;
 	dhd_txminmax = DHD_TXMINMAX;
@@ -7351,30 +7350,28 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 				goto fail;
 		}
 	}
-#ifdef CUSTOMER_HW4
 	else {
-		/* Set ramdom MAC address during boot time */
+		/* Set random MAC address during boot time */
 		get_random_bytes(&bus->dhd->mac.octet[3], 3);
 		/* Adding BRCM OUI */
 		bus->dhd->mac.octet[0] = 0;
 		bus->dhd->mac.octet[1] = 0x90;
 		bus->dhd->mac.octet[2] = 0x4C;
 	}
-#endif /* CUSTOMER_HW4 */
 	/* Ok, have the per-port tell the stack we're open for business */
 	if (dhd_register_if(bus->dhd, 0, TRUE) != 0) {
 		DHD_ERROR(("%s: Net attach failed!!\n", __FUNCTION__));
 		goto fail;
 	}
 
-#if defined(CUSTOMER_HW4) && defined(BCMHOST_XTAL_PU_TIME_MOD)
+#ifdef BCMHOST_XTAL_PU_TIME_MOD
 	bcmsdh_reg_write(bus->sdh, 0x18000620, 2, 11);
 #ifdef BCM4330_CHIP
 	bcmsdh_reg_write(bus->sdh, 0x18000628, 4, 0x0000F801);
 #else
 	bcmsdh_reg_write(bus->sdh, 0x18000628, 4, 0x00F80001);
 #endif /* BCM4330_CHIP */
-#endif /* defined(CUSTOMER_HW4) && defined(BCMHOST_XTAL_PU_TIME_MOD */
+#endif /* BCMHOST_XTAL_PU_TIME_MOD */
 
 #if defined(MULTIPLE_SUPPLICANT)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
@@ -7694,10 +7691,10 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 		DHD_ERROR(("%s: FAILED to return to SI_ENUM_BASE\n", __FUNCTION__));
 	}
 
-#if defined(DHD_DEBUG) && !defined(CUSTOMER_HW4)
+#if defined(DHD_DEBUG) && !defined(CUSTOMER_HW4_DEBUG)
 	DHD_ERROR(("F1 signature read @0x18000000=0x%4x\n",
 		bcmsdh_reg_read(bus->sdh, SI_ENUM_BASE, 4)));
-#endif /* DHD_DEBUG && !CUSTOMER_HW4 */
+#endif /* DHD_DEBUG && !CUSTOMER_HW4_DEBUG */
 
 #ifndef BCMSPI	/* wake-wlan in gSPI will bring up the htavail/alpavail clocks. */
 
@@ -7848,7 +7845,9 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 					? CR4_4345_LT_C0_RAM_BASE : CR4_4345_GE_C0_RAM_BASE;
 				break;
 			case BCM4349_CHIP_GRPID:
-				bus->dongle_ram_base = CR4_4349_RAM_BASE;
+				/* RAM base changed from 4349c0(revid=9) onwards */
+				bus->dongle_ram_base = ((bus->sih->chiprev < 9) ?
+				CR4_4349_RAM_BASE: CR4_4349_RAM_BASE_FROM_REV_9);
 				break;
 			default:
 				bus->dongle_ram_base = 0;
@@ -9150,11 +9149,6 @@ concate_revision(dhd_bus_t *bus, char *fw_path, char *nv_path)
 		DHD_ERROR(("%s:Bus is Invalid\n", __FUNCTION__));
 		return -1;
 	}
-
-#if defined(PLATFORM_MPS)
-/* get the base name (prefix) for firmware & nvram from the platform */
-	wifi_get_fw_nv_path(fw_path, nv_path);
-#endif
 
 	switch (bus->sih->chip) {
 	case BCM4330_CHIP_ID:

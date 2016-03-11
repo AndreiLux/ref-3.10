@@ -34,6 +34,10 @@
 #include <plat/cpu.h>
 #include "pinctrl-exynos.h"
 
+#ifdef CONFIG_SEC_FACTORY
+#undef CONFIG_ESE_SECURE_ENABLE
+#endif
+
 /* bank type for non-alive type (DRV bit field: 2) */
 static struct samsung_pin_bank_type bank_type_0  = {
 	.fld_width = { 4, 1, 2, 2, 2, 2, },
@@ -1579,9 +1583,11 @@ struct samsung_pin_ctrl exynos7420_pin_ctrl[] = {
 		.weint_fltcon	= EXYNOS5430_WKUP_EFLTCON_OFFSET,
 		.svc		= EXYNOS_SVC_OFFSET,
 		.gpio_type	= EXYNOS_GPIO_TYPE_DRV_SEPARATE,
+#ifndef CONFIG_ESE_SECURE_ENABLE
 		.eint_gpio_init = exynos_eint_gpio_init,
 		.suspend	= exynos5430_pinctrl_suspend,
 		.resume		= exynos5430_pinctrl_resume,
+#endif
 		.label		= "exynos7420-gpio-ctrl6",
 	}, {
 		/* pin-controller instance 7 ESE data */

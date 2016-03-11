@@ -1123,6 +1123,9 @@ static int noble_aif2_hw_params(struct snd_pcm_substream *substream,
 	case 16000:
 		bclk = 512000;
 		break;
+	case 32000:
+		bclk = 1024000;
+		break;
 	default:
 		dev_warn(card->dev,
 			"Unsupported LRCLK %d, falling back to 8000Hz\n",
@@ -1211,6 +1214,10 @@ static int noble_aif2_hw_params(struct snd_pcm_substream *substream,
 			return ret;
 		}
 	}
+
+	/* Set Sample rate 1 as 48k */
+	snd_soc_update_bits(priv->codec, ARIZONA_SAMPLE_RATE_1,
+			    ARIZONA_SAMPLE_RATE_1_MASK, 0x3);
 
 	return 0;
 }
@@ -1318,7 +1325,7 @@ static struct snd_soc_dai_driver noble_ext_dai[] = {
 			.rate_min = 8000,
 			.rate_max = 48000,
 			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-					SNDRV_PCM_RATE_48000),
+				SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000),
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		},
 		.capture = {
@@ -1327,7 +1334,7 @@ static struct snd_soc_dai_driver noble_ext_dai[] = {
 			.rate_min = 8000,
 			.rate_max = 48000,
 			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-					SNDRV_PCM_RATE_48000),
+				SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000),
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		},
 	},
@@ -1972,8 +1979,15 @@ static int noble_stop_sysclk(struct snd_soc_card *card)
 {
 	struct arizona_machine_priv *priv = card->drvdata;
 	int ret;
+	struct snd_soc_dai *codec_dai = card->rtd[0].codec_dai;
 
 	dev_info(card->dev, "%s\n", __func__);
+
+	if (codec_dai->playback_active || codec_dai->capture_active) {
+		dev_info(card->dev, "skip %s: active playback %d capture %d\n",
+			__func__, codec_dai->playback_active, codec_dai->capture_active);
+		return 0;
+	}
 
 	/* Clear SYSCLK */
 	ret = snd_soc_codec_set_sysclk(priv->codec, ARIZONA_CLK_SYSCLK,

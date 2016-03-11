@@ -16,6 +16,8 @@
 #include "../vendor/fimc-is-vendor-config_zero.h"
 #elif defined(CONFIG_CAMERA_NOBLE) || defined(CONFIG_CAMERA_ZENLTE) || defined(CONFIG_CAMERA_VLTE)
 #include "../vendor/fimc-is-vendor-config_noble.h"
+#elif defined(CONFIG_CAMERA_ROYCE)
+#include "../vendor/fimc-is-vendor-config_royce.h"
 #endif
 
 /*

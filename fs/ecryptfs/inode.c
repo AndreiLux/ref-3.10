@@ -40,8 +40,15 @@
 #include <sdp/fs_request.h>
 #include "ecryptfs_sdp_chamber.h"
 #include "ecryptfs_dek.h"
+
+#include "../sdcardfs/sdcardfs.h"
 #endif
 
+#ifdef CONFIG_DLP
+#include "ecryptfs_dlp.h"
+#endif
+
+#ifndef CONFIG_SDP
 static struct dentry *lock_parent(struct dentry *dentry)
 {
 	struct dentry *dir;
@@ -56,6 +63,7 @@ static void unlock_dir(struct dentry *dir)
 	mutex_unlock(&dir->d_inode->i_mutex);
 	dput(dir);
 }
+#endif
 
 static int ecryptfs_inode_test(struct inode *inode, void *lower_inode)
 {
@@ -271,6 +279,10 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 		&ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat;
 	int rc = 0;
 
+#ifdef CONFIG_DLP
+	sdp_fs_command_t *cmd = NULL;
+#endif
+
 	if (S_ISDIR(ecryptfs_inode->i_mode)) {
 		ecryptfs_printk(KERN_DEBUG, "This is a directory\n");
 		crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED);
@@ -291,6 +303,34 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 			ecryptfs_dentry->d_name.name, rc);
 		goto out;
 	}
+#ifdef CONFIG_DLP
+	if(crypt_stat->mount_crypt_stat->flags & ECRYPTFS_MOUNT_DLP_ENABLED) {
+		printk(KERN_ERR "DLP %s: file name: [%s], userid: [%d]\n",
+				__func__, ecryptfs_dentry->d_iname, crypt_stat->mount_crypt_stat->userid);
+
+		if(!rc && (in_egroup_p(AID_KNOX_DLP) || in_egroup_p(AID_KNOX_DLP_RESTRICTED))) {
+			/* TODO: Can DLP files be created while in locked state? */
+			crypt_stat->flags |= ECRYPTFS_DLP_ENABLED;
+			printk(KERN_ERR "DLP %s: before Isdp_fs_command_alloc\n", __func__);
+			printk(KERN_ERR "DLP %s: current->pid : %d\n", __func__, current->tgid);
+			printk(KERN_ERR "DLP %s: crypt_stat->mount_crypt_stat->userid : %d\n", __func__, crypt_stat->mount_crypt_stat->userid);
+			printk(KERN_ERR "DLP %s: crypt_stat->mount_crypt_stat->partition_id : %d\n", __func__, crypt_stat->mount_crypt_stat->partition_id);
+			if(in_egroup_p(AID_KNOX_DLP)) {
+				cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_INIT,
+                current->tgid, crypt_stat->mount_crypt_stat->userid, crypt_stat->mount_crypt_stat->partition_id,
+                ecryptfs_inode->i_ino, GFP_KERNEL);
+			}
+			else if(in_egroup_p(AID_KNOX_DLP_RESTRICTED)) {
+				cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_INIT_RESTRICTED,
+                current->tgid, crypt_stat->mount_crypt_stat->userid, crypt_stat->mount_crypt_stat->partition_id,
+                ecryptfs_inode->i_ino, GFP_KERNEL);
+			}
+			printk(KERN_ERR "DLP %s: after Isdp_fs_command_alloc\n", __func__);
+		} else {
+			printk(KERN_ERR "DLP %s: not in group\n", __func__);
+		}
+	}
+#endif
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	mutex_lock(&crypt_stat->cs_mutex);
 	if (crypt_stat->flags & ECRYPTFS_ENCRYPTED) {
@@ -329,7 +369,14 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 		printk(KERN_ERR "Error writing headers; rc = [%d]\n", rc);
 	ecryptfs_put_lower_file(ecryptfs_inode);
 #endif
+
 out:
+#ifdef CONFIG_DLP
+	if(cmd) {
+		sdp_fs_request(cmd, NULL);
+		sdp_fs_command_free(cmd);
+	}
+#endif
 	return rc;
 }
 
@@ -494,6 +541,13 @@ static int ecryptfs_lookup_interpose(struct dentry *dentry,
 	return rc;
 }
 
+#ifdef CONFIG_SDP
+static inline int isdigit(int ch)
+{
+	return (ch >= '0') && (ch <= '9');
+}
+#endif
+
 /**
  * ecryptfs_lookup
  * @ecryptfs_dir_inode: The eCryptfs directory inode
@@ -544,9 +598,35 @@ static struct dentry *ecryptfs_lookup(struct inode *ecryptfs_dir_inode,
 		goto out;
 	}
 	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
+
+#ifdef CONFIG_SDP
+	if(!strncmp(lower_dir_dentry->d_sb->s_type->name, "sdcardfs", 8)) {
+		struct sdcardfs_dentry_info *dinfo = SDCARDFS_D(lower_dir_dentry);
+		int len = strlen(ecryptfs_dentry->d_name.name);
+		int i, numeric = 1;
+
+		dinfo->under_knox = 1;
+		dinfo->userid = -1;
+		if(IS_UNDER_ROOT(ecryptfs_dentry)) {
+			for(i=0 ; i < len ; i++)
+				if(!isdigit(ecryptfs_dentry->d_name.name[i])) { numeric = 0; break; }
+			if(numeric) {
+				dinfo->userid = simple_strtoul(ecryptfs_dentry->d_name.name, NULL, 10);
+			}
+		}
+	}
+#endif
+
 	lower_dentry = lookup_one_len(encrypted_and_encoded_name,
 				      lower_dir_dentry,
 				      encrypted_and_encoded_name_size);
+#ifdef CONFIG_SDP
+	if(!strncmp(lower_dir_dentry->d_sb->s_type->name, "sdcardfs", 8)) {
+		struct sdcardfs_dentry_info *dinfo = SDCARDFS_D(lower_dir_dentry);
+		dinfo->under_knox = 0;
+		dinfo->userid = -1;
+	}
+#endif
 	mutex_unlock(&lower_dir_dentry->d_inode->i_mutex);
 	if (IS_ERR(lower_dentry)) {
 		rc = PTR_ERR(lower_dentry);
@@ -650,6 +730,24 @@ static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+#ifdef CONFIG_SDP
+	if(!strncmp(lower_dir_dentry->d_sb->s_type->name, "sdcardfs", 8)) {
+		struct sdcardfs_dentry_info *dinfo = SDCARDFS_D(lower_dir_dentry);
+		int len = strlen(dentry->d_name.name);
+		int i, numeric = 1;
+
+		dinfo->under_knox = 1;
+		dinfo->userid = -1;
+		if(IS_UNDER_ROOT(dentry)) {
+			for(i=0 ; i < len ; i++)
+				if(!isdigit(dentry->d_name.name[i])) { numeric = 0; break; }
+			if(numeric) {
+				dinfo->userid = simple_strtoul(dentry->d_name.name, NULL, 10);
+			}
+		}
+	}
+#endif
 	rc = vfs_mkdir(lower_dir_dentry->d_inode, lower_dentry, mode);
 	if (rc || !lower_dentry->d_inode)
 		goto out;
@@ -660,6 +758,13 @@ static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 	fsstack_copy_inode_size(dir, lower_dir_dentry->d_inode);
 	set_nlink(dir, lower_dir_dentry->d_inode->i_nlink);
 out:
+#ifdef CONFIG_SDP
+	if(!strncmp(lower_dir_dentry->d_sb->s_type->name, "sdcardfs", 8)) {
+		struct sdcardfs_dentry_info *dinfo = SDCARDFS_D(lower_dir_dentry);
+		dinfo->under_knox = 0;
+		dinfo->userid = -1;
+	}
+#endif
 	unlock_dir(lower_dir_dentry);
 	if (!dentry->d_inode)
 		d_drop(dentry);
@@ -733,9 +838,12 @@ ecryptfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct dentry *lower_new_dir_dentry;
 	struct dentry *trap = NULL;
 	struct inode *target_inode;
-
+#ifdef CONFIG_DLP
+	sdp_fs_command_t *cmd1 = NULL;
+	unsigned long old_inode = old_dentry->d_inode->i_ino;
+#endif
 #ifdef CONFIG_SDP
-	sdp_fs_request_t *req = NULL;
+	sdp_fs_command_t *cmd = NULL;
 	int rename_event = 0x00;
 	struct ecryptfs_crypt_stat *crypt_stat =
 	        &(ecryptfs_inode_to_private(old_dentry->d_inode)->crypt_stat);
@@ -837,17 +945,19 @@ ecryptfs_rename(struct inode *old_dir, struct dentry *old_dentry,
         if(rename_event > 0) {
             switch(rename_event) {
             case ECRYPTFS_EVT_RENAME_TO_CHAMBER:
-                req = sdp_fs_request_alloc(SDP_FS_OPCODE_SET_SENSITIVE,
-                        crypt_stat->engine_id, mount_crypt_stat->partition_id,
-                        old_dentry->d_inode->i_ino, GFP_NOFS);
+                cmd = sdp_fs_command_alloc(FSOP_SDP_SET_SENSITIVE, current->pid,
+                		mount_crypt_stat->userid, mount_crypt_stat->partition_id,
+                        old_dentry->d_inode->i_ino,
+                        GFP_NOFS);
                 break;
             case ECRYPTFS_EVT_RENAME_OUT_OF_CHAMBER:
-                req = sdp_fs_request_alloc(SDP_FS_OPCODE_SET_PROTECTED,
-                        crypt_stat->engine_id, mount_crypt_stat->partition_id,
-                        old_dentry->d_inode->i_ino, GFP_NOFS);
+                cmd = sdp_fs_command_alloc(FSOP_SDP_SET_PROTECTED, current->pid,
+                		mount_crypt_stat->userid, mount_crypt_stat->partition_id,
+                        old_dentry->d_inode->i_ino,
+                        GFP_NOFS);
                 break;
             default:
-                req = NULL;
+                cmd = NULL;
                 break;
             }
         }
@@ -875,12 +985,30 @@ out_lock:
 	dput(lower_old_dentry);
 
 #ifdef CONFIG_SDP
-	if(!rc && req != NULL) {
-	    sdp_fs_request_trigger(req, ecryptfs_fs_request_callback);
-	    sdp_fs_request_free(req);
+	if(!rc && cmd != NULL) {
+	    sdp_fs_request(cmd, ecryptfs_fs_request_callback);
+	    sdp_fs_command_free(cmd);
 	}
 #endif
 
+#ifdef CONFIG_DLP
+	//create new init command and send--Handle transient case MS-Apps
+	printk("DLP : Checking DLP enabled status--\n");
+	if(crypt_stat->flags & ECRYPTFS_DLP_ENABLED) {
+		if(!rc && (in_egroup_p(AID_KNOX_DLP) || in_egroup_p(AID_KNOX_DLP_RESTRICTED))){
+			printk("DLP : renaming process is in AID_KNOX_DLP/AID_KNOX_DLP_RESTRICTED\n");
+            cmd1 = sdp_fs_command_alloc(FSOP_DLP_FILE_RENAME,
+						current->tgid, mount_crypt_stat->userid, mount_crypt_stat->partition_id,
+						old_inode, GFP_KERNEL);
+            //send cmd
+			if(cmd1) {
+                sdp_fs_request(cmd1, NULL);
+                sdp_fs_command_free(cmd1);
+			}
+		}
+	}
+    //end- Handle transient case MS-Apps
+#endif
 	return rc;
 }
 
@@ -1276,6 +1404,17 @@ ecryptfs_setxattr(struct dentry *dentry, const char *name, const void *value,
 		goto out;
 	}
 
+#ifdef CONFIG_DLP
+	if (!strcmp(name, KNOX_DLP_XATTR_NAME)) {
+		printk(KERN_ERR "%s: setting knox_dlp by [%d]\n", __func__, current_uid());
+		if (!is_root() && !is_system_server()) {
+			printk(KERN_ERR "%s: setting knox_dlp not allowed by [%d]\n", __func__, current_uid());
+			return -EPERM;
+		}
+		/* TODO: Need to set DLP flag here too? */
+	}
+#endif
+
 	rc = vfs_setxattr(lower_dentry, name, value, size, flags);
 	if (!rc && dentry->d_inode)
 		fsstack_copy_attr_all(dentry->d_inode, lower_dentry->d_inode);
@@ -1339,6 +1478,17 @@ static int ecryptfs_removexattr(struct dentry *dentry, const char *name)
 		rc = -EOPNOTSUPP;
 		goto out;
 	}
+
+#ifdef CONFIG_DLP
+	if (!strcmp(name, KNOX_DLP_XATTR_NAME)) {
+		printk(KERN_ERR "%s: removing knox_dlp by [%d]\n", __func__, current_uid());
+		if (!is_root() && !is_system_server()) {
+			printk(KERN_ERR "%s: removing knox_dlp not allowed by [%d]\n", __func__, current_uid());
+			return -EPERM;
+		}
+	}
+#endif
+
 	mutex_lock(&lower_dentry->d_inode->i_mutex);
 	rc = lower_dentry->d_inode->i_op->removexattr(lower_dentry, name);
 	mutex_unlock(&lower_dentry->d_inode->i_mutex);

@@ -5,7 +5,7 @@
  * JTAG, 0/1/2 UARTs, clock frequency control, a watchdog interrupt timer,
  * GPIO interface, extbus, and support for serial and parallel flashes.
  *
- * $Id: sbchipc.h 530150 2015-01-29 08:43:40Z $
+ * $Id: sbchipc.h 574579 2015-07-27 15:36:37Z $
  *
  * Copyright (C) 1999-2015, Broadcom Corporation
  * 
@@ -2810,6 +2810,7 @@ typedef volatile struct {
 #define RES4349_MACPHY_CLKAVAIL		30
 
 #define CR4_4349_RAM_BASE			(0x180000)
+#define CR4_4349_RAM_BASE_FROM_REV_9		(0x160000)
 
 /* SR binary offset is at 8K */
 #define CC_SR1_4349_SR_ASM_ADDR		(0x10)

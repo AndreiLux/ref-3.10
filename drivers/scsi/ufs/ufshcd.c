@@ -43,22 +43,12 @@
 #if defined(CONFIG_UFS_FMP_DM_CRYPT)
 #include <linux/smc.h>
 #endif
-#if defined(CONFIG_FIPS_FMP_UFS)
-#include <fmpdev_info.h>
-#endif
 #include <scsi/ufs/ioctl.h>
 
 #include "ufshcd.h"
 #include "unipro.h"
 #include "ufs-exynos.h"
 #include "ufs_quirks.h"
-
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS)
-#include <fmp_derive_iv.h>
-#if defined(CONFIG_SDP)
-#include <linux/pagemap.h>
-#endif
-#endif
 
 #define UFSHCD_ENABLE_INTRS	(UTP_TRANSFER_REQ_COMPL |\
 				 UTP_TASK_REQ_COMPL |\
@@ -235,8 +225,18 @@ static int ufshcd_link_hibern8_ctrl(struct ufs_hba *hba, bool en);
 static int ufshcd_host_reset_and_restore(struct ufs_hba *hba);
 static irqreturn_t ufshcd_intr(int irq, void *__hba);
 
+extern int fmp_map_sg(struct ufshcd_sg_entry *prd_table, struct scatterlist *sg,
+					uint32_t sector_key, uint32_t idx,
+					uint32_t sector);
+
+#if defined(CONFIG_UFS_FMP_ECRYPT_FS)
+extern void fmp_clear_sg(struct ufshcd_lrb *lrbp);
+#endif
+
 #if defined(CONFIG_FIPS_FMP)
-extern bool in_fmp_fips_err(void);
+extern int fmp_map_sg_st(struct ufs_hba *hba, struct ufshcd_sg_entry *prd_table,
+					struct scatterlist *sg, uint32_t sector_key,
+					uint32_t idx, uint32_t sector);
 #endif
 
 static inline int ufshcd_enable_irq(struct ufs_hba *hba)
@@ -1144,15 +1144,6 @@ ufshcd_send_uic_cmd(struct ufs_hba *hba, struct uic_command *uic_cmd)
 	return ret;
 }
 
-#define byte2word(b0, b1, b2, b3) 	\
-		((unsigned int)(b0) << 24) | ((unsigned int)(b1) << 16) | ((unsigned int)(b2) << 8) | (b3)
-#define word_in(x, c)           byte2word(((unsigned char *)(x) + 4 * (c))[0], ((unsigned char *)(x) + 4 * (c))[1], \
-					((unsigned char *)(x) + 4 * (c))[2], ((unsigned char *)(x) + 4 * (c))[3])
-
-#define CLEAR		0
-#define AES_CBC		1
-#define AES_XTS		2
-
 /**
  * ufshcd_map_sg - Map scatter-gather list to prdt
  * @hba: per adapter instance
@@ -1167,11 +1158,10 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	struct scsi_cmnd *cmd;
 	int sg_segments;
 	int i;
-#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-	unsigned int sector = 0;
+	int ret;
 	unsigned int sector_key = UFS_BYPASS_SECTOR_BEGIN;
-	static unsigned int fmp_key_flag = 0;
-#endif
+	unsigned int sector = 0;
+
 	cmd = lrbp->cmd;
 #if defined(CONFIG_UFS_FMP_DM_CRYPT)
 	if (cmd->request->bio) {
@@ -1202,7 +1192,7 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 			prd_table[i].upper_addr =
 				cpu_to_le32(upper_32_bits(sg->dma_address));
 			hba->transferred_sector += prd_table[i].size;
-#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+
 #if defined(CONFIG_UFS_FMP_ECRYPT_FS)
 			if (!((unsigned long)(sg_page(sg)->mapping) & 0x1)) {
 				if (sg_page(sg)->mapping && sg_page(sg)->mapping->key && !sg_page(sg)->mapping->plain_text) {
@@ -1221,116 +1211,13 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 				SET_DAS(&prd_table[i], CLEAR);
 				SET_FAS(&prd_table[i], CLEAR);
 			} else {
-#if defined(CONFIG_FIPS_FMP)
-				if (unlikely(in_fmp_fips_err())) {
-					dev_err(hba->dev, "Fail to work fmp due to fips in error\n");
-					return -EPERM;
-				}
-#endif
-				if (sector_key & UFS_ENCRYPTION_SECTOR_BEGIN) { /* disk encryption */
-					/* disk algorithm selector  */
-					SET_DAS(&prd_table[i], AES_XTS);
-					prd_table[i].size |= DKL;
-
-					/* Disk IV */
-					prd_table[i].disk_iv0 = 0;
-					prd_table[i].disk_iv1 = 0;
-					prd_table[i].disk_iv2 = 0;
-					prd_table[i].disk_iv3 = htonl(sector);
-
-					/* Disk Enc Key, Tweak Key */
-					if (!fmp_key_flag) {
-						int ret = 0;
-						unsigned int i;
-						struct exynos_ufs *ufs = dev_get_platdata(hba->dev);
-
-						exynos_ufs_ctrl_hci_core_clk(ufs, false);
-						for (i = 0; i < 10; i++) {
-							ret = exynos_smc(SMC_CMD_FMP, FMP_KEY_SET, UFS_FMP, 0);
-							if (ret < 0)
-								panic("failed to load FMP F/W\n");
-							else if (ret) {
-								dev_err(hba->dev, "failed to smc call for FMP key setting: %x\n", ret);
+				ret = fmp_map_sg(prd_table, sg, sector_key, i, sector);
+				if (ret) {
+					dev_err(hba->dev, "failed to make fmp descriptor. ret = %d\n", ret);
 								return ret;
 							}
 						}
-						fmp_key_flag = 1;
-					}
-
-				}
-#if defined(CONFIG_UFS_FMP_ECRYPT_FS)
-				if (sector_key & UFS_FILE_ENCRYPTION_SECTOR_BEGIN) { /* file encryption */
-					unsigned int aes_alg, j;
-					int ret;
-					loff_t index;
-					unsigned long flags;
-#ifdef CONFIG_CRYPTO_FIPS
-					char extent_iv[SHA256_HASH_SIZE];
-#else
-					char extent_iv[MD5_DIGEST_SIZE];
-#endif
-
-					/* File algorithm selector*/
-					if (!strncmp(sg_page(sg)->mapping->alg, "aes", sizeof("aes")))
-						aes_alg = AES_CBC;
-					else if (!strncmp(sg_page(sg)->mapping->alg, "aesxts", sizeof("aesxts")))
-						aes_alg = AES_XTS;
-					else {
-						dev_err(hba->dev, "%s: Invalild file encryption algorithm %s \n", __func__, sg_page(sg)->mapping->alg);
-						spin_lock_irqsave(hba->host->host_lock, flags);
-						hba->ufshcd_state = UFSHCD_STATE_ERROR;
-						spin_unlock_irqrestore(hba->host->host_lock, flags);
-
-						return SCSI_MLQUEUE_EH_RETRY;
-					}
-					SET_FAS(&prd_table[i], aes_alg);
-
-					/* File enc key size */
-					switch (sg_page(sg)->mapping->key_length) {
-					case 16:
-						prd_table[i].size &= ~FKL;
-						break;
-					case 32:
-					case 64:
-						prd_table[i].size |= FKL;
-						break;
-					default:
-						dev_err(hba->dev, "%s: Invalid file key length %x\n", __func__, (unsigned int)sg_page(sg)->mapping->key_length);
-						spin_lock_irqsave(hba->host->host_lock, flags);
-						hba->ufshcd_state = UFSHCD_STATE_ERROR;
-						spin_unlock_irqrestore(hba->host->host_lock, flags);
-
-						return SCSI_MLQUEUE_EH_RETRY;
-					}
-
-					index = sg_page(sg)->index;
-					index = index - sg_page(sg)->mapping->sensitive_data_index;
-					ret = file_enc_derive_iv(sg_page(sg)->mapping, index, extent_iv);
-					if (ret) {
-						dev_err(hba->dev, "%s: Error attemping to derive IV\n", __func__);
-						spin_lock_irqsave(hba->host->host_lock, flags);
-						hba->ufshcd_state = UFSHCD_STATE_ERROR;
-						spin_unlock_irqrestore(hba->host->host_lock, flags);
-
-						return SCSI_MLQUEUE_EH_RETRY;
-					}
-
-					/* File IV */
-					prd_table[i].file_iv0 = word_in(extent_iv, 3);
-					prd_table[i].file_iv1 = word_in(extent_iv, 2);
-					prd_table[i].file_iv2 = word_in(extent_iv, 1);
-					prd_table[i].file_iv3 = word_in(extent_iv, 0);
-
-					/* File Enc key*/
-					for (j = 0; j < sg_page(sg)->mapping->key_length >> 2; j++)
-						*(&prd_table[i].file_enckey0 + j) =
-							word_in(sg_page(sg)->mapping->key, (sg_page(sg)->mapping->key_length >> 2) - (j + 1));
-
-				}
-#endif
-			}
 			sector += UFSHCI_SECTOR_SIZE / MIN_SECTOR_SIZE;
-#endif
 		}
 	} else {
 		lrbp->utr_descriptor_ptr->prd_table_length = 0;
@@ -1339,7 +1226,7 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	return 0;
 }
 
-#if defined(CONFIG_FIPS_FMP_UFS)
+#if defined(CONFIG_FIPS_FMP)
 /**
  * ufshcd_map_sg_st - Map scatter-gather list to prdt for self-test
  * @hba: per adapter instance
@@ -1350,17 +1237,16 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 static int ufshcd_map_sg_st(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 {
 	struct ufshcd_sg_entry *prd_table;
-	struct ufshcd_sg_entry *prd_table_st = hba->ucd_prdt_ptr_st;
 	struct scatterlist *sg;
 	struct scsi_cmnd *cmd;
 	int sg_segments;
-	int i;
+	int i, ret;
 	unsigned int sector = 0;
 	unsigned int sector_key = UFS_BYPASS_SECTOR_BEGIN;
 
 	cmd = lrbp->cmd;
 	if (cmd->request->bio) {
-		sector_key = (hba->self_test_mode != BYPASS_MODE)? UFS_ENCRYPTION_SECTOR_BEGIN : UFS_BYPASS_SECTOR_BEGIN;
+		sector_key = (hba->self_test_mode != 0)? UFS_ENCRYPTION_SECTOR_BEGIN : UFS_BYPASS_SECTOR_BEGIN;
 		sector = cmd->request->bio->bi_sector;
 	}
 
@@ -1387,47 +1273,13 @@ static int ufshcd_map_sg_st(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 			prd_table[i].upper_addr =
 				cpu_to_le32(upper_32_bits(sg->dma_address));
 			hba->transferred_sector += prd_table[i].size;
-			if (sector_key == UFS_BYPASS_SECTOR_BEGIN) {
-				SET_DAS(&prd_table[i], CLEAR);
-				SET_FAS(&prd_table[i], CLEAR);
-			} else {
-				if (sector_key & UFS_ENCRYPTION_SECTOR_BEGIN) { /* disk encryption */
-					/* AES algorithm selector  */
-					if (hba->self_test_mode == XTS_MODE)
-						SET_FAS(&prd_table[i], AES_XTS);
-					else if (hba->self_test_mode == CBC_MODE)
-						SET_FAS(&prd_table[i], AES_CBC);
 
-					if (prd_table_st->size == 32)
-						prd_table[i].size |= FKL;
-
-					/* File IV */
-					prd_table[i].file_iv0 = prd_table_st->file_iv0;
-					prd_table[i].file_iv1 = prd_table_st->file_iv1;
-					prd_table[i].file_iv2 = prd_table_st->file_iv2;
-					prd_table[i].file_iv3 = prd_table_st->file_iv3;
-
-					/* enc key */
-					prd_table[i].file_enckey0 = prd_table_st->file_enckey0;
-					prd_table[i].file_enckey1 = prd_table_st->file_enckey1;
-					prd_table[i].file_enckey2 = prd_table_st->file_enckey2;
-					prd_table[i].file_enckey3 = prd_table_st->file_enckey3;
-					prd_table[i].file_enckey4 = prd_table_st->file_enckey4;
-					prd_table[i].file_enckey5 = prd_table_st->file_enckey5;
-					prd_table[i].file_enckey6 = prd_table_st->file_enckey6;
-					prd_table[i].file_enckey7 = prd_table_st->file_enckey7;
-
-					/* tweak key */
-					prd_table[i].file_twkey0 = prd_table_st->file_twkey0;
-					prd_table[i].file_twkey1 = prd_table_st->file_twkey1;
-					prd_table[i].file_twkey2 = prd_table_st->file_twkey2;
-					prd_table[i].file_twkey3 = prd_table_st->file_twkey3;
-					prd_table[i].file_twkey4 = prd_table_st->file_twkey4;
-					prd_table[i].file_twkey5 = prd_table_st->file_twkey5;
-					prd_table[i].file_twkey6 = prd_table_st->file_twkey6;
-					prd_table[i].file_twkey7 = prd_table_st->file_twkey7;
-				}
+			ret = fmp_map_sg_st(hba, prd_table, sg, sector_key, i, sector);
+			if (ret) {
+				dev_err(hba->dev, "failed to make fmp descriptor for fips. ret = %d\n", ret);
+				return ret;
 			}
+
 			sector += UFSHCI_SECTOR_SIZE / MIN_SECTOR_SIZE;
 		}
 	} else {
@@ -1719,7 +1571,7 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	unsigned long flags;
 	int tag;
 	int err = 0;
-#if defined(CONFIG_FIPS_FMP_UFS)
+#if defined(CONFIG_FIPS_FMP)
 	uint64_t self_test_bh;
 #endif
 
@@ -1780,7 +1632,7 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	/* form UPIU before issuing the command */
 	ufshcd_compose_upiu(hba, lrbp);
-#if defined(CONFIG_FIPS_FMP_UFS)
+#if defined(CONFIG_FIPS_FMP)
 	if (cmd->request->bio) {
 		self_test_bh = (uint64_t)cmd->request->bio->bi_private;
 		if ((uint64_t)hba->self_test_bh && (self_test_bh == (uint64_t)hba->self_test_bh))
@@ -3787,20 +3639,8 @@ static void __ufshcd_transfer_req_compl(struct ufs_hba *hba, int reason)
 		//START MARK
 
 		if (cmd) {
-#if defined(CONFIG_SDP) && defined(CONFIG_UFS_FMP_ECRYPT_FS)
-			struct scatterlist *sg;
-			int sg_segments;
-			struct ufshcd_sg_entry *prd_table;
-			int i;
-
-			sg_segments = scsi_sg_count(cmd);
-			if (sg_segments) {
-				prd_table = (struct ufshcd_sg_entry *)lrbp->ucd_prdt_ptr;
-				scsi_for_each_sg(cmd, sg, sg_segments, i) {
-					if(sg_page(sg)->mapping && sg_page(sg)->mapping->key && mapping_sensitive(sg_page(sg)->mapping))
-						memset(&prd_table[i].file_iv0, 0x0, sizeof(__le32)* 20);
-				}
-			}
+#if defined(CONFIG_UFS_FMP_ECRYPT_FS)
+			fmp_clear_sg(lrbp);
 #endif
 			result = ufshcd_transfer_rsp_status(hba, lrbp);
 			scsi_dma_unmap(cmd);
@@ -4698,8 +4538,10 @@ static int ufshcd_eh_host_reset_handler(struct scsi_cmnd *cmd)
 	int err;
 	unsigned long flags;
 	struct ufs_hba *hba;
+	struct exynos_ufs *ufs;
 
 	hba = shost_priv(cmd->device->host);
+	ufs = dev_get_platdata(hba->dev);
 
 	ufshcd_hold(hba, false);
 	/*
@@ -4721,6 +4563,9 @@ static int ufshcd_eh_host_reset_handler(struct scsi_cmnd *cmd)
 	hba->ufshcd_state = UFSHCD_STATE_RESET;
 	ufshcd_set_eh_in_progress(hba);
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+	if (SMU_ABORT(readl(ufs->reg_ufsp + UFSPRSTAT)))
+		dev_err(hba->dev, "%s: SMU abort occurs!\n", __func__);
 
 	err = ufshcd_reset_and_restore(hba);
 

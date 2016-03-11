@@ -23,6 +23,7 @@
  */
 
 #include "bbd_packet_layer_c.h"
+#include "../bbd_internal.h"
 #include <linux/string.h>
 
 struct sBbdReliableTransaction* BbdReliableTransaction_init(struct sBbdReliableTransaction* p)
@@ -116,6 +117,7 @@ void BbdTransportLayer_SendPacket(struct sTransportLayer *p,
 {
     if (BbdTransportLayer_IsPassThrough(p))
     {
+	bbd_update_stat(STAT_TX_TL, usSize);
         p->m_callback->OnDataToSend(p->m_callback, pucData, usSize);
     }
     else

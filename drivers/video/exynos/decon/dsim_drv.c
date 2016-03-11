@@ -90,7 +90,9 @@ static void dsim_dump(struct dsim_device *dsim, int dump_panel)
 			dsim->reg_base, 0xBC, false);
 
 	if (dump_panel) {
+#ifdef CONFIG_DECON_MIPI_DSI_PKTGO
 		dsim_pkt_go_enable(dsim, false);
+#endif
 		dsim_info("=== Panel Status DUMP ===\n");
 		call_panel_ops(dsim, dump, dsim);
 	}
@@ -1050,11 +1052,13 @@ static int dsim_set_panel_power(struct dsim_device *dsim, bool on)
 			usleep_range(10000, 11000);
 		}
 
-		/* TODO: only in case of command mode */
-		ret = pinctrl_select_state(dsim->pinctrl, dsim->turnon_tes);
-		if (ret) {
-			dsim_err("failed to turn on TE\n");
-			return -EINVAL;
+		if (dsim->lcd_info.mode != DECON_VIDEO_MODE) {
+			/* TODO: only in case of command mode */
+			ret = pinctrl_select_state(dsim->pinctrl, dsim->turnon_tes);
+			if (ret) {
+				dsim_err("failed to turn on TE\n");
+				return -EINVAL;
+			}
 		}
 	} else {
 		ret = gpio_request_one(res->lcd_reset, GPIOF_OUT_INIT_LOW, "lcd_reset");
@@ -1115,11 +1119,13 @@ static int dsim_set_panel_power(struct dsim_device *dsim, bool on)
 			usleep_range(5000, 6000);
 		}
 
-		/* TODO: only in case of command mode */
-		ret = pinctrl_select_state(dsim->pinctrl, dsim->turnoff_tes);
-		if (ret) {
-			dsim_err("failed to turn off TE\n");
-			return -EINVAL;
+		if (dsim->lcd_info.mode != DECON_VIDEO_MODE) {
+			/* TODO: only in case of command mode */
+			ret = pinctrl_select_state(dsim->pinctrl, dsim->turnoff_tes);
+			if (ret) {
+				dsim_err("failed to turn off TE\n");
+				return -EINVAL;
+			}
 		}
 	}
 
@@ -1593,13 +1599,13 @@ static int dsim_parse_lcd_info(struct dsim_device *dsim)
 	of_property_read_u32_array(node, "timing,h-porch", res, 3);
 	dsim->lcd_info.hbp = res[0];
 	dsim->lcd_info.hfp = res[1];
-	dsim->lcd_info.hsa = res[1];
+	dsim->lcd_info.hsa = res[2];
 	dsim_info("hbp(%d), hfp(%d), hsa(%d)\n", res[0], res[1], res[2]);
 
 	of_property_read_u32_array(node, "timing,v-porch", res, 3);
 	dsim->lcd_info.vbp = res[0];
 	dsim->lcd_info.vfp = res[1];
-	dsim->lcd_info.vsa = res[1];
+	dsim->lcd_info.vsa = res[2];
 	dsim_info("vbp(%d), vfp(%d), vsa(%d)\n", res[0], res[1], res[2]);
 
 	of_property_read_u32(node, "timing,dsi-hs-clk", &dsim->lcd_info.hs_clk);

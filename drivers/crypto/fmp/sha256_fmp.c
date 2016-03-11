@@ -24,6 +24,10 @@
 #include <crypto/sha.h>
 #include <asm/byteorder.h>
 
+#if defined(CONFIG_FIPS_FMP)
+extern bool in_fmp_fips_err(void);
+#endif
+
 static inline u32 Ch(u32 x, u32 y, u32 z)
 {
 	return z ^ (x & (y ^ z));
@@ -216,6 +220,13 @@ static void sha256_transform(u32 *state, const u8 *input)
 static int sha256_init(struct shash_desc *desc)
 {
 	struct sha256_state *sctx = shash_desc_ctx(desc);
+
+#if defined(CONFIG_FIPS_FMP)
+	if (unlikely(in_fmp_fips_err())) {
+		printk(KERN_ERR "FMP sha256_init failed due to fips error\n");
+		return -EPERM;
+	}
+#endif
 	sctx->state[0] = SHA256_H0;
 	sctx->state[1] = SHA256_H1;
 	sctx->state[2] = SHA256_H2;

@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id$
+ * $Id: hnd_pktq.h 591283 2015-10-07 11:52:00Z $
  */
 
 #ifndef _hnd_pktq_h_

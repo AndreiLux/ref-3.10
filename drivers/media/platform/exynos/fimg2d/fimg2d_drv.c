@@ -405,13 +405,13 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -ENXIO;
 		}
 
-		g2d_lock(&ctrl->drvlock);
+		mutex_lock(&ctrl->drvlock);
 		ctx->mm = mm;
 
 		if (atomic_read(&ctrl->drvact) ||
 				atomic_read(&ctrl->suspended)) {
 			fimg2d_err("driver is unavailable, do sw fallback\n");
-			g2d_unlock(&ctrl->drvlock);
+			mutex_unlock(&ctrl->drvlock);
 			mmput(mm);
 			return -EPERM;
 		}
@@ -419,7 +419,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = fimg2d_add_command(ctrl, ctx, (struct fimg2d_blit __user *)arg);
 		if (ret) {
 			fimg2d_err("add command not allowed.\n");
-			g2d_unlock(&ctrl->drvlock);
+			mutex_unlock(&ctrl->drvlock);
 			mmput(mm);
 			return ret;
 		}
@@ -429,7 +429,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		usr_dst = kzalloc(sizeof(struct fimg2d_dma), GFP_KERNEL);
 		if (!usr_dst) {
 			fimg2d_err("failed to allocate memory for fimg2d_dma\n");
-			g2d_unlock(&ctrl->drvlock);
+			mutex_unlock(&ctrl->drvlock);
 			mmput(mm);
 			return -ENOMEM;
 		}
@@ -437,7 +437,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = store_user_dst((struct fimg2d_blit __user *)arg, usr_dst);
 		if (ret) {
 			fimg2d_err("store_user_dst() not allowed.\n");
-			g2d_unlock(&ctrl->drvlock);
+			mutex_unlock(&ctrl->drvlock);
 			kfree(usr_dst);
 			mmput(mm);
 			return ret;
@@ -447,13 +447,13 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (ret) {
 			fimg2d_info("request bitblit not allowed, "
 					"so passing to s/w fallback.\n");
-			g2d_unlock(&ctrl->drvlock);
+			mutex_unlock(&ctrl->drvlock);
 			kfree(usr_dst);
 			mmput(mm);
 			return -EBUSY;
 		}
 
-		g2d_unlock(&ctrl->drvlock);
+		mutex_unlock(&ctrl->drvlock);
 
 		fimg2d_debug("addr : %p, size : %zd\n",
 				(void *)usr_dst->addr, usr_dst->size);
@@ -491,7 +491,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&act, (void *)arg, sizeof(act)))
 			return -EFAULT;
 
-		g2d_lock(&ctrl->drvlock);
+		mutex_lock(&ctrl->drvlock);
 		atomic_set(&ctrl->drvact, act);
 		if (act == DRV_ACT) {
 			fimg2d_power_control(ctrl, FIMG2D_PW_OFF);
@@ -500,7 +500,7 @@ static long fimg2d_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			fimg2d_power_control(ctrl, FIMG2D_PW_ON);
 			fimg2d_info("fimg2d driver is deactivated\n");
 		}
-		g2d_unlock(&ctrl->drvlock);
+		mutex_unlock(&ctrl->drvlock);
 		break;
 	}
 	default:
@@ -1134,7 +1134,6 @@ static int fimg2d_suspend(struct device *dev)
 	unsigned long flags;
 	int retry = POLL_RETRY;
 
-	g2d_lock(&ctrl->drvlock);
 	g2d_spin_lock(&ctrl->bltlock, flags);
 	atomic_set(&ctrl->suspended, 1);
 	g2d_spin_unlock(&ctrl->bltlock, flags);
@@ -1143,7 +1142,6 @@ static int fimg2d_suspend(struct device *dev)
 			break;
 		mdelay(POLL_TIMEOUT);
 	}
-	g2d_unlock(&ctrl->drvlock);
 	if (ip_is_g2d_5h() || ip_is_g2d_5hp())
 		exynos5433_fimg2d_clk_set_osc(ctrl);
 	fimg2d_info("suspend... done\n");
@@ -1155,11 +1153,9 @@ static int fimg2d_resume(struct device *dev)
 	unsigned long flags;
 	int ret = 0;
 
-	g2d_lock(&ctrl->drvlock);
 	g2d_spin_lock(&ctrl->bltlock, flags);
 	atomic_set(&ctrl->suspended, 0);
 	g2d_spin_unlock(&ctrl->bltlock, flags);
-	g2d_unlock(&ctrl->drvlock);
 	/* G2D clk gating mask */
 	if (ip_is_g2d_5ar2()) {
 		fimg2d_clk_on(ctrl);

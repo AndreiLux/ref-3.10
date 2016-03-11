@@ -287,8 +287,6 @@ static int es705_i2c_probe(struct i2c_client *i2c,
 	es705_priv.cmd = es705_i2c_cmd;
 	es705_priv.dev = &i2c->dev;
 
-	es705_priv.streamdev = i2c_streamdev;
-
 	rc = es705_stimulate_start(&i2c->dev);
 	if (rc) {
 		dev_err(&i2c->dev, "%s(): es705_stimulate_start failed %d\n",

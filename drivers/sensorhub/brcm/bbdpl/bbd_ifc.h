@@ -54,6 +54,10 @@
 #define BBD_CTRL_TTY            "BBD:Serial=TTY"
 #define BBD_CTRL_SIO            "BBD:Serial=SIO"
 
+/* SSI-DEBUG Patch download begin/end */
+#define BBD_CTRL_SSI_PATCH_BEGIN	"SSI:PatchBegin"
+#define BBD_CTRL_SSI_PATCH_END		"SSI:PatchEnd"
+
 #define SHMD_RESET_MCU		"SHMD:RESET_MCU"
 
 /* Packet Layer handshake LHD <---> BBD */

@@ -352,6 +352,8 @@ struct sbd_link_device {
 	u16 *rbps;
 
 	unsigned long rxdone_mask;
+
+	struct pktlog_data *pktlog;
 };
 
 static inline void sbd_activate(struct sbd_link_device *sl)

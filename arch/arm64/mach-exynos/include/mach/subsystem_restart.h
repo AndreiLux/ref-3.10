@@ -71,6 +71,7 @@ struct subsys_desc {
 
 #if defined(CONFIG_MSM_SUBSYSTEM_RESTART)
 
+extern void set_silent_reset(void);
 extern int subsys_get_restart_level(struct subsys_device *dev);
 extern int subsystem_restart_dev(struct subsys_device *dev);
 extern int subsystem_restart(const char *name);

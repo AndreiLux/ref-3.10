@@ -5,6 +5,7 @@
  *	by Henrik Nordstrom <hno@marasystems.com>
  *	Copyright © CC Computer Consultants GmbH, 2007 - 2008
  *	Jan Engelhardt <jengelh@medozas.de>
+ *      Copyright (c) 2015 Samsung Electronics Co., Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +20,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+/*
+ *  Changes:
+ *  KwnagHyun Kim <kh0304.kim@samsung.com> 2015/07/08
+ *  Baesung Park  <baesung.park@samsung.com> 2015/07/08
+ *  Vignesh Saravanaperumal <vignesh1.s@samsung.com> 2015/07/08
+ *    Add codes to share UID/PID information
+ *
  */
 
 #include <linux/module.h>

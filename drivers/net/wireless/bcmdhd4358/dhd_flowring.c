@@ -778,7 +778,7 @@ int dhd_update_flow_prio_map(dhd_pub_t *dhdp, uint8 map)
 	uint16 flowid;
 	flow_ring_node_t *flow_ring_node;
 
-	if (map > DHD_FLOW_PRIO_TID_MAP)
+	if (map > DHD_FLOW_PRIO_LLR_MAP)
 		return BCME_BADOPTION;
 
 	/* Check if we need to change prio map */

@@ -147,17 +147,15 @@ static void fc8080_power_off(void)
 
 	if (fc8080_pwr_on) {
 		fc8080_on_air = false;
-
-		dmb_drv_deinit();
+		fc8080_pwr_on = false;
 
 #if defined(CONFIG_TDMB_TSIF_SLSI) || defined(CONFIG_TDMB_TSIF_QC)
 		tdmb_tsi_stop();
 #else
 		tdmb_control_irq(false);
 #endif
+		dmb_drv_deinit();
 		tdmb_control_gpio(false);
-
-		fc8080_pwr_on = false;
 	}
 }
 

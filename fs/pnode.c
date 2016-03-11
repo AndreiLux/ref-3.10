@@ -13,6 +13,10 @@
 #include "internal.h"
 #include "pnode.h"
 
+#ifdef CONFIG_RKP_NS_PROT
+void rkp_set_mnt_flags(struct vfsmount *mnt,int flags);
+void rkp_reset_mnt_flags(struct vfsmount *mnt,int flags);
+#endif
 /* return the next shared peer mount of @p */
 static inline struct mount *next_peer(struct mount *p)
 {
@@ -37,7 +41,11 @@ static struct mount *get_peer_under_root(struct mount *mnt,
 
 	do {
 		/* Check the namespace first for optimization */
+#ifdef CONFIG_RKP_NS_PROT
+		if (m->mnt_ns == ns && is_path_reachable(m, m->mnt->mnt_root, root))
+#else
 		if (m->mnt_ns == ns && is_path_reachable(m, m->mnt.mnt_root, root))
+#endif
 			return m;
 
 		m = next_peer(m);
@@ -76,7 +84,11 @@ static int do_make_slave(struct mount *mnt)
 	 * slave it to anything that is available.
 	 */
 	while ((peer_mnt = next_peer(peer_mnt)) != mnt &&
+#ifdef CONFIG_RKP_NS_PROT
+	       peer_mnt->mnt->mnt_root != mnt->mnt->mnt_root) ;
+#else
 	       peer_mnt->mnt.mnt_root != mnt->mnt.mnt_root) ;
+#endif
 
 	if (peer_mnt == mnt) {
 		peer_mnt = next_peer(mnt);
@@ -126,10 +138,20 @@ void change_mnt_propagation(struct mount *mnt, int type)
 	if (type != MS_SLAVE) {
 		list_del_init(&mnt->mnt_slave);
 		mnt->mnt_master = NULL;
-		if (type == MS_UNBINDABLE)
+		if (type == MS_UNBINDABLE) {
+#ifdef CONFIG_RKP_NS_PROT
+			rkp_set_mnt_flags(mnt->mnt,MNT_UNBINDABLE);
+#else
 			mnt->mnt.mnt_flags |= MNT_UNBINDABLE;
-		else
+#endif
+		}
+		else {
+#ifdef CONFIG_RKP_NS_PROT
+			rkp_reset_mnt_flags(mnt->mnt,MNT_UNBINDABLE);
+#else
 			mnt->mnt.mnt_flags &= ~MNT_UNBINDABLE;
+#endif
+		}
 	}
 }
 
@@ -242,15 +264,21 @@ int propagate_mnt(struct mount *dest_mnt, struct mountpoint *dest_mp,
 		/* Notice when we are propagating across user namespaces */
 		if (m->mnt_ns->user_ns != user_ns)
 			type |= CL_UNPRIVILEGED;
-
+#ifdef CONFIG_RKP_NS_PROT
+		child = copy_tree(source, source->mnt->mnt_root, type);
+#else
 		child = copy_tree(source, source->mnt.mnt_root, type);
+#endif
 		if (IS_ERR(child)) {
 			ret = PTR_ERR(child);
 			list_splice(tree_list, tmp_list.prev);
 			goto out;
 		}
-
+#ifdef CONFIG_RKP_NS_PROT
+		if (is_subdir(dest_mp->m_dentry, m->mnt->mnt_root)) {
+#else
 		if (is_subdir(dest_mp->m_dentry, m->mnt.mnt_root)) {
+#endif
 			mnt_set_mountpoint(m, dest_mp, child);
 			list_add_tail(&child->mnt_hash, tree_list);
 		} else {
@@ -311,7 +339,11 @@ int propagate_mount_busy(struct mount *mnt, int refcnt)
 
 	for (m = propagation_next(parent, parent); m;
 	     		m = propagation_next(m, parent)) {
+#ifdef CONFIG_RKP_NS_PROT
+		child = __lookup_mnt(m->mnt, mnt->mnt_mountpoint, 0);
+#else
 		child = __lookup_mnt(&m->mnt, mnt->mnt_mountpoint, 0);
+#endif
 		if (child && list_empty(&child->mnt_mounts) &&
 		    (ret = do_refcount_check(child, 1)))
 			break;
@@ -332,9 +364,13 @@ static void __propagate_umount(struct mount *mnt)
 
 	for (m = propagation_next(parent, parent); m;
 			m = propagation_next(m, parent)) {
-
+#ifdef CONFIG_RKP_NS_PROT
+		struct mount *child = __lookup_mnt(m->mnt,
+					mnt->mnt_mountpoint, 0);
+#else
 		struct mount *child = __lookup_mnt(&m->mnt,
 					mnt->mnt_mountpoint, 0);
+#endif
 		/*
 		 * umount the child only if the child has no
 		 * other children

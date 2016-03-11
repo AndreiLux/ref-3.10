@@ -53,14 +53,11 @@ enum ACCESSIBILITY {
 	ACCESSIBILITY_MAX
 };
 
-#define MDNIE_COLOR_BLIND_TUNE_CNT	9
-#define MDNIE_COLOR_BLIND_HBM_TUNE_CNT 12
-
-
 enum HBM {
 	HBM_OFF,
 #if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-	HBM_AOLCE_1,
+	HBM_ON,
+	HBM_AOLCE_1 = HBM_ON,
 	HBM_AOLCE_2,
 	HBM_AOLCE_3,
 #else
@@ -70,11 +67,6 @@ enum HBM {
 	HBM_MAX,
 };
 
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-#define HBM_ON HBM_AOLCE_1
-#endif
-
-#ifdef CONFIG_LCD_HMT
 enum hmt_mode {
 	HMT_MDNIE_OFF,
 	HMT_MDNIE_ON,
@@ -84,86 +76,56 @@ enum hmt_mode {
 	HMT_7500K,
 	HMT_MDNIE_MAX,
 };
-#endif
 
-enum MDNIE_CMD {
-#if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
-	LEVEL1_KEY_UNLOCK,
-	MDNIE_CMD1,
-	MDNIE_CMD2,
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-	MDNIE_CMD3,
-#endif
-	LEVEL1_KEY_LOCK,
-	MDNIE_CMD_MAX,
-#else
-	MDNIE_CMD1,
-	MDNIE_CMD2 = MDNIE_CMD1,
-	MDNIE_CMD_MAX,
-#endif
-};
-
-struct mdnie_command {
-	mdnie_t *sequence;
-	unsigned int size;
+struct mdnie_seq_info {
+	mdnie_t *cmd;
+	unsigned int len;
 	unsigned int sleep;
 };
 
 struct mdnie_table {
 	char *name;
-	struct mdnie_command tune[MDNIE_CMD_MAX];
+	unsigned int update_flag[5];
+	struct mdnie_seq_info seq[5 + 1];
 };
 
-#if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-#define MDNIE_SET(id)	\
-{							\
-	.name		= #id,				\
-	.tune		= {				\
-		{	.sequence = LEVEL1_UNLOCK, .size = ARRAY_SIZE(LEVEL1_UNLOCK),	.sleep = 0,},	\
-		{	.sequence = id##_1, .size = ARRAY_SIZE(id##_1),			.sleep = 0,},	\
-		{	.sequence = id##_2, .size = ARRAY_SIZE(id##_2),			.sleep = 0,},	\
-		{	.sequence = id##_3, .size = ARRAY_SIZE(id##_3),			.sleep = 0,},	\
-		{	.sequence = LEVEL1_LOCK, .size = ARRAY_SIZE(LEVEL1_LOCK),	.sleep = 0,},	\
-	}	\
-}
-#else
-#define MDNIE_SET(id)	\
-{							\
-	.name		= #id,				\
-	.tune		= {				\
-		{	.sequence = LEVEL1_UNLOCK, .size = ARRAY_SIZE(LEVEL1_UNLOCK),	.sleep = 0,},	\
-		{	.sequence = id##_1, .size = ARRAY_SIZE(id##_1),			.sleep = 0,},	\
-		{	.sequence = id##_2, .size = ARRAY_SIZE(id##_2),			.sleep = 0,},	\
-		{	.sequence = LEVEL1_LOCK, .size = ARRAY_SIZE(LEVEL1_LOCK),	.sleep = 0,},	\
-	}	\
-}
-#endif
+struct mdnie_scr_info {
+	u32 index;
+	u32 color_blind;	/* Cyan Red */
+	u32 white_r;
+	u32 white_g;
+	u32 white_b;
+};
+
+struct mdnie_trans_info {
+	u32 index;
+	u32 offset;
+	u32 enable;
+};
+
+struct mdnie_tune {
+	struct mdnie_table	*bypass_table;
+	struct mdnie_table	*accessibility_table;
+	struct mdnie_table	*hbm_table;
+	struct mdnie_table	*hmt_table;
+	struct mdnie_table	(*main_table)[MODE_MAX];
+	struct mdnie_table	*dmb_table;
+
+	struct mdnie_scr_info	*scr_info;
+	struct mdnie_trans_info	*trans_info;
+	unsigned char **coordinate_table;
+	unsigned char **adjust_ldu_rgb_table;
+	int (*color_offset[])(int, int);
+};
 
 struct mdnie_ops {
-	int (*write)(void *data, struct mdnie_command *seq, u32 len);
+	int (*write)(void *data, struct mdnie_seq_info *seq, u32 len);
 	int (*read)(void *data, u8 addr, mdnie_t *buf, u32 len);
 };
 
-typedef int (*mdnie_w)(void *devdata, struct mdnie_command *seq, u32 len);
+typedef int (*mdnie_w)(void *devdata, struct mdnie_seq_info *seq, u32 len);
 typedef int (*mdnie_r)(void *devdata, u8 addr, u8 *buf, u32 len);
-#else
-#define MDNIE_SET(id)	\
-{							\
-	.name		= #id,				\
-	.tune		= {				\
-		{	.sequence = id##_1, .size = ARRAY_SIZE(id##_1), .sleep = 0,},	\
-	}	\
-}
 
-struct mdnie_ops {
-	int (*write)(unsigned int a, unsigned int v);
-	int (*read)(unsigned int a);
-};
-
-typedef int (*mdnie_w)(unsigned int a, unsigned int v);
-typedef int (*mdnie_r)(unsigned int a);
-#endif
 
 struct mdnie_info {
 	struct clk		*bus_clk;
@@ -175,13 +137,14 @@ struct mdnie_info {
 
 	unsigned int		enable;
 
+	struct mdnie_tune 	*tune;
+
 	enum SCENARIO		scenario;
 	enum MODE		mode;
 	enum BYPASS		bypass;
 	enum HBM		hbm;
-#ifdef CONFIG_LCD_HMT
 	enum hmt_mode	hmt_mode;
-#endif
+
 	unsigned int		tuning;
 	unsigned int		accessibility;
 	unsigned int		color_correction;
@@ -198,9 +161,8 @@ struct mdnie_info {
 	unsigned int white_r;
 	unsigned int white_g;
 	unsigned int white_b;
-#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
-	unsigned int		disable_trans_dimming;
-#endif
+	unsigned int disable_trans_dimming;
+
 	struct mdnie_table table_buffer;
 	mdnie_t sequence_buffer[256];
 	u16 coordinate[2];
@@ -221,12 +183,12 @@ extern void decon_mdnie_stop(struct mdnie_info *mdnie);
 extern void decon_mdnie_frame_update(struct mdnie_info *mdnie, u32 xres, u32 yres);
 extern u32 decon_mdnie_input_read(void);
 #elif defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
-extern int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coordinate);
+extern int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coordinate, struct mdnie_tune *tune);
 #endif
 
 #if defined(CONFIG_EXYNOS_DECON_DUAL_DISPLAY) && defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
 extern int mdnie2_register(struct device *p, void *data, mdnie_w w, mdnie_r r);
 #endif
-extern struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s);
+extern uintptr_t mdnie_request_table(char *path, struct mdnie_table *s);
 
 #endif /* __MDNIE_H__ */

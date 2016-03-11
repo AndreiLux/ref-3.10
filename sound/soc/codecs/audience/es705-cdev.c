@@ -1080,8 +1080,8 @@ static int streaming_producer(void *ptr)
 			dev_err(es705->dev,
 				"%s(): can't open streaming debug fs = %d\n",
 				__func__, err);
-		}
-		dev_dbg(es705->dev, "%s: fs_open successfully\n", __func__);
+		} else
+			dev_dbg(es705->dev, "%s: fs_open successfully\n", __func__);
 	}
 #endif
 
@@ -1116,7 +1116,8 @@ static int streaming_producer(void *ptr)
 			stream_circ.head = (chead + 1) & (CB_SIZE - 1);
 #ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
 			/* write stream data */
-			if (es705->streamdev.fs_write) {
+			if (es705->streamdev.fp &&
+				es705->streamdev.fs_write) {
 				es705->streamdev.fs_write(es705, buf, rlen);
 				dev_dbg(es705->dev, "%s(): fs_write done, size:%d\n",
 					__func__, rlen);
@@ -1388,6 +1389,10 @@ static int datablock_open(struct inode *inode, struct file *filp)
 				"%s(): can't open datablock device = %d\n",
 				__func__, err);
 			goto OPEN_ERR;
+		}
+		if (es705->datablockdev.config) {
+			es705->datablockdev.config(es705);
+			usleep_range(5000, 5500);
 		}
 	}
 

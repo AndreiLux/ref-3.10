@@ -501,8 +501,8 @@ static int vpp_get_min_int_lock(struct vpp_dev *vpp)
 	if ((vpp->sc_w == MULTI_FACTOR) && (vpp->sc_h == MULTI_FACTOR)) {
 		vpp->cur_int = vclk_mic / 2 * KHZ;
 	} else {
-		u64 scale_factor = (vclk_mic * vpp->sc_w * vpp->sc_h) / 2;
-		u64 dst_factor = (dst->w * MULTI_FACTOR) / lcd_width ;
+		u64 scale_factor = ((u64) vclk_mic * vpp->sc_w * vpp->sc_h) / 2;
+		u64 dst_factor = ((u64) dst->w * MULTI_FACTOR) / lcd_width ;
 
 		vpp->cur_int = (scale_factor * dst_factor * KHZ) /
 				(MULTI_FACTOR * MULTI_FACTOR * MULTI_FACTOR);

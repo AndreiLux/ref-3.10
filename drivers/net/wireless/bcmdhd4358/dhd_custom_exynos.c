@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_custom_exynos.c 532160 2015-02-05 06:12:24Z $
+ * $Id: dhd_custom_exynos.c 573593 2015-07-23 06:17:53Z $
  */
 #include <linux/device.h>
 #include <linux/gpio.h>
@@ -82,6 +82,10 @@ extern int argos_irq_affinity_setup_label(unsigned int irq, const char *label,
 	struct cpumask *affinity_cpu_mask,
 	struct cpumask *default_cpu_mask);
 #endif /* CONFIG_ARGOS */
+#ifdef CONFIG_MACH_UNIVERSAL3475
+extern struct mmc_host *wlan_mmc;
+extern void mmc_ctrl_power(struct mmc_host *host, bool onoff);
+#endif /* CONFIG_MACH_UNIVERSAL3475 */
 
 static int
 dhd_wlan_power(int onoff)
@@ -126,7 +130,10 @@ dhd_wlan_power(int onoff)
 		return -EIO;
 	}
 #endif /* CONFIG_MACH_UNIVERSAL5433 || CONFIG_MACH_UNIVERSAL7420 */
-
+#ifdef CONFIG_MACH_UNIVERSAL3475
+	if (wlan_mmc)
+		mmc_ctrl_power(wlan_mmc, onoff);
+#endif /* CONFIG_MACH_UNIVERSAL3475 */
 	return 0;
 }
 
@@ -227,36 +234,40 @@ dhd_wlan_init_gpio(void)
 void
 set_cpucore_for_interrupt(cpumask_var_t default_cpu_mask,
 	cpumask_var_t affinity_cpu_mask) {
-#if defined(CONIG_BCMDHD_PCIE)
 	argos_irq_affinity_setup_label(ARGOS_IRQ_NUMBER,
 		"WIFI", affinity_cpu_mask, default_cpu_mask);
-#endif /* CONFIG_BCMDHD_PCIE */
 }
 EXPORT_SYMBOL(set_cpucore_for_interrupt);
 #endif /* CONFIG_ARGOS */
 
 void
-interrupt_set_cpucore(int set)
+interrupt_set_cpucore(int set, unsigned int dpc_cpucore, unsigned int primary_cpucore)
 {
 	printk(KERN_INFO "%s: set: %d\n", __FUNCTION__, set);
 	if (set) {
 #if defined(CONFIG_MACH_UNIVERSAL5422)
-		irq_set_affinity(EXYNOS5_IRQ_HSMMC1, cpumask_of(DPC_CPUCORE));
-		irq_set_affinity(EXYNOS_IRQ_EINT16_31, cpumask_of(DPC_CPUCORE));
+		irq_set_affinity(EXYNOS5_IRQ_HSMMC1, cpumask_of(dpc_cpucore));
+		irq_set_affinity(EXYNOS_IRQ_EINT16_31, cpumask_of(dpc_cpucore));
 #endif /* CONFIG_MACH_UNIVERSAL5422 */
 #if defined(CONFIG_MACH_UNIVERSAL5430)
-		irq_set_affinity(IRQ_SPI(226), cpumask_of(DPC_CPUCORE));
-		irq_set_affinity(IRQ_SPI(2), cpumask_of(DPC_CPUCORE));
+		irq_set_affinity(IRQ_SPI(226), cpumask_of(dpc_cpucore));
+		irq_set_affinity(IRQ_SPI(2), cpumask_of(dpc_cpucore));
 #endif /* CONFIG_MACH_UNIVERSAL5430 */
+#if defined(CONFIG_MACH_UNIVERSAL7580)
+		irq_set_affinity(IRQ_SPI(246), cpumask_of(dpc_cpucore));
+#endif /* CONFIG_MACH_UNIVERSAL7580 */
 	} else {
 #if defined(CONFIG_MACH_UNIVERSAL5422)
-		irq_set_affinity(EXYNOS5_IRQ_HSMMC1, cpumask_of(PRIMARY_CPUCORE));
-		irq_set_affinity(EXYNOS_IRQ_EINT16_31, cpumask_of(PRIMARY_CPUCORE));
+		irq_set_affinity(EXYNOS5_IRQ_HSMMC1, cpumask_of(primary_cpucore));
+		irq_set_affinity(EXYNOS_IRQ_EINT16_31, cpumask_of(primary_cpucore));
 #endif /* CONFIG_MACH_UNIVERSAL5422 */
 #if defined(CONFIG_MACH_UNIVERSAL5430)
-		irq_set_affinity(IRQ_SPI(226), cpumask_of(PRIMARY_CPUCORE));
-		irq_set_affinity(IRQ_SPI(2), cpumask_of(PRIMARY_CPUCORE));
+		irq_set_affinity(IRQ_SPI(226), cpumask_of(primary_cpucore));
+		irq_set_affinity(IRQ_SPI(2), cpumask_of(primary_cpucore));
 #endif /* CONFIG_MACH_UNIVERSAL5430 */
+#if defined(CONFIG_MACH_UNIVERSAL7580)
+		irq_set_affinity(IRQ_SPI(246), cpumask_of(primary_cpucore));
+#endif /* CONFIG_MACH_UNIVERSAL7580 */
 	}
 }
 

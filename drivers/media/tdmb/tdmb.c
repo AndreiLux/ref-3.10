@@ -255,9 +255,8 @@ static DEFINE_MUTEX(tdmb_lock);
 static bool tdmb_power_off(void)
 {
 	DPRINTK("%s : tdmb_pwr_on(%d)\n", __func__, tdmb_pwr_on);
-	mutex_lock(&tdmb_lock);
-
 	if (tdmb_pwr_on) {
+		tdmb_pwr_on = false;
 		tdmbdrv_func->power_off();
 		tdmb_destroy_workqueue();
 		tdmb_destroy_databuffer();
@@ -267,10 +266,8 @@ static bool tdmb_power_off(void)
 		pm_qos_update_request(&tdmb_pm_qos_req, PM_QOS_DEFAULT_VALUE);
 #endif
 #endif
-		tdmb_pwr_on = false;
 	}
 	tdmb_last_ch = 0;
-	mutex_unlock(&tdmb_lock);
 
 	return true;
 }
@@ -292,7 +289,9 @@ tdmb_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 static int tdmb_release(struct inode *inode, struct file *filp)
 {
 	DPRINTK("tdmb_release\n");
+	mutex_lock(&tdmb_lock);
 	tdmb_power_off();
+	mutex_unlock(&tdmb_lock);
 
 #if TDMB_PRE_MALLOC
 	tdmb_ts_size = 0;
@@ -493,7 +492,8 @@ unsigned long tdmb_get_chinfo(void)
 
 void tdmb_pull_data(struct work_struct *work)
 {
-	tdmbdrv_func->pull_data();
+	if (tdmb_pwr_on)
+		tdmbdrv_func->pull_data();
 }
 
 bool tdmb_control_irq(bool set)
@@ -563,17 +563,26 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	case IOCTL_TDMB_POWER_ON:
 		DPRINTK("IOCTL_TDMB_POWER_ON\n");
+		mutex_lock(&tdmb_lock);
 		ret = tdmb_power_on();
+		mutex_unlock(&tdmb_lock);
 		break;
 
 	case IOCTL_TDMB_POWER_OFF:
 		DPRINTK("IOCTL_TDMB_POWER_OFF\n");
+		mutex_lock(&tdmb_lock);
 		ret = tdmb_power_off();
+		mutex_unlock(&tdmb_lock);
 		break;
 
 	case IOCTL_TDMB_SCAN_FREQ_ASYNC:
+		mutex_lock(&tdmb_lock);
+		if (!tdmb_pwr_on) {
+			DPRINTK("IOCTL_TDMB_SCAN_FREQ_ASYNC-Not ready\n");
+			mutex_unlock(&tdmb_lock);
+			break;
+		}
 		DPRINTK("IOCTL_TDMB_SCAN_FREQ_ASYNC\n");
-
 		fig_freq = arg;
 
 		ensemble_info = vmalloc(sizeof(struct ensemble_info_type));
@@ -592,9 +601,16 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 		vfree(ensemble_info);
 		tdmb_last_ch = 0;
+		mutex_unlock(&tdmb_lock);
 		break;
 
 	case IOCTL_TDMB_SCAN_FREQ_SYNC:
+		mutex_lock(&tdmb_lock);
+		if (!tdmb_pwr_on) {
+			DPRINTK("IOCTL_TDMB_SCAN_FREQ_SYNC-Not ready\n");
+			mutex_unlock(&tdmb_lock);
+			break;
+		}
 		fig_freq = ((struct ensemble_info_type *)arg)->ensem_freq;
 		DPRINTK("IOCTL_TDMB_SCAN_FREQ_SYNC %ld\n", fig_freq);
 
@@ -613,6 +629,7 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 		vfree(ensemble_info);
 		tdmb_last_ch = 0;
+		mutex_unlock(&tdmb_lock);
 		break;
 
 	case IOCTL_TDMB_SCANSTOP:
@@ -621,6 +638,12 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 
 	case IOCTL_TDMB_ASSIGN_CH:
+		mutex_lock(&tdmb_lock);
+		if (!tdmb_pwr_on) {
+			DPRINTK("IOCTL_TDMB_ASSIGN_CH-Not ready\n");
+			mutex_unlock(&tdmb_lock);
+			break;
+		}
 		DPRINTK("IOCTL_TDMB_ASSIGN_CH %ld\n", arg);
 		tdmb_init_data();
 		ret = tdmbdrv_func->set_ch(arg, (arg % 1000), false);
@@ -628,9 +651,16 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			tdmb_last_ch = arg;
 		else
 			tdmb_last_ch = 0;
+		mutex_unlock(&tdmb_lock);
 		break;
 
 	case IOCTL_TDMB_ASSIGN_CH_TEST:
+		mutex_lock(&tdmb_lock);
+		if (!tdmb_pwr_on) {
+			DPRINTK("IOCTL_TDMB_ASSIGN_CH_TEST-Not ready\n");
+			mutex_unlock(&tdmb_lock);
+			break;
+		}
 		DPRINTK("IOCTL_TDMB_ASSIGN_CH_TEST %ld\n", arg);
 		tdmb_init_data();
 		ret = tdmbdrv_func->set_ch(arg, (arg % 1000), true);
@@ -638,9 +668,16 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			tdmb_last_ch = arg;
 		else
 			tdmb_last_ch = 0;
+		mutex_unlock(&tdmb_lock);
 		break;
 
 	case IOCTL_TDMB_GET_DM:
+		mutex_lock(&tdmb_lock);
+		if (!tdmb_pwr_on) {
+			DPRINTK("IOCTL_TDMB_GET_DM-Not ready\n");
+			mutex_unlock(&tdmb_lock);
+			break;
+		}
 		tdmbdrv_func->get_dm(&dm_buff);
 		if (copy_to_user((struct tdmb_dm *)arg\
 			, &dm_buff, sizeof(struct tdmb_dm)))
@@ -648,6 +685,7 @@ static long tdmb_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		ret = true;
 		DPRINTK("rssi %d, ber %d, ANT %d\n",
 			dm_buff.rssi, dm_buff.ber, dm_buff.antenna);
+		mutex_unlock(&tdmb_lock);
 		break;
 	case IOCTL_TDMB_SET_AUTOSTART:
 		DPRINTK("IOCTL_TDMB_SET_AUTOSTART : %ld\n",arg);

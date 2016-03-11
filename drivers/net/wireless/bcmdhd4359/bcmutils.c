@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmutils.c 563776 2015-06-15 15:51:15Z $
+ * $Id: bcmutils.c 591286 2015-10-07 11:59:26Z $
  */
 
 #include <bcm_cfg.h>
@@ -2059,7 +2059,11 @@ static const char *crypto_algo_names[] = {
 	"UNDEF",
 	"UNDEF",
 #endif /* BCMCCX */
+#ifdef BCMWAPI_WAI
 	"WAPI",
+#else
+	"UNDEF"
+#endif
 	"PMK",
 	"BIP",
 	"AES_GCM",

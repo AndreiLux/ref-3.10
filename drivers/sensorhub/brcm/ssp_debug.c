@@ -270,6 +270,8 @@ void sync_sensor_state(struct ssp_data *data)
 
 	set_proximity_threshold(data, data->uProxHiThresh,data->uProxLoThresh);
 
+	set_gyro_cal_lib_enable(data, true);
+	
 	data->bMcuDumpMode = ssp_check_sec_dump_mode();
 	iRet = ssp_send_cmd(data, MSG2SSP_AP_MCU_SET_DUMPMODE,
 		data->bMcuDumpMode);
@@ -407,6 +409,9 @@ static void debug_work_func(struct work_struct *work)
 	}
 
 	data->uIrqCnt = 0;
+
+	if(data->gyro_lib_state == GYRO_CALIBRATION_STATE_EVENT_OCCUR)
+		set_gyro_cal_lib_enable(data, false);
 }
 
 static void debug_timer_func(unsigned long ptr)

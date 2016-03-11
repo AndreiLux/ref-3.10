@@ -573,6 +573,12 @@ extern struct cpumask hmp_slow_cpu_mask;
 extern int disable_dm_hotplug_before_suspend;
 #endif
 
+#if defined(CONFIG_SENSORS_FP_LOCKSCREEN_MODE)
+extern bool fp_lockscreen_mode;
+#else
+static bool fp_lockscreen_mode = false;
+#endif
+
 void __ref enable_nonboot_cpus(void)
 {
 	int cpu, error;
@@ -588,7 +594,7 @@ void __ref enable_nonboot_cpus(void)
 	arch_enable_nonboot_cpus_begin();
 
 #if defined(CONFIG_SCHED_HMP) && defined(CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG)
-	if (!disable_dm_hotplug_before_suspend)
+	if (!disable_dm_hotplug_before_suspend && !fp_lockscreen_mode)
 		cpumask_and(frozen_cpus, frozen_cpus, &hmp_slow_cpu_mask);
 #endif
 

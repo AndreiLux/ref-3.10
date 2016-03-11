@@ -18,15 +18,12 @@
 /* factory Sysfs                                                         */
 /*************************************************************************/
 
-#define INV_ID			0
 #define VENDOR_INV		"INVENSENSE"
 #define CHIP_ID_INV		"MPU6500"
 
-#define STM_ID			1
 #define VENDOR_STM		"STM"
 #define CHIP_ID_STM		"K6DS3TR"
 
-#define BOSCH_ID		2
 #define VENDOR_BOSCH		"BOSCH"
 #define CHIP_ID_BOSCH		"BMI168"
 
@@ -43,9 +40,9 @@ static ssize_t accel_vendor_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (data->acc_type == INV_ID)
+	if (data->acc_type == SIX_AXIS_MPU6500)
 		return sprintf(buf, "%s\n", VENDOR_INV);
-	else if (data->acc_type == STM_ID)
+	else if (data->acc_type == SIX_AXIS_K6DS3)
 		return sprintf(buf, "%s\n", VENDOR_STM);
 	else
 		return sprintf(buf, "%s\n", VENDOR_BOSCH);
@@ -56,9 +53,9 @@ static ssize_t accel_name_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (data->acc_type == INV_ID)
+	if (data->acc_type == SIX_AXIS_MPU6500)
 		return sprintf(buf, "%s\n", CHIP_ID_INV);
-	else if (data->acc_type == STM_ID)
+	else if (data->acc_type == SIX_AXIS_K6DS3)
 		return sprintf(buf, "%s\n", CHIP_ID_STM);
 	else
 		return sprintf(buf, "%s\n", CHIP_ID_BOSCH);
@@ -428,9 +425,9 @@ static ssize_t accel_selftest_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (data->acc_type == INV_ID)
+	if (data->acc_type == SIX_AXIS_MPU6500)
 		return mpu6500_accel_selftest(buf, data);
-	else if (data->acc_type == STM_ID)
+	else if (data->acc_type == SIX_AXIS_K6DS3)
 		return accel_selftest(buf, data);
 	else
 		return accel_selftest(buf, data);

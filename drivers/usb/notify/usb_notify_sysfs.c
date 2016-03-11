@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/fs.h>
 #include <linux/err.h>
+#include <linux/usb_notify.h>
 #include "usb_notify_sysfs.h"
 
 struct notify_data {
@@ -23,20 +24,95 @@ struct notify_data {
 
 static struct notify_data usb_notify_data;
 
+static int is_valid_cmd(char *cur_cmd, char *prev_cmd)
+{
+	pr_info("%s : current state=%s, previous state=%s\n",
+		__func__, cur_cmd, prev_cmd);
+
+	if (!strcmp(cur_cmd, "ON") ||
+			!strncmp(cur_cmd, "ON_ALL_", 7)) {
+		if (!strcmp(prev_cmd, "ON") ||
+				!strncmp(prev_cmd, "ON_ALL_", 7)) {
+			goto ignore;
+		} else if (!strncmp(prev_cmd, "ON_HOST_", 8)) {
+			goto all;
+		} else if (!strncmp(prev_cmd, "ON_CLIENT_", 10)) {
+			goto all;
+		} else if (!strcmp(prev_cmd, "OFF")) {
+			goto all;
+		} else {
+			goto invalid;
+		}
+	} else if (!strcmp(cur_cmd, "OFF")) {
+		if (!strcmp(prev_cmd, "ON") ||
+				!strncmp(prev_cmd, "ON_ALL_", 7)) {
+			goto off;
+		} else if (!strncmp(prev_cmd, "ON_HOST_", 8)) {
+			goto off;
+		} else if (!strncmp(prev_cmd, "ON_CLIENT_", 10)) {
+			goto off;
+		} else if (!strcmp(prev_cmd, "OFF")) {
+			goto ignore;
+		} else {
+			goto invalid;
+		}
+	} else if (!strncmp(cur_cmd, "ON_HOST_", 8)) {
+		if (!strcmp(prev_cmd, "ON") ||
+				!strncmp(prev_cmd, "ON_ALL_", 7)) {
+			goto host;
+		} else if (!strncmp(prev_cmd, "ON_HOST_", 8)) {
+			goto ignore;
+		} else if (!strncmp(prev_cmd, "ON_CLIENT_", 10)) {
+			goto host;
+		} else if (!strcmp(prev_cmd, "OFF")) {
+			goto host;
+		} else {
+			goto invalid;
+		}
+	} else if (!strncmp(cur_cmd, "ON_CLIENT_", 10)) {
+		if (!strcmp(prev_cmd, "ON") ||
+				!strncmp(prev_cmd, "ON_ALL_", 7)) {
+			goto client;
+		} else if (!strncmp(prev_cmd, "ON_HOST_", 8)) {
+			goto client;
+		} else if (!strncmp(prev_cmd, "ON_CLIENT_", 10)) {
+			goto ignore;
+		} else if (!strcmp(prev_cmd, "OFF")) {
+			goto client;
+		} else {
+			goto invalid;
+		}
+	} else {
+		goto invalid;
+	}
+host:
+	pr_err("%s cmd=%s is accepted.\n", __func__, cur_cmd);
+	return NOTIFY_BLOCK_TYPE_HOST;
+client:
+	pr_err("%s cmd=%s is accepted.\n", __func__, cur_cmd);
+	return NOTIFY_BLOCK_TYPE_CLIENT;
+all:
+	pr_err("%s cmd=%s is accepted.\n", __func__, cur_cmd);
+	return NOTIFY_BLOCK_TYPE_ALL;
+off:
+	pr_err("%s cmd=%s is accepted.\n", __func__, cur_cmd);
+	return NOTIFY_BLOCK_TYPE_NONE;
+ignore:
+	pr_err("%s cmd=%s is ignored but saved.\n", __func__, cur_cmd);
+	return -EEXIST;
+invalid:
+	pr_err("%s cmd=%s is invalid.\n", __func__, cur_cmd);
+	return -EINVAL;
+}
+
 static ssize_t disable_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
 	struct usb_notify_dev *udev = (struct usb_notify_dev *)
 		dev_get_drvdata(dev);
-	char *disable;
 
-	if (udev->disable_state)
-		disable = "ON";
-	else
-		disable = "OFF";
-
-	pr_info("read disable_state %s\n", disable);
-	return snprintf(buf,  sizeof(disable)+1, "%s\n", disable);
+	pr_info("read disable_state %s\n", udev->disable_state_cmd);
+	return sprintf(buf, "%s\n", udev->disable_state_cmd);
 }
 
 static ssize_t disable_store(
@@ -47,27 +123,35 @@ static ssize_t disable_store(
 		dev_get_drvdata(dev);
 
 	char *disable;
+	int size_ret, param = -EINVAL;
 	size_t ret = -ENOMEM;
+
+	if (size > MAX_DISABLE_STR_LEN) {
+		pr_err("%s size(%zu) is too long.\n", __func__, size);
+		goto error;
+	}
 
 	disable = kzalloc(size+1, GFP_KERNEL);
 	if (!disable)
 		goto error;
 
-	sscanf(buf, "%s", disable);
+	size_ret = sscanf(buf, "%s", disable);
 
 	if (udev->set_disable) {
-
-		pr_info("set disable state %s\n", disable);
-
-		if (!strncmp(disable, "ON", 2))
-			udev->set_disable(1);
-		else if (!strncmp(disable, "OFF", 3))
-			udev->set_disable(0);
-		else
-			pr_err("set disable cmd error=%s\n", disable);
+		param = is_valid_cmd(disable, udev->disable_state_cmd);
+		if (param == -EINVAL) {
+			ret = param;
+		} else {
+			if (param != -EEXIST)
+				udev->set_disable(udev, param);
+			memset(udev->disable_state_cmd, 0,
+				sizeof(udev->disable_state_cmd));
+			strncpy(udev->disable_state_cmd,
+				disable, strlen(disable));
+			ret = size;
+		}
 	} else
-		pr_info("set_disable func is NULL\n");
-	ret = size;
+		pr_err("set_disable func is NULL\n");
 	kfree(disable);
 error:
 	return ret;
@@ -114,6 +198,8 @@ int usb_notify_dev_register(struct usb_notify_dev *udev)
 		return PTR_ERR(udev->dev);
 
 	udev->disable_state = 0;
+	strncpy(udev->disable_state_cmd, "OFF",
+		sizeof(udev->disable_state_cmd)-1);
 	ret = sysfs_create_group(&udev->dev->kobj, &usb_notify_attr_grp);
 	if (ret < 0) {
 		device_destroy(usb_notify_data.usb_notify_class,

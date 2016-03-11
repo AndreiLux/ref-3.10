@@ -18,6 +18,12 @@ config KEYBOARD_ABOV_TOUCH
 	help
 	  Say Y here if you want to use ABOV MC96FT16XX chip as touchkey.
 
+config KEYBOARD_ABOV_TOUCH_FOLDER
+	tristate "Abov FT16XX touchkey"
+	depends on I2C
+	help
+	  Say Y here if you want to use ABOV MC96FT16XX chip as touchkey for folder model.
+
 config KEYBOARD_ADP5520
 	tristate "Keypad Support for ADP5520 PMIC"
 	depends on PMIC_ADP5520
@@ -646,6 +652,19 @@ config KEYBOARD_CROS_EC
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cros_ec_keyb.
+
+config SUPPORT_KEYPAD_LED
+	bool "SUPPORT KEYPAD LED"
+	depends on KEYBOARD_MATRIX
+	default n
+	help
+	  Say Y here to use the kaypad.
+
+config KEYBOARD_ABOV_FT16XX_TOUCH_VALLEY
+	tristate "Abov FT16XX touchkey for valley"
+	depends on I2C
+	help
+	  Say Y here if you want to use ABOV MC96FT16XX chip as touchkey.
 
 source "drivers/input/keyboard/cypress_20075/Kconfig"
 endif

@@ -191,9 +191,7 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 	union power_supply_propval value;
 	struct bq51221_charger_data *charger = i2c_get_clientdata(client);
 
-#if defined(CONFIG_WIRELESS_CHARGER_INBATTERY_5V_FIX)
-	return 0;
-#endif
+	return 0; // concept chagned, vout is always 5V
 
 	if (charger->pdata->pad_mode == BQ51221_PAD_MODE_PMA) {
 		pr_info("%s PMA MODE, do not set Voreg \n", __func__);
@@ -394,6 +392,8 @@ static int bq51221_chg_get_property(struct power_supply *psy,
 			val->intval = charger->pdata->siop_level;
 			break;
 		case POWER_SUPPLY_PROP_ONLINE:
+			val->intval = charger->pdata->pad_mode;
+			break;
 		case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
 			break;
 		default:

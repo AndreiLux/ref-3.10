@@ -23,6 +23,7 @@
 #include <linux/slab.h>	/* for kmalloc/kfree prototype */
 #include <linux/interrupt.h>
 #include <linux/pinctrl/pinctrl-samsung.h>
+#include <linux/smc.h>
 
 #include <mach/exynos-pm.h>
 
@@ -153,7 +154,12 @@ void dw_mci_reg_dump(struct dw_mci *host)
  */
 void dw_mci_exynos_cfg_smu(struct dw_mci *host)
 {
+#if defined(CONFIG_SOC_EXYNOS5422) || defined(CONFIG_SOC_EXYNOS5430) || \
+	defined(CONFIG_SOC_EXYNOS5433)
 	volatile unsigned int reg;
+#else
+	int ret, id;
+#endif
 
 #if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
 	if (!((host->pdata->quirks & DW_MCI_QUIRK_USE_SMU) ||
@@ -164,19 +170,30 @@ void dw_mci_exynos_cfg_smu(struct dw_mci *host)
 		return;
 #endif
 
-	reg = __raw_readl(host->regs + SDMMC_MPSECURITY);
-
-	/* Extended Descriptor On */
 #if defined(CONFIG_SOC_EXYNOS5422) || defined(CONFIG_SOC_EXYNOS5430) || \
 	defined(CONFIG_SOC_EXYNOS5433)
+	reg = __raw_readl(host->regs + SDMMC_MPSECURITY);
 	mci_writel(host, MPSECURITY, reg | DWMCI_MPSECURITY_PROTBYTZPC);
 #else
-	reg = reg & ~DWMCI_MPSECURITY_MMC_SFR_PROT_ON;
-	mci_writel(host, MPSECURITY, (reg | DWMCI_MPSECURITY_PROTBYTZPC) | \
-						DWMCI_MPSECURITY_FMP_ENC_ON | DWMCI_MPSECURITY_DESCTYPE(3));
-	mci_writel(host, MPSLUN0, DWMCI_SET_LUN(DW_MMC_LUN_BEGIN, DW_MMC_LUN_END));
+	id = of_alias_get_id(host->dev->of_node, "mshc");
+	switch (id) {
+	case 0:
+#if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
+		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_ON);
+#else
+		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_OFF);
 #endif
+		break;
+	case 2:
+		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC2_FMP, FMP_DESC_OFF);
+		break;
+	default:
+		return;
+	}
+	if (ret)
+		dev_err(host->dev, "Fail to smc call for FMP SECURITY\n");
 
+#endif
 	mci_writel(host, MPSBEGIN0, 0);
 	mci_writel(host, MPSEND0, DWMCI_BLOCK_NUM);
 	mci_writel(host, MPSCTRL0, DWMCI_MPSCTRL_BYPASS);
@@ -232,7 +249,6 @@ static void exynos_sfr_save(unsigned int i)
 	defined(CONFIG_SOC_EXYNOS7580)
 	dw_mci_save_sfr[i][15] = mci_readl(host, DBADDRL);
 	dw_mci_save_sfr[i][16] = mci_readl(host, DBADDRU);
-	dw_mci_save_sfr[i][20] = mci_readl(host, MPSECURITY);
 #else
 	dw_mci_save_sfr[i][15] = mci_readl(host, DBADDR);
 #endif
@@ -291,7 +307,6 @@ static void exynos_sfr_restore(unsigned int i)
 	mci_writel(host, DBADDRL, dw_mci_save_sfr[i][15]);
 	mci_writel(host, DBADDRU, dw_mci_save_sfr[i][16]);
 	if (drv_data && drv_data->cfg_smu) {
-		mci_writel(host, MPSECURITY, dw_mci_save_sfr[i][20]);
 		dw_mci_exynos_smu_reset(host);
 		drv_data->cfg_smu(host);
 	}
@@ -483,8 +498,6 @@ static void dw_mci_exynos_register_dump(struct dw_mci *host)
 	if (is_smu) {
 		dev_err(host->dev, ": EMMCP_BASE:	0x%08x\n",
 			mci_readl(host, EMMCP_BASE));
-		dev_err(host->dev, ": MPSECURITY:	0x%08x\n",
-			mci_readl(host, MPSECURITY));
 		dev_err(host->dev, ": MPSTAT:	0x%08x\n",
 			mci_readl(host, MPSTAT));
 		for (i = 0; i < 8; i++) {

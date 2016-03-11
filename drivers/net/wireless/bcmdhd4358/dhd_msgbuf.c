@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_msgbuf.c 539963 2015-03-10 12:42:38Z $
+ * $Id: dhd_msgbuf.c 601802 2015-11-24 07:05:07Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -317,11 +317,12 @@ dhd_prot_d2h_sync_livelock(dhd_pub_t *dhd, uint32 seqnum, uint32 tries,
 		dhd, seqnum, seqnum% D2H_EPOCH_MODULO, tries,
 		dhd->prot->d2h_sync_wait_max, dhd->prot->d2h_sync_wait_tot));
 	prhex("D2H MsgBuf Failure", (uchar *)msg, msglen);
-#if defined(SUPPORT_LINKDOWN_RECOVERY)
-#if defined(CONFIG_ARCH_MSM)
-	dhd->bus->islinkdown = TRUE;
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+	dhd->bus->no_cfg_restore = TRUE;
 #endif /* CONFIG_ARCH_MSM */
-	dhd_os_check_hang(dhd, 0, -ETIMEDOUT);
+	dhd->hang_reason = HANG_REASON_MSGBUF_LIVELOCK;
+	dhd_os_send_hang_message(dhd);
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 }
 
@@ -1252,6 +1253,11 @@ dhd_pktid_map_free(dhd_pktid_map_handle_t *handle, uint32 nkey,
 	flags = DHD_PKTID_LOCK(map->pktid_lock);
 
 	ASSERT((nkey != DHD_PKTID_INVALID) && (nkey <= DHD_PKIDMAP_ITEMS(map->items)));
+
+	if ((nkey == DHD_PKTID_INVALID) || (nkey > DHD_PKIDMAP_ITEMS(map->items))) {
+		DHD_ERROR(("%s: PKTID %d is invalid\n", __FUNCTION__, nkey));
+		return NULL;
+	}
 
 	locker = &map->lockers[nkey];
 

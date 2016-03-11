@@ -217,10 +217,10 @@ int fimc_is_af_power(struct fimc_is_device_af *af_device, bool onoff)
 {
 	int ret = 0;
 
-	/*CAM_AF_2.8V_AP*/
-	ret = fimc_is_af_ldo_enable("CAM_AF_2.8V_AP", onoff);
+	/*VDDAF_2.8V_CAM*/
+	ret = fimc_is_af_ldo_enable("VDDAF_2.8V_CAM", onoff);
 	if (ret) {
-		err("failed to power control CAM_AF_2.8V_AP, onoff = %d", onoff);
+		err("failed to power control VDDAF_2.8V_CAM, onoff = %d", onoff);
 		return -EINVAL;
 	}
 
@@ -240,10 +240,10 @@ int fimc_is_af_power(struct fimc_is_device_af *af_device, bool onoff)
 	}
 #endif
 
-	/*CAM_IO_1.8V_AP*/
-	ret = fimc_is_af_ldo_enable("CAM_IO_1.8V_AP", onoff);
+	/*VDDIO_1.8V_CAM*/
+	ret = fimc_is_af_ldo_enable("VDDIO_1.8V_CAM", onoff);
 	if (ret) {
-		err("failed to power control CAM_IO_1.8V_AP, onoff = %d", onoff);
+		err("failed to power control VDDIO_1.8V_CAM, onoff = %d", onoff);
 		return -EINVAL;
 	}
 
@@ -322,8 +322,8 @@ int16_t fimc_is_af_enable(void *device, bool onoff)
 			pr_info("af_noise : count = %d\n", af_noise_count);
 		} else {
 			/* Check the Power Pins */
-			af_regulator = fimc_is_check_regulator_status("CAM_AF_2.8V_AP");
-			io_regulator = fimc_is_check_regulator_status("CAM_IO_1.8V_AP");
+			af_regulator = fimc_is_check_regulator_status("VDDAF_2.8V_CAM");
+			io_regulator = fimc_is_check_regulator_status("VDDIO_1.8V_CAM");
 
 			if (af_regulator && io_regulator) {
 				ret = fimc_is_af_i2c_write(af_device->client, 0x02, 0x40);
@@ -349,8 +349,8 @@ power_off:
 			fimc_is_af_i2c_config(af_device->client, false);
 		}
 
-		af_regulator = fimc_is_check_regulator_status("CAM_AF_2.8V_AP");
-		io_regulator = fimc_is_check_regulator_status("CAM_IO_1.8V_AP");
+		af_regulator = fimc_is_check_regulator_status("VDDAF_2.8V_CAM");
+		io_regulator = fimc_is_check_regulator_status("VDDIO_1.8V_CAM");
 		if (af_regulator && io_regulator) {
 			fimc_is_af_power(af_device, false);
 		} else {

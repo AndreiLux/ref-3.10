@@ -313,7 +313,7 @@ void samsung_exynos5_cal_usb3phy_tune_host(void __iomem *regs_base)
 	phyparam0 &= ~PHYPARAM0_TXVREFTUNE_MASK;
 	phyparam0 |= PHYPARAM0_TXVREFTUNE(0x1);
 	phyparam0 &= ~PHYPARAM0_SQRXTUNE_MASK;
-	phyparam0 |= PHYPARAM0_SQRXTUNE(0x7);
+	phyparam0 |= PHYPARAM0_SQRXTUNE(0x3);
 	writel(phyparam0, regs_base + EXYNOS5_DRD_PHYPARAM0);
 
 	/* Set the PHY Signal Quality Tuning Value */

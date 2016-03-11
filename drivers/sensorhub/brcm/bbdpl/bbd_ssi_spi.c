@@ -28,6 +28,10 @@
 #include "bcm477x_debug.h"
 #include "bcm477x_ssi_spi.h"
 
+#include <linux/spi/spi.h>
+extern int bcm477x_add_xfer(struct spi_transfer* xfer);
+extern struct spi_transfer* bcm477x_alloc_xfer(size_t len);
+
 extern unsigned char* bcm477x_debug_buffer(size_t* len);
 extern int bcm477x_debug_write(const unsigned char* buf, size_t len, int flag);
 extern int bcm477x_debug_transfer(unsigned char *tx, unsigned char *rx, int len, int flag);
@@ -256,17 +260,14 @@ ssize_t bbd_ssi_spi_debug_write(struct file         *filp,
             ssize_t        spi_buf_len = -__LINE__;
             unsigned char* spi_buf     = bcm477x_debug_buffer(&spi_buf_len);
             size_t         payload_len = 0;
-            int            written     = 0;
+//            int            written     = 0;
+		struct spi_transfer *xfer;
 	
             if (!spi_buf || spi_buf_len < sizeof(d))
                     return -EINVAL;
 
-//hoi test
-		{
-			int tx_size = d.size+3;
-			d.size += 16 - (tx_size % 16);
-		}
 
+#if 0
             // Send the addr+len+DMA start command:
             spi_buf_len = bbd_ssi_spi_debug_addr(&d, spi_buf);
             dprint("%s(%d)/%d\n", __func__, spi_buf_len,__LINE__);
@@ -288,7 +289,30 @@ ssize_t bbd_ssi_spi_debug_write(struct file         *filp,
             dprint("%s(%d)/%d %d\n", __func__, spi_buf_len,__LINE__, written);
             if (written != spi_buf_len)
                     return -EINVAL;
+#else
 
+//hoi test
+
+	if (d.size < 0)
+		d.size &= 0xFFFF;
+
+	if (d. size > 16) {
+		int tx_size = d.size+3;
+		d.size += 16 - (tx_size % 16);
+	}
+
+	    // Send the addr+len+DMA start command:
+	    xfer = bcm477x_alloc_xfer(100);
+	    xfer->len = bbd_ssi_spi_debug_addr(&d, (unsigned char*)xfer->tx_buf);
+	    printk("%s(%d)\n", __func__, xfer->len);
+	    bcm477x_add_xfer(xfer);
+
+	    // Send the DATA:
+	    xfer = bcm477x_alloc_xfer(d.size+32);
+	    xfer->len = bbd_ssi_spi_debug_data(&d, (unsigned char*)xfer->tx_buf, &payload_len);
+	    printk("%s(%d)\n", __func__, xfer->len);
+	    bcm477x_add_xfer(xfer);
+#endif
             d.size -= payload_len;
             d.addr += payload_len;
             d.buf  += payload_len;
@@ -393,6 +417,12 @@ static ssize_t bbd_ssi_spi_debug_data(const struct bbd_download_direct* d,
     struct bbd_ssi_spi_debug_device* p = bbd_ssi_spi_debug_ptr();
 
     int len = d->size;
+
+    if (len < 0) 
+	len &= 0xFFFF;
+
+    printk("HOI SIZE=%d %d \n", len, d->size);
+
     if (len > MAX_TX_DEBUG_BUF_SIZE)
         len = MAX_TX_DEBUG_BUF_SIZE;
 

@@ -112,6 +112,13 @@ config MUIC_MAX77843_RESET_WA
 	help
 	  If you say yes here you will get support for the MAX77843 MUIC RESET WA.
 
+config MUIC_MAX77843_SUPPORT_LANHUB
+	bool "Using MAX77843 MUIC LANHUB"
+	depends on MUIC_MAX77843
+	default n
+	help
+	  If you say yes here you will get support for the MAX77843 MUIC LANHUB.
+
 config MUIC_MAX77833
         bool "Using MAX77833 MUIC"
         depends on MFD_MAX77833 && USE_MUIC
@@ -156,3 +163,11 @@ config MUIC_HV_FORCE_LIMIT
         default n
         help
           If you say yes here you will add function of limit afc charging volatage.
+
+config MUIC_DET_JACK
+	bool "Using MAX77843 MUIC EARJACK"
+	depends on MUIC_MAX77843
+	default n
+	help
+	  If you say yes here you will get support for
+	  for earjack the MAX77843 MUIC chip .

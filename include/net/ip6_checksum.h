@@ -41,6 +41,15 @@ __sum16 csum_ipv6_magic(const struct in6_addr *saddr,
 			__wsum csum);
 #endif
 
+#ifdef CONFIG_MPTCP
+static inline __wsum ip6_compute_pseudo(struct sk_buff *skb, int proto)
+{
+	return ~csum_unfold(csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
+					    &ipv6_hdr(skb)->daddr,
+					    skb->len, proto, 0));
+}
+#endif
+
 static __inline__ __sum16 tcp_v6_check(int len,
 				   const struct in6_addr *saddr,
 				   const struct in6_addr *daddr,

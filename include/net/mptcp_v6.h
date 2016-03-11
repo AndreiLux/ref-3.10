@@ -30,12 +30,16 @@
 #ifndef _MPTCP_V6_H
 #define _MPTCP_V6_H
 
+#ifdef CONFIG_MPTCP
 #include <linux/in6.h>
 #include <net/if_inet6.h>
 
 #include <net/mptcp.h>
 
-
+struct mptcp6_request_sock {
+	struct mptcp_request_sock	mptcp6rsk_tcp;
+	struct inet6_request_sock	mptcp6rsk_inet6;
+};
 #ifdef CONFIG_MPTCP
 extern const struct inet_connection_sock_af_ops mptcp_v6_mapped;
 extern const struct inet_connection_sock_af_ops mptcp_v6_specific;
@@ -69,4 +73,5 @@ static inline int mptcp_v6_do_rcv(struct sock *meta_sk, struct sk_buff *skb)
 
 #endif /* CONFIG_MPTCP */
 
+#endif /* CONFIG_MPTCP */
 #endif /* _MPTCP_V6_H */

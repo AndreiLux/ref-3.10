@@ -754,6 +754,11 @@ struct input_keymap_entry {
 #define BTN_DPAD_LEFT		0x222
 #define BTN_DPAD_RIGHT		0x223
 
+#define KEY_NET_SEL		0x224
+#define KEY_NET_3G		0x225
+#define KEY_TKEY_WAKEUP		0x226
+#define KEY_ENDCALL		0x227
+
 #define KEY_ALS_TOGGLE		0x230	/* Ambient light sensor */
 
 #define KEY_BUTTONCONFIG		0x240	/* AL Button Configuration */

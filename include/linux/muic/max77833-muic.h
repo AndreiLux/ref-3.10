@@ -27,6 +27,7 @@
 
 #define MUIC_DEV_NAME			"muic-max77833"
 #define MUIC_PASS4			(0x05)
+#define MUIC_PASS6			(0x06)
 
 enum max77833_muic_command_rw {
 	COMMAND_READ = 0,
@@ -186,6 +187,11 @@ struct max77833_muic_data {
 	int				irq_acokb;
 	int				gpio_acokb;
 	bool				wakeup;
+
+	struct delayed_work		init_work;
+
+	int				otg_block_status;
+
 	/* muic status value */
 	u8				status1;
 	u8				status2;
@@ -196,8 +202,12 @@ struct max77833_muic_data {
 
 };
 
-/* max77833 muic register read/write related information defines. */
+/* For user popup when connect to OTG+Wireless PAD */
+#define OTG_PENDING		2
+#define OTG_BLOCKING		1
+#define POPUP_NONE		0
 
+/* max77833 muic register read/write related information defines. */
 #define REG_NONE			0xff
 #define REG_FULL_MASKING		0xff
 

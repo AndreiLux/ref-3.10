@@ -47,7 +47,7 @@
 #define MAX86906_DEFAULT_CURRENT	0x0F
 
 #define MAX86902_DEFAULT_CURRENT1	0x00 //RED
-#define MAX86902_DEFAULT_CURRENT2	0x60 //IR
+#define MAX86902_DEFAULT_CURRENT2	0xFF //IR
 #define MAX86902_DEFAULT_CURRENT3	0x60 //NONE
 #define MAX86902_DEFAULT_CURRENT4	0x60 //Violet
 
@@ -60,6 +60,7 @@
 #define CHIP_NAME				"MAX86902"
 #define MAX86900_CHIP_NAME		"MAX86900"
 #define MAX86902_CHIP_NAME		"MAX86902"
+#define MAX86906_CHIP_NAME		"MAX86906"
 #define VENDOR					"MAXIM"
 #define HRM_LDO_ON	1
 #define HRM_LDO_OFF	0
@@ -182,9 +183,11 @@ static int max86900_regulator_onoff(struct max86900_device_data *data, int onoff
 		return 0;
 	}
 
+	mutex_lock(&data->regulatorlock);
 	regulator_vdd_1p8 = regulator_get(NULL, data->vdd_1p8);
 	if (IS_ERR(regulator_vdd_1p8) || regulator_vdd_1p8 == NULL) {
 		pr_err("%s - vdd_1p8 regulator_get fail\n", __func__);
+		mutex_unlock(&data->regulatorlock);
 		return -ENODEV;
 	}
 
@@ -192,6 +195,7 @@ static int max86900_regulator_onoff(struct max86900_device_data *data, int onoff
 	if (IS_ERR(regulator_led_3p3) || regulator_led_3p3 == NULL) {
 		pr_err("%s - vdd_3p3 regulator_get fail\n", __func__);
 		regulator_put(regulator_vdd_1p8);
+		mutex_unlock(&data->regulatorlock);
 		return -ENODEV;
 	}
 	pr_info("%s - onoff = %d\n", __func__, onoff);
@@ -244,6 +248,8 @@ static int max86900_regulator_onoff(struct max86900_device_data *data, int onoff
 	done:
 	regulator_put(regulator_led_3p3);
 	regulator_put(regulator_vdd_1p8);
+
+	mutex_unlock(&data->regulatorlock);
 
 	return rc;
 }
@@ -3307,8 +3313,10 @@ static ssize_t max86900_hrm_name_show(struct device *dev,
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
 
-	if (data->part_type < PART_TYPE_MAX86902A)
+	if (data->part_type < PART_TYPE_MAX86906)
 		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86900_CHIP_NAME);
+	else if (data->part_type < PART_TYPE_MAX86902A)
+		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86906_CHIP_NAME);
 	else
 		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86902_CHIP_NAME);
 }
@@ -4217,8 +4225,10 @@ static ssize_t max86900_hrmled_name_show(struct device *dev,
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
 
-	if (data->part_type < PART_TYPE_MAX86902A)
+	if (data->part_type < PART_TYPE_MAX86906)
 		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86900_CHIP_NAME);
+	else if (data->part_type < PART_TYPE_MAX86902A)
+		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86906_CHIP_NAME);
 	else
 		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86902_CHIP_NAME);
 }
@@ -4704,13 +4714,18 @@ static void max86900_power_save_mode(struct work_struct *w)
 	if ((data->sample_cnt % 1000) == 1)
 		pr_info("%s - start.\n", __func__);
 
+	mutex_lock(&data->regulatorlock);
 	if (data->regulator_is_enable) {
-		err = max86900_write_reg(data, MAX86900_MODE_CONFIGURATION, 0x0B);
-		if (err != 0) {
-			pr_err("%s - error initializing MAX86900_MODE_CONFIGURATION!\n",
-				__func__);
+		if (data->part_type <= PART_TYPE_MAX86906) {
+			err = max86900_write_reg(data,
+				MAX86900_MODE_CONFIGURATION, 0x0B);
+			if (err != 0) {
+				pr_err("%s - error MAX86900_MODE_CONFIGURATION!\n",
+					__func__);
+			}
 		}
 	}
+	mutex_unlock(&data->regulatorlock);
 }
 
 static int max86900_parse_dt(struct max86900_device_data *data,
@@ -4835,6 +4850,7 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	mutex_init(&data->i2clock);
 	mutex_init(&data->activelock);
+	mutex_init(&data->regulatorlock);
 	data->irq_state = 0;
 	data->hr_range = 0;
 	data->skip_i2c_msleep = 1;
@@ -5152,6 +5168,7 @@ err_setup_gpio:
 err_of_node:
 	mutex_destroy(&data->i2clock);
 	mutex_destroy(&data->activelock);
+	mutex_destroy(&data->regulatorlock);
 	kfree(data);
 	pr_err("%s failed\n", __func__);
 done:

@@ -356,9 +356,9 @@ static int max77833_i2c_probe(struct i2c_client *i2c,
 	max77833_write_fg(max77833->fuelgauge, 0x00D6, 0x00E5);
 	max77833_write_fg(max77833->fuelgauge, 0x00D8, 0x00D2);
 	max77833_read_fg(max77833->fuelgauge, 0x04DC, &reg16_data);
-	max77833->pmic_rev_pass5 = ((reg16_data & 0xFF) == 0x52) ? true : false;
+	max77833->pmic_rev_pass5 = ((reg16_data & 0xFF) >= 0x52) ? true : false;
 	pr_info("%s:%s [0x04DC : 0x%04x]\n", __func__,
-		(max77833->pmic_rev_pass5) ? "PASS5" : "not PASS5", reg16_data);
+		(max77833->pmic_rev_pass5) ? "over PASS5" : "under PASS5", reg16_data);
 
 	ret = max77833_irq_init(max77833);
 

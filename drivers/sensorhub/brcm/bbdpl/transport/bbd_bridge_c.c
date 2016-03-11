@@ -40,6 +40,22 @@ static void BbdBridge_OnRpcReceived(struct BbdBridge *p,
                 unsigned char *pRpcPayload, unsigned short usRpcLen,
                 unsigned char *pPacket,     unsigned short usPacketLen);
 
+#if 0
+//HOST -> MCU
+u64 bcm477x_host_tx_lhd;
+u64 bcm477x_host_tx_ssp;
+u64 bcm477x_host_tx_rpc;
+u64 bcm477x_host_tx_tl;
+u64 bcm477x_host_tx_ssi;
+
+//MCU -> HOST
+u64 bcm477x_host_rx_ssi;
+u64 bcm477x_host_rx_tl;
+u64 bcm477x_host_rx_rpc;
+u64 bcm477x_host_rx_ssp;
+u64 bcm477x_host_rx_lhd;
+#endif
+
 /*------------------------------------------------------------------------------
  *
  *      Constructor()
@@ -180,6 +196,8 @@ void BbdBridge_OnRpcReceived(struct BbdBridge *p,
     struct sStreamDecoder str;
     struct sRpcDecoder*   pDecoder = p->m_pRpcDecoderHead;
 
+    bbd_update_stat(STAT_RX_RPC, usPacketLen);
+
     StreamDecoder_StreamDecoder(&str, pRpcPayload, usRpcLen);
 
     /* Check our one decoder (sensors) */
@@ -195,11 +213,13 @@ void BbdBridge_OnRpcReceived(struct BbdBridge *p,
         {
             p->callback->OnException(p->callback,__FILE__, __LINE__);
         }
+	bbd_update_stat(STAT_RX_SSP, usPacketLen);
     }
     else
     {
         /* Send this data upwards, to the LHD. */
         p->callback->OnDataToLhd(p->callback, pPacket, usPacketLen);
+	bbd_update_stat(STAT_RX_LHD, usPacketLen);
     }
 }
 
@@ -238,6 +258,8 @@ bool BbdBridge_SendSensorData(struct BbdBridge* p,
 			    p->m_aucTransactionPayload,
 			    p->m_uiTransactionPayloadSize);
 	    p->m_uiTransactionPayloadSize = 0;
+	    bbd_update_stat(STAT_TX_SSP, size);
+	    bbd_update_stat(STAT_TX_RPC, size);
 
 	    	BbdEngine_Unlock();
 	    return true;
@@ -293,7 +315,8 @@ void BbdBridge_SendPacket(struct BbdBridge *p, unsigned char* pkt, size_t len)
     }
 
     BbdTransportLayer_SendPacket(&p->m_otTL, pkt, len);
-
+    bbd_update_stat(STAT_TX_LHD, len);
+    bbd_update_stat(STAT_TX_RPC, len);
 unlock_exit:
     BbdEngine_Unlock();
 }
@@ -311,6 +334,8 @@ bool BbdBridge_SendReliablePacket(struct BbdBridge *p,
 
     if (BbdEngine_Lock(__LINE__)) {
         result = BbdTransportLayer_SendReliablePacket(&p->m_otTL, trans);
+	bbd_update_stat(STAT_TX_LHD, trans->usSize);
+	bbd_update_stat(STAT_TX_RPC, trans->usSize);
         BbdEngine_Unlock();
     }
 exit:
@@ -352,6 +377,7 @@ void BbdBridge_SetData(struct BbdBridge *p,
     if (BbdTransportLayer_IsPassThrough(&p->m_otTL))
     {
         p->callback->OnDataToLhd(p->callback, pucData, usSize);
+	bbd_update_stat(STAT_RX_LHD, usSize);
     }
     else
     {
@@ -360,6 +386,8 @@ void BbdBridge_SetData(struct BbdBridge *p,
 
 unlock_exit:
     BbdEngine_Unlock();
+
+    bbd_update_stat(STAT_RX_TL, usSize);
 }
 
 /* Provide a StreamEncoder that can be used when building a transaction */

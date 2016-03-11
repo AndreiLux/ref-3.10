@@ -73,7 +73,7 @@ static struct modem_shared *create_modem_shared_data(
 		(MAX_MIF_SEPA_SIZE * 2), GFP_KERNEL);
 	if (!msd->storage.addr) {
 		mif_err("IPC logger buff alloc failed!!\n");
-		kfree(msd);
+		devm_kfree(dev, msd);
 		return NULL;
 	}
 	memset(msd->storage.addr, 0, size + (MAX_MIF_SEPA_SIZE * 2));
@@ -614,6 +614,11 @@ static int modem_probe(struct platform_device *pdev)
 	/* create io deivces and connect to modemctl device */
 	size = sizeof(struct io_device *) * pdata->num_iodevs;
 	iod = kzalloc(size, GFP_KERNEL);
+	if (!iod) {
+		mif_err("ERR! kzalloc fail\n");
+		goto free_mc;
+	}
+
 	for (i = 0; i < pdata->num_iodevs; i++) {
 		iod[i] = create_io_device(pdev, &pdata->iodevs[i], msd,
 					  modemctl, pdata);

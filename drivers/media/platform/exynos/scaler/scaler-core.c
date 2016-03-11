@@ -2183,8 +2183,15 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	sc_hwset_src_imgsize(sc, s_frame);
 	sc_hwset_dst_imgsize(sc, d_frame);
 
-	h_ratio = SCALE_RATIO(s_frame->crop.width, d_frame->crop.width);
-	v_ratio = SCALE_RATIO(s_frame->crop.height, d_frame->crop.height);
+	if ((ctx->flip_rot_cfg & SCALER_ROT_90) &&
+		(ctx->dnoise_ft.strength > SC_FT_BLUR)) {
+		h_ratio = SCALE_RATIO(s_frame->crop.height, d_frame->crop.width);
+		v_ratio = SCALE_RATIO(s_frame->crop.width, d_frame->crop.height);
+	} else {
+		h_ratio = SCALE_RATIO(s_frame->crop.width, d_frame->crop.width);
+		v_ratio = SCALE_RATIO(s_frame->crop.height, d_frame->crop.height);
+	}
+
 	pre_h_ratio = 0;
 	pre_v_ratio = 0;
 
@@ -2217,7 +2224,11 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	sc_hwset_src_addr(sc, &s_frame->addr);
 	sc_hwset_dst_addr(sc, &d_frame->addr);
 
-	sc_hwset_flip_rotation(sc, 0);
+	if ((ctx->flip_rot_cfg & SCALER_ROT_MASK) &&
+		(ctx->dnoise_ft.strength > SC_FT_BLUR))
+		sc_hwset_flip_rotation(sc, ctx->flip_rot_cfg);
+	else
+		sc_hwset_flip_rotation(sc, 0);
 
 	sc_hwset_start(sc);
 
@@ -2419,7 +2430,11 @@ static int sc_run_next_job(struct sc_dev *sc)
 	if (ctx->bl_op)
 		sc_hwset_blend(sc, ctx->bl_op, ctx->pre_multi, ctx->g_alpha);
 
-	sc_hwset_flip_rotation(sc, ctx->flip_rot_cfg);
+	if (ctx->dnoise_ft.strength > SC_FT_BLUR)
+		sc_hwset_flip_rotation(sc, 0);
+	else
+		sc_hwset_flip_rotation(sc, ctx->flip_rot_cfg);
+
 	sc_hwset_int_en(sc);
 
 	set_bit(DEV_RUN, &sc->state);

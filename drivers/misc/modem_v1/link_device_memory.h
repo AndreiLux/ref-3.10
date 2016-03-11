@@ -281,6 +281,11 @@ enum mem_ipc_mode {
 };
 #endif
 
+#ifdef CONFIG_LINK_POWER_MANAGEMENT
+#define	REFCNT_SBD	0x01
+#define	REFCNT_IOSM	0x02
+#endif
+
 /**
 @brief		the structure for a memory-type link device
 */
@@ -415,10 +420,13 @@ struct mem_link_device {
 	unsigned int gpio_ipc_int2cp;		/* AP-to-CP send signal GPIO */
 	spinlock_t sig_lock;
 
+	wait_queue_head_t wq;
+
 	void (*start_pm)(struct mem_link_device *mld);
 	void (*stop_pm)(struct mem_link_device *mld);
-	void (*forbid_cp_sleep)(struct mem_link_device *mld);
-	void (*permit_cp_sleep)(struct mem_link_device *mld);
+	void (*forbid_cp_sleep)(struct mem_link_device *mld, int flag);
+	bool (*forbid_cp_sleep_wait)(struct mem_link_device *mld, int flag);
+	void (*permit_cp_sleep)(struct mem_link_device *mld, int flag);
 	bool (*link_active)(struct mem_link_device *mld);
 #endif
 

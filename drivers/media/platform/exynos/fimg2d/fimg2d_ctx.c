@@ -739,7 +739,7 @@ int fimg2d_add_command(struct fimg2d_control *ctrl,
 		blt->dst = &cmd->image[IDST];
 	}
 
-	fimg2d_dump_command(cmd);
+	fimg2d_dump_command(cmd, false);
 
 	perf_start(cmd, PERF_TOTAL);
 

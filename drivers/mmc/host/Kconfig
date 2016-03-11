@@ -525,7 +525,7 @@ config MMC_DW
 	  block, this provides host support for SD and MMC interfaces, in both
 	  PIO and external DMA modes.
 
-config FMP
+config MMC_FMP
 	bool "Flash Memory Protector Support"
 	depends on MMC_DW
 	help
@@ -535,14 +535,14 @@ config FMP
 
 config MMC_DW_FMP_DM_CRYPT
 	bool "FMP acceleration for DM_CRYPT"
-	depends on DM_CRYPT && FMP
+	depends on DM_CRYPT && MMC_FMP
 	help
 	  This option accelerates dm-crypt by using the flash
 	  memory protector feature of the eMMC controller.
 
 config MMC_DW_FMP_ECRYPT_FS
 	bool "FMP acceleration for eCrypt filesystem"
-	depends on ECRYPT_FS && FMP
+	depends on ECRYPT_FS && MMC_FMP
 	help
 	  This option activates flash memory protector of the eMMC controller to
 	  accelerate eCryptfs.

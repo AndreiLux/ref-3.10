@@ -311,6 +311,7 @@ struct es_datablock_device uart_datablockdev = {
 	.read = es705_uart_read,
 	.close = es705_uart_close,
 	.wait = es705_uart_wait,
+	.config = es705_uart_config,
 	.rdb = es705_uart_dev_rdb,
 	.wdb = es705_uart_dev_wdb,
 	.intf = ES705_UART_INTF,

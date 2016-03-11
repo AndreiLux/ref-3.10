@@ -30,6 +30,7 @@
 #ifndef __NETNS_MPTCP_H__
 #define __NETNS_MPTCP_H__
 
+#ifdef CONFIG_MPTCP
 #include <linux/compiler.h>
 
 enum {
@@ -40,5 +41,6 @@ enum {
 struct netns_mptcp {
 	void *path_managers[MPTCP_PM_MAX];
 };
+#endif /* CONFIG_MPTCP */
 
 #endif /* __NETNS_MPTCP_H__ */

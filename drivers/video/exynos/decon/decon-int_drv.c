@@ -194,6 +194,61 @@ int decon_int_get_clocks(struct decon_device *decon)
 		return -ENODEV;
 	}
 
+	decon->res.disp_pll = clk_get(decon->dev, "disp_pll");
+	if (IS_ERR_OR_NULL(decon->res.disp_pll)) {
+		decon_err("failed to get disp_pll\n");
+		return -ENODEV;
+	}
+
+	decon->res.m_sclk_decon_eclk = clk_get(decon->dev, "m_sclk_decon0_eclk");
+	if (IS_ERR_OR_NULL(decon->res.m_sclk_decon_eclk)) {
+		decon_err("failed to get m_sclk_decon0_eclk\n");
+		return -ENODEV;
+	}
+
+	decon->res.mout_bus1_pll_top0 = clk_get(decon->dev, "mout_bus1_pll_top0");
+	if (IS_ERR_OR_NULL(decon->res.mout_bus1_pll_top0)) {
+		decon_err("failed to get mout_bus1_pll_top0\n");
+		return -ENODEV;
+	}
+
+	decon->res.dout_sclk_decon_eclk = clk_get(decon->dev,
+			"dout_sclk_decon_int_eclk");
+	if (IS_ERR_OR_NULL(decon->res.dout_sclk_decon_eclk)) {
+		decon_err("failed to get dout_sclk_decon_int_eclk\n");
+		return -ENODEV;
+	}
+
+	decon->res.m_decon_eclk = clk_get(decon->dev, "m_decon0_eclk");
+	if (IS_ERR_OR_NULL(decon->res.m_decon_eclk)) {
+		decon_err("failed to get m_decon0_eclk\n");
+		return -ENODEV;
+	}
+
+	decon->res.um_decon_eclk = clk_get(decon->dev, "um_decon0_eclk");
+	if (IS_ERR_OR_NULL(decon->res.um_decon_eclk)) {
+		decon_err("failed to get um_decon0_eclk\n");
+		return -ENODEV;
+	}
+
+	decon->res.d_decon_eclk = clk_get(decon->dev, "d_decon0_eclk");
+	if (IS_ERR_OR_NULL(decon->res.d_decon_eclk)) {
+		decon_err("failed to get d_decon0_eclk\n");
+		return -ENODEV;
+	}
+
+	decon->res.m_decon_vclk = clk_get(decon->dev, "m_decon0_vclk");
+	if (IS_ERR_OR_NULL(decon->res.m_decon_vclk)) {
+		decon_err("failed to get m_decon0_vclk\n");
+		return -ENODEV;
+	}
+
+	decon->res.d_decon_vclk = clk_get(decon->dev, "d_decon0_vclk");
+	if (IS_ERR_OR_NULL(decon->res.d_decon_vclk)) {
+		decon_err("failed to get d_decon0_vclk\n");
+		return -ENODEV;
+	}
+
 	return 0;
 }
 
@@ -215,13 +270,14 @@ void decon_int_set_clocks(struct decon_device *decon)
 		break;
 	case (2560 * 1440):
 		/* NOTE: DPLL, ACLK_DISP_400 & PCLK_DISP must be set by boot loader */
-		decon_clk_set_rate(dev, "disp_pll", 127 * MHZ);
-		decon_clk_set_parent(dev, "m_sclk_decon0_eclk", "mout_bus1_pll_top0");
-		decon_clk_set_rate(dev, "dout_sclk_decon_int_eclk", 168 * MHZ);
-		decon_clk_set_parent(dev, "m_decon0_eclk", "um_decon0_eclk");
-		decon_clk_set_rate(dev, "d_decon0_eclk", 168 * MHZ);
-		decon_clk_set_parent(dev, "m_decon0_vclk", "disp_pll");
-		decon_clk_set_rate(dev, "d_decon0_vclk", 127 * MHZ);
+		clk_set_rate(decon->res.disp_pll, 127 * MHZ);
+		clk_set_parent(decon->res.m_sclk_decon_eclk,
+				decon->res.mout_bus1_pll_top0);
+		clk_set_rate(decon->res.dout_sclk_decon_eclk, 168 * MHZ);
+		clk_set_parent(decon->res.m_decon_eclk, decon->res.um_decon_eclk);
+		clk_set_rate(decon->res.d_decon_eclk, 168 * MHZ);
+		clk_set_parent(decon->res.m_decon_vclk, decon->res.disp_pll);
+		clk_set_rate(decon->res.d_decon_vclk, 127 * MHZ);
 		break;
 	case (1920 * 1080):
 		/* NOTE: DPLL, ACLK_DISP_400 & PCLK_DISP must be set by boot loader */
@@ -1020,6 +1076,7 @@ static int decon_enter_lpd(struct decon_device *decon)
 	decon->state = DECON_STATE_LPD_ENT_REQ;
 	decon_disable(decon);
 	decon->state = DECON_STATE_LPD;
+	decon->tracing_mark_write( decon->systrace_pid, 'C', "decon_LPD", 1 );
 	exynos_ss_printk("%s -\n", __func__);
 
 	DISP_SS_EVENT_LOG(DISP_EVT_ENTER_LPD, &decon->sd, start);
@@ -1053,6 +1110,7 @@ int decon_exit_lpd(struct decon_device *decon)
 	decon_enable(decon);
 	decon_lpd_trig_reset(decon);
 	decon->state = DECON_STATE_ON;
+	decon->tracing_mark_write( decon->systrace_pid, 'C', "decon_LPD", 0 );
 	exynos_ss_printk("%s -\n", __func__);
 
 	DISP_SS_EVENT_LOG(DISP_EVT_EXIT_LPD, &decon->sd, start);

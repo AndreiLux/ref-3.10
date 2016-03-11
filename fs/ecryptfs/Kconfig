@@ -48,3 +48,10 @@ config SDP
 config SDP_KEY_DUMP
 	bool "SDP KEY DUMP"
 	default n
+	
+config DLP
+	bool "Enables DLP"
+	default n
+	depends on SDP
+	help
+	Data Loss Prevention	

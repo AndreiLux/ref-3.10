@@ -715,62 +715,6 @@ static unsigned char aid1005[3] = {
 	0xB2, 0x03, 0x10
 };
 
-static unsigned char aid1005_1[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_2[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_3[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_4[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_5[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_6[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_7[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_8[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_9[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_10[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_11[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_12[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_13[3] = {
-	0xB2, 0x03, 0x10
-};
-
-static unsigned char aid1005_14[3] = {
-	0xB2, 0x03, 0x10
-};
-
 
 static unsigned char elv1 [3] = {
 	0xB6, 0x8C, 0x11
@@ -1593,7 +1537,7 @@ static signed char RDdrtbl143nit[10] = {0, 4, 2, 1, 1, 1, 2, 3, 1, 0};
 static signed char RDdrtbl152nit[10] = {0, 4, 2, 2, 1, 1, 2, 4, 2, 0};
 static signed char RDdrtbl162nit[10] = {0, 3, 1, 1, 0, 1, 2, 4, 1, 0};
 static signed char RDdrtbl172nit[10] = {0, 5, 1, 1, 0, 1, 1, 3, 1, 0};
-static signed char RDdrtbl183nit[10] = {0, 2, 2, 1, 1, 1, 2, 4, 1, 0};
+//static signed char RDdrtbl183nit[10] = {0, 2, 2, 1, 1, 1, 2, 4, 1, 0};
 static signed char RDdrtbl195nit[10] = {0, 5, 1, 1, 1, 1, 1, 3, 1, 0};
 static signed char RDdrtbl207nit[10] = {0, 4, 1, 1, 1, 1, 1, 3, 1, 0};
 static signed char RDdrtbl220nit[10] = {0, 1, 1, 0, 1, 1, 1, 3, 1, 0};
@@ -1659,7 +1603,7 @@ static signed char RDdctbl143nit[30] = {0, 0, 0, 0, 0, 0,-4, 2, -6, -1, 1, -4, 0
 static signed char RDdctbl152nit[30] = {0, 0, 0, 0, 0, 0,-2, 3, -6, -1, 1, -3, 0, 0, 0, 0, 0, 0, -1, 0, -1, 1, 0, 1, 1, 0, 1, 1, 0, 1};
 static signed char RDdctbl162nit[30] = {0, 0, 0, 0, 0, 0,-4, 2, -6, 0, 1, -2, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1};
 static signed char RDdctbl172nit[30] = {0, 0, 0, 0, 0, 0,-3, 2, -6, 0, 1, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1};
-static signed char RDdctbl183nit[30] = {0, 0, 0, 0, 0, 0,-3, 2, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1};
+//static signed char RDdctbl183nit[30] = {0, 0, 0, 0, 0, 0,-3, 2, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1};
 static signed char RDdctbl195nit[30] = {0, 0, 0, 0, 0, 0,-2, 2, -4, 0, 0, -2, 0, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1};
 static signed char RDdctbl207nit[30] = {0, 0, 0, 0, 0, 0,-2, 1, -4, -1, 0, -2, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1};
 static signed char RDdctbl220nit[30] = {0, 0, 0, 0, 0, 0,-1, 1, -2, 0, 0, -2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1710,30 +1654,192 @@ static signed char aid5085[3] = {0xB2, 0x1E, 0x50};
 static signed char aid4732[3] = {0xB2, 0xC3, 0x40};
 static signed char aid4344[3] = {0xB2, 0x5F, 0x40};
 static signed char aid3956[3] = {0xB2, 0xFB, 0x30};
-
 static signed char aid3637[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_1[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_2[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_3[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_4[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_5[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_6[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_7[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_8[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_9[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_10[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_11[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_12[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_13[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_14[3] = {0xB2, 0xA9, 0x30};
-static signed char aid3637_15[3] = {0xB2, 0xA9, 0x30};
-
 static signed char aid3168[3] = {0xB2, 0x30, 0x30};
 static signed char aid2659[3] = {0xB2, 0xAD, 0x20};
 static signed char aid2186[3] = {0xB2, 0x33, 0x20};
 static signed char aid1580[3] = {0xB2, 0x97, 0x10};
 //	static signed char aid1005[3] = {0xB2, 0x03, 0x10};  already defined in tulip parameter
 
+
+/* A3 parameter */
+
+static signed char A3rtbl2nit[10] = {0, 26, 26, 30, 26, 23, 23, 13, 8, 0};
+static signed char A3rtbl3nit[10] = {0, 26, 26, 27, 23, 20, 17, 11, 7, 0};
+static signed char A3rtbl4nit[10] = {0, 26, 26, 24, 20, 18, 15, 10, 7, 0};
+static signed char A3rtbl5nit[10] = {0, 26, 26, 24, 20, 18, 16, 11, 7, 0};
+static signed char A3rtbl6nit[10] = {0, 11, 25, 22, 19, 16, 15, 10, 7, 0};
+static signed char A3rtbl7nit[10] = {0, 23, 24, 21, 18, 15, 13, 9, 7, 0};
+static signed char A3rtbl8nit[10] = {0, 14, 23, 20, 16, 15, 12, 8, 6, 0};
+static signed char A3rtbl9nit[10] = {0, 20, 21, 18, 15, 14, 12, 8, 6, 0};
+static signed char A3rtbl10nit[10] = {0, 22, 21, 18, 15, 13, 11, 7, 5, 0};
+static signed char A3rtbl11nit[10] = {0, 23, 20, 17, 13, 12, 10, 7, 5, 0};
+static signed char A3rtbl12nit[10] = {0, 18, 19, 17, 13, 12, 10, 6, 5, 0};
+static signed char A3rtbl13nit[10] = {0, 20, 19, 16, 12, 11, 9, 6, 5, 0};
+static signed char A3rtbl14nit[10] = {0, 22, 18, 15, 12, 11, 9, 5, 4, 0};
+static signed char A3rtbl15nit[10] = {0, 20, 18, 15, 12, 10, 8, 5, 4, 0};
+static signed char A3rtbl16nit[10] = {0, 20, 17, 15, 11, 10, 8, 5, 4, 0};
+static signed char A3rtbl17nit[10] = {0, 17, 17, 14, 11, 10, 8, 5, 4, 0};
+static signed char A3rtbl19nit[10] = {0, 17, 16, 13, 10, 9, 7, 5, 4, 0};
+static signed char A3rtbl20nit[10] = {0, 19, 15, 13, 10, 8, 7, 5, 4, 0};
+static signed char A3rtbl21nit[10] = {0, 18, 15, 13, 9, 9, 7, 4, 4, 0};
+static signed char A3rtbl22nit[10] = {0, 18, 15, 12, 9, 8, 7, 4, 4, 0};
+static signed char A3rtbl24nit[10] = {0, 18, 14, 12, 9, 8, 6, 4, 4, 0};
+static signed char A3rtbl25nit[10] = {0, 16, 14, 11, 9, 7, 6, 4, 4, 0};
+static signed char A3rtbl27nit[10] = {0, 13, 14, 11, 8, 7, 6, 4, 4, 0};
+static signed char A3rtbl29nit[10] = {0, 15, 13, 10, 8, 7, 6, 4, 4, 0};
+static signed char A3rtbl30nit[10] = {0, 12, 13, 10, 8, 7, 6, 4, 4, 0};
+static signed char A3rtbl32nit[10] = {0, 11, 12, 10, 8, 6, 5, 4, 4, 0};
+static signed char A3rtbl34nit[10] = {0, 12, 12, 9, 7, 6, 5, 4, 4, 0};
+static signed char A3rtbl37nit[10] = {0, 14, 11, 9, 7, 6, 5, 4, 3, 0};
+static signed char A3rtbl39nit[10] = {0, 12, 11, 9, 7, 6, 5, 4, 3, 0};
+static signed char A3rtbl41nit[10] = {0, 9, 11, 8, 7, 6, 5, 4, 3, 0};
+static signed char A3rtbl44nit[10] = {0, 14, 10, 8, 6, 6, 5, 4, 3, 0};
+static signed char A3rtbl47nit[10] = {0, 11, 10, 8, 6, 5, 5, 4, 3, 0};
+static signed char A3rtbl50nit[10] = {0, 13, 9, 7, 6, 5, 4, 3, 3, 0};
+static signed char A3rtbl53nit[10] = {0, 10, 9, 7, 6, 5, 4, 3, 3, 0};
+static signed char A3rtbl56nit[10] = {0, 9, 9, 7, 5, 5, 4, 2, 3, 0};
+static signed char A3rtbl60nit[10] = {0, 11, 8, 7, 5, 4, 4, 2, 3, 0};
+static signed char A3rtbl64nit[10] = {0, 8, 8, 6, 5, 4, 3, 2, 3, 0};
+static signed char A3rtbl68nit[10] = {0, 10, 7, 6, 5, 4, 3, 2, 3, 0};
+static signed char A3rtbl72nit[10] = {0, 10, 7, 6, 5, 4, 3, 2, 3, 0};
+static signed char A3rtbl77nit[10] = {0, 9, 7, 5, 5, 4, 3, 2, 2, 0};
+static signed char A3rtbl82nit[10] = {0, 7, 8, 6, 5, 4, 3, 2, 2, 0};
+static signed char A3rtbl87nit[10] = {0, 10, 6, 6, 5, 4, 4, 3, 2, 0};
+static signed char A3rtbl93nit[10] = {0, 7, 7, 5, 5, 3, 3, 2, 1, 0};
+static signed char A3rtbl98nit[10] = {0, 10, 6, 5, 4, 3, 3, 2, 1, 0};
+static signed char A3rtbl105nit[10] = {0, 5, 6, 5, 5, 3, 3, 3, 0, 0};
+static signed char A3rtbl110nit[10] = {0, 10, 6, 5, 4, 3, 3, 3, 0, 0};
+static signed char A3rtbl119nit[10] = {0, 7, 6, 4, 3, 3, 2, 2, 0, 0};
+static signed char A3rtbl126nit[10] = {0, 7, 6, 4, 4, 3, 3, 2, 0, 0};
+static signed char A3rtbl134nit[10] = {0, 10, 5, 4, 3, 3, 2, 3, 0, 0};
+static signed char A3rtbl143nit[10] = {0, 9, 5, 4, 3, 3, 2, 3, 0, 0};
+static signed char A3rtbl152nit[10] = {0, 5, 6, 4, 3, 3, 3, 3, 0, 0};
+static signed char A3rtbl162nit[10] = {0, 9, 4, 4, 3, 3, 2, 3, 1, 0};
+static signed char A3rtbl172nit[10] = {0, 9, 4, 4, 2, 2, 2, 2, 1, 0};
+static signed char A3rtbl183nit[10] = {0, 7, 5, 4, 2, 2, 2, 3, 1, 0};
+static signed char A3rtbl195nit[10] = {0, 6, 5, 4, 2, 2, 2, 2, 1, 0};
+static signed char A3rtbl207nit[10] = {0, 9, 4, 3, 2, 2, 2, 2, 1, 0};
+static signed char A3rtbl220nit[10] = {0, 5, 4, 3, 2, 1, 1, 1, 0, 0};
+static signed char A3rtbl234nit[10] = {0, 3, 4, 3, 2, 1, 1, 1, 0, 0};
+static signed char A3rtbl249nit[10] = {0, 6, 3, 3, 1, 1, 1, 1, 0, 0};
+static signed char A3rtbl265nit[10] = {0, 3, 4, 3, 2, 1, 1, 2, 0, 0};
+static signed char A3rtbl282nit[10] = {0, 2, 3, 3, 1, 1, 0, 1, 0, 0};
+static signed char A3rtbl300nit[10] = {0, 4, 3, 2, 2, 1, 0, 1, 1, 0};
+static signed char A3rtbl316nit[10] = {0, 3, 3, 2, 1, 0, 0, 0, 0, 0};
+static signed char A3rtbl333nit[10] = {0, 4, 3, 2, 1, 1, -1, 1, 1, 0};
+static signed char A3rtbl360nit[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+
+static signed char A3ctbl2nit[30] = {0, 0, 0, 0, 0, 0,2, 1, -3, -4, 3, -6, -6, 3, -6, -10, 5, -10, -8, 2, -6, -3, 0, -3, -3, 0, -3, -6, 1, -6};
+static signed char A3ctbl3nit[30] = {0, 0, 0, 0, 0, 0,2, 1, -3, -4, 3, -6, -7, 3, -7, -7, 4, -8, -7, 2, -6, -3, 0, -3, -2, 0, -2, -4, 1, -5};
+static signed char A3ctbl4nit[30] = {0, 0, 0, 0, 0, 0,2, 1, -3, -4, 3, -6, -7, 4, -8, -7, 4, -8, -6, 2, -4, -3, 0, -3, -1, 0, -2, -3, 1, -4};
+static signed char A3ctbl5nit[30] = {0, 0, 0, 0, 0, 0,2, 1, -3, -3, 2, -6, -7, 4, -9, -6, 3, -7, -5, 2, -4, -3, 0, -3, -1, 0, -2, -3, 0, -4};
+static signed char A3ctbl6nit[30] = {0, 0, 0, 0, 0, 0,0, 2, -6, -6, 4, -8, -4, 3, -8, -7, 3, -8, -5, 2, -4, -1, 0, -2, -1, 0, -2, -2, 0, -3};
+static signed char A3ctbl7nit[30] = {0, 0, 0, 0, 0, 0,0, 3, -8, -6, 3, -8, -3, 3, -8, -7, 3, -8, -5, 2, -4, -1, 0, -2, 0, 0, -1, -2, 0, -3};
+static signed char A3ctbl8nit[30] = {0, 0, 0, 0, 0, 0,0, 3, -7, -5, 3, -7, -4, 4, -9, -5, 2, -6, -5, 2, -5, -1, 0, -2, 0, 0, -1, -1, 0, -2};
+static signed char A3ctbl9nit[30] = {0, 0, 0, 0, 0, 0,0, 3, -6, -6, 4, -9, -3, 4, -8, -5, 3, -6, -4, 2, -4, -1, 0, -2, 0, 0, -1, 0, 0, -1};
+static signed char A3ctbl10nit[30] = {0, 0, 0, 0, 0, 0,-3, 3, -8, -4, 4, -8, -3, 3, -7, -5, 2, -6, -4, 1, -4, -1, 0, -1, -1, 0, -2, 0, 0, 0};
+static signed char A3ctbl11nit[30] = {0, 0, 0, 0, 0, 0,-2, 4, -10, -4, 4, -8, -4, 3, -8, -3, 2, -5, -4, 2, -4, -1, 0, -1, 0, 0, -1, 0, 0, 0};
+static signed char A3ctbl12nit[30] = {0, 0, 0, 0, 0, 0,-3, 5, -11, -3, 4, -8, -3, 3, -6, -4, 2, -6, -4, 1, -4, 0, 0, -1, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl13nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -4, 4, -9, -2, 3, -6, -4, 2, -6, -3, 1, -3, 0, 0, -1, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl14nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -3, 5, -10, -3, 3, -6, -3, 2, -5, -3, 1, -3, 0, 0, -1, 0, 0, 0, 1, 0, 1};
+static signed char A3ctbl15nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -3, 5, -10, -4, 2, -6, -4, 2, -6, -3, 1, -3, 0, 0, -1, 0, 0, 0, 1, 0, 1};
+static signed char A3ctbl16nit[30] = {0, 0, 0, 0, 0, 0,-3, 5, -12, -3, 3, -8, -4, 3, -6, -3, 2, -5, -3, 1, -4, 0, 0, 0, 0, 0, 0, 1, 0, 1};
+static signed char A3ctbl17nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -9, -3, 5, -10, -3, 2, -6, -4, 2, -5, -2, 1, -3, 0, 0, 0, -1, 0, -1, 2, 0, 2};
+static signed char A3ctbl19nit[30] = {0, 0, 0, 0, 0, 0,-5, 3, -8, -3, 4, -10, -4, 2, -6, -4, 2, -5, -1, 1, -2, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl20nit[30] = {0, 0, 0, 0, 0, 0,-5, 5, -12, -2, 4, -8, -4, 2, -5, -3, 1, -4, -1, 1, -2, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl21nit[30] = {0, 0, 0, 0, 0, 0,-6, 6, -12, -2, 3, -8, -4, 2, -5, -3, 2, -4, -2, 0, -2, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl22nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -4, 4, -10, -4, 2, -6, -3, 1, -4, -1, 0, -1, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl24nit[30] = {0, 0, 0, 0, 0, 0,-4, 6, -13, -4, 3, -8, -4, 2, -6, -3, 1, -4, -1, 1, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl25nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -10, -4, 4, -9, -5, 2, -5, -3, 1, -4, -1, 1, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl27nit[30] = {0, 0, 0, 0, 0, 0,-5, 4, -10, -4, 3, -8, -4, 2, -5, -3, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl29nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -4, 3, -8, -3, 2, -4, -3, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl30nit[30] = {0, 0, 0, 0, 0, 0,-3, 5, -10, -5, 3, -8, -2, 2, -4, -3, 1, -3, -1, 0, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl32nit[30] = {0, 0, 0, 0, 0, 0,-4, 6, -14, -6, 3, -8, -3, 1, -4, -3, 1, -3, -1, 0, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl34nit[30] = {0, 0, 0, 0, 0, 0,-2, 4, -10, -5, 3, -8, -3, 2, -4, -2, 1, -3, -1, 0, -2, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl37nit[30] = {0, 0, 0, 0, 0, 0,-3, 6, -12, -4, 3, -6, -2, 2, -4, -3, 1, -3, -1, 0, -1, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl39nit[30] = {0, 0, 0, 0, 0, 0,-3, 5, -12, -5, 2, -6, -2, 2, -4, -2, 1, -2, -1, 0, -1, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl41nit[30] = {0, 0, 0, 0, 0, 0,-2, 4, -9, -4, 3, -6, -2, 2, -4, -2, 1, -2, -1, 0, -1, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl44nit[30] = {0, 0, 0, 0, 0, 0,-4, 6, -13, -4, 2, -6, -4, 1, -4, -2, 0, -2, -1, 0, -1, 0, 0, -1, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl47nit[30] = {0, 0, 0, 0, 0, 0,-3, 5, -11, -4, 2, -5, -4, 1, -4, -1, 0, -2, -1, 0, -1, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl50nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -12, -4, 2, -6, -3, 1, -3, -1, 1, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl53nit[30] = {0, 0, 0, 0, 0, 0,-2, 5, -10, -5, 2, -6, -3, 1, -3, -1, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2};
+static signed char A3ctbl56nit[30] = {0, 0, 0, 0, 0, 0,-3, 4, -10, -4, 2, -5, -3, 1, -4, -2, 0, -2, -1, 0, -1, 0, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl60nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -12, -3, 2, -4, -2, 1, -2, -1, 0, -1, -1, 0, -1, 0, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl64nit[30] = {0, 0, 0, 0, 0, 0,-3, 4, -8, -5, 2, -6, -2, 1, -2, -1, 0, -1, -1, 0, -1, 0, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl68nit[30] = {0, 0, 0, 0, 0, 0,-3, 5, -10, -3, 2, -4, -2, 1, -2, -1, 0, -2, -1, 0, 0, 0, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl72nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -4, 2, -5, -2, 0, -2, -1, 0, -2, -1, 0, 0, 0, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl77nit[30] = {0, 0, 0, 0, 0, 0,-3, 4, -9, -4, 2, -5, -1, 1, -2, 0, 0, 0, -1, 0, -1, 0, 0, 0, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl82nit[30] = {0, 0, 0, 0, 0, 0,-4, 3, -6, -3, 1, -4, -2, 0, -2, -1, 0, -1, -1, 0, -1, 0, 0, 0, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl87nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -8, -4, 1, -4, -1, 1, -2, 0, 0, 0, -1, 0, -1, -1, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl93nit[30] = {0, 0, 0, 0, 0, 0,-4, 2, -6, -3, 1, -4, -3, 0, -2, 0, 0, -1, 0, 0, 0, 0, 0, -1, 2, 0, 2, 2, 0, 2};
+static signed char A3ctbl98nit[30] = {0, 0, 0, 0, 0, 0,-5, 3, -8, -4, 1, -4, -1, 0, -1, 0, 0, -1, -1, 0, 0, 0, 0, 0, 1, 0, 1, 2, 0, 2};
+static signed char A3ctbl105nit[30] = {0, 0, 0, 0, 0, 0,-6, 3, -8, -4, 1, -3, 0, 0, -1, 0, 0, -1, 0, 0, 0, -1, 0, -1, 1, 0, 1, 2, 0, 2};
+static signed char A3ctbl110nit[30] = {0, 0, 0, 0, 0, 0,-6, 3, -7, -2, 1, -2, -2, 1, -2, 0, 0, 0, -1, 0, -2, 2, 0, 2, 1, 0, 1, 2, 0, 2};
+static signed char A3ctbl119nit[30] = {0, 0, 0, 0, 0, 0,-4, 1, -4, -4, 1, -3, -2, 0, -2, 0, 0, -1, -2, 0, -1, 1, 0, 1, 1, 0, 1, 2, 0, 2};
+static signed char A3ctbl126nit[30] = {0, 0, 0, 0, 0, 0,-4, 1, -4, -5, 1, -4, 0, 0, -1, 0, 0, 0, -2, 0, -2, 1, 0, 1, 1, 0, 1, 2, 0, 2};
+static signed char A3ctbl134nit[30] = {0, 0, 0, 0, 0, 0,-5, 2, -4, -3, 1, -3, -1, 0, -2, 0, 0, 0, -1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl143nit[30] = {0, 0, 0, 0, 0, 0,-6, 1, -4, -3, 1, -2, -1, 0, -1, 0, 0, 0, -2, 0, -1, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl152nit[30] = {0, 0, 0, 0, 0, 0,-5, 1, -2, -3, 0, -2, -1, 0, -1, 0, 0, 0, -2, 0, -1, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl162nit[30] = {0, 0, 0, 0, 0, 0,-7, 1, -4, -3, 1, -2, -1, 0, -1, -1, 0, -1, -1, 0, -1, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl172nit[30] = {0, 0, 0, 0, 0, 0,-6, 1, -3, -3, 1, -2, -1, 0, -1, 0, 0, 0, 0, 0, -1, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl183nit[30] = {0, 0, 0, 0, 0, 0,-6, 1, -3, -3, 0, -1, 0, 0, -1, -1, 0, -1, -1, 0, -2, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl195nit[30] = {0, 0, 0, 0, 0, 0,-7, 0, -2, -2, 0, -2, 0, 0, 0, -2, 0, -1, -1, 1, -2, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl207nit[30] = {0, 0, 0, 0, 0, 0,-7, 0, -2, -2, 0, -2, 0, 0, 0, -1, 0, -1, -2, 1, -2, 1, 0, 1, 1, 0, 1, 1, 0, 1};
+static signed char A3ctbl220nit[30] = {0, 0, 0, 0, 0, 0,-6, 0, 0, -1, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1};
+static signed char A3ctbl234nit[30] = {0, 0, 0, 0, 0, 0,-5, 0, 1, -1, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1};
+static signed char A3ctbl249nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl265nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl282nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl300nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl316nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl333nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static signed char A3ctbl360nit[30] = {0, 0, 0, 0, 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+static unsigned char aid9821[3] = {0xB2, 0xE2, 0x90};
+static unsigned char aid9717[3] = {0xB2, 0xC7, 0x90};
+//static unsigned char aid9639[3] = {0xB2, 0xB3, 0x90};
+static unsigned char aid9526[3] = {0xB2, 0x96, 0x90};
+//static unsigned char aid9449[3] = {0xB2, 0x82, 0x90};
+static unsigned char aid9344[3] = {0xB2, 0x67, 0x90};
+static unsigned char aid9270[3] = {0xB2, 0x54, 0x90};
+static unsigned char aid9200[3] = {0xB2, 0x42, 0x90};
+static unsigned char aid9095[3] = {0xB2, 0x27, 0x90};
+static unsigned char aid9026[3] = {0xB2, 0x15, 0x90};
+static unsigned char aid8956[3] = {0xB2, 0x03, 0x90};
+//static unsigned char aid8886[3] = {0xB2, 0xF1, 0x80};
+static unsigned char aid8793[3] = {0xB2, 0xD9, 0x80};
+static unsigned char aid8715[3] = {0xB2, 0xC5, 0x80};
+static unsigned char aid8622[3] = {0xB2, 0xAD, 0x80};
+static unsigned char aid8536[3] = {0xB2, 0x97, 0x80};
+static unsigned char aid8373[3] = {0xB2, 0x6D, 0x80};
+static unsigned char aid8280[3] = {0xB2, 0x55, 0x80};
+static unsigned char aid8207[3] = {0xB2, 0x42, 0x80};
+//static unsigned char aid8102[3] = {0xB2, 0x27, 0x80};
+static unsigned char aid7923[3] = {0xB2, 0xF9, 0x70};
+static unsigned char aid7842[3] = {0xB2, 0xE4, 0x70};
+static unsigned char aid7667[3] = {0xB2, 0xB7, 0x70};
+static unsigned char aid7488[3] = {0xB2, 0x89, 0x70};
+static unsigned char aid7411[3] = {0xB2, 0x75, 0x70};
+static unsigned char aid7224[3] = {0xB2, 0x45, 0x70};
+static unsigned char aid7046[3] = {0xB2, 0x17, 0x70};
+static unsigned char aid6786[3] = {0xB2, 0xD4, 0x60};
+static unsigned char aid6603[3] = {0xB2, 0xA5, 0x60};
+static unsigned char aid6413[3] = {0xB2, 0x74, 0x60};
+static unsigned char aid6153[3] = {0xB2, 0x31, 0x60};
+static unsigned char aid5862[3] = {0xB2, 0xE6, 0x50};
+static unsigned char aid5598[3] = {0xB2, 0xA2, 0x50};
+static unsigned char aid5303[3] = {0xB2, 0x56, 0x50};
+static unsigned char aid5004[3] = {0xB2, 0x09, 0x50};
+static unsigned char aid4655[3] = {0xB2, 0xAF, 0x40};
+static unsigned char aid4266[3] = {0xB2, 0x4B, 0x40};
+static unsigned char aid3874[3] = {0xB2, 0xE6, 0x30};
+static unsigned char aid3587[3] = {0xB2, 0x9C, 0x30};
+static unsigned char aid3078[3] = {0xB2, 0x19, 0x30};
+static unsigned char aid2613[3] = {0xB2, 0xA1, 0x20};
+static unsigned char aid2108[3] = {0xB2, 0x1F, 0x20};
+static unsigned char aid1553[3] = {0xB2, 0x90, 0x10};
 /*
    this parameter is not used. so compile disable
    finally, remove or use
@@ -2098,46 +2204,86 @@ static signed char HMTctbl105nit[30] = {
 	0, 0, 0, 0, 0, 0,-5, 8, -17, -4, 2, -6, 0, 1, -2, -1, 1, -2, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
+static signed char A3HMTrtbl10nit[10] = {0, 9, 12, 10, 8, 7, 4, 2, 1, 0};
+static signed char A3HMTrtbl11nit[10] = {0, 11, 11, 11, 9, 7, 4, 3, 1, 0};
+static signed char A3HMTrtbl12nit[10] = {0, 10, 11, 10, 8, 7, 4, 2, 1, 0};
+static signed char A3HMTrtbl13nit[10] = {0, 9, 12, 10, 9, 7, 5, 3, 1, 0};
+static signed char A3HMTrtbl14nit[10] = {0, 9, 12, 10, 8, 7, 3, 2, 0, 0};
+static signed char A3HMTrtbl15nit[10] = {0, 14, 11, 10, 9, 7, 4, 2, 1, 0};
+static signed char A3HMTrtbl16nit[10] = {0, 13, 11, 10, 8, 7, 3, 3, 0, 0};
+static signed char A3HMTrtbl17nit[10] = {0, 9, 11, 9, 8, 6, 4, 2, 1, 0};
+static signed char A3HMTrtbl19nit[10] = {0, 12, 11, 10, 9, 6, 3, 2, 2, 0};
+static signed char A3HMTrtbl20nit[10] = {0, 13, 11, 10, 8, 6, 3, 3, 2, 0};
+static signed char A3HMTrtbl21nit[10] = {0, 8, 12, 9, 8, 5, 3, 2, 2, 0};
+static signed char A3HMTrtbl22nit[10] = {0, 12, 11, 9, 7, 6, 2, 1, 2, 0};
+static signed char A3HMTrtbl23nit[10] = {0, 10, 12, 10, 8, 5, 4, 2, 3, 0};
+static signed char A3HMTrtbl25nit[10] = {0, 9, 11, 10, 8, 6, 3, 3, 3, 0};
+static signed char A3HMTrtbl27nit[10] = {0, 10, 11, 9, 8, 6, 4, 2, 2, 0};
+static signed char A3HMTrtbl29nit[10] = {0, 11, 11, 10, 7, 6, 4, 4, 3, 0};
+static signed char A3HMTrtbl31nit[10] = {0, 14, 11, 9, 8, 6, 5, 4, 3, 0};
+static signed char A3HMTrtbl33nit[10] = {0, 14, 11, 9, 7, 5, 4, 4, 3, 0};
+static signed char A3HMTrtbl35nit[10] = {0, 13, 10, 8, 7, 5, 5, 4, 3, 0};
+static signed char A3HMTrtbl37nit[10] = {0, 9, 11, 9, 7, 5, 5, 5, 2, 0};
+static signed char A3HMTrtbl39nit[10] = {0, 10, 11, 9, 6, 5, 5, 5, 2, 0};
+static signed char A3HMTrtbl41nit[10] = {0, 9, 11, 8, 7, 5, 5, 4, 2, 0};
+static signed char A3HMTrtbl44nit[10] = {0, 12, 11, 9, 7, 5, 6, 6, 2, 0};
+static signed char A3HMTrtbl47nit[10] = {0, 12, 10, 8, 6, 5, 5, 5, 2, 0};
+static signed char A3HMTrtbl50nit[10] = {0, 9, 11, 9, 7, 5, 5, 5, 2, 0};
+static signed char A3HMTrtbl53nit[10] = {0, 9, 11, 8, 6, 6, 5, 6, 3, 0};
+static signed char A3HMTrtbl56nit[10] = {0, 10, 11, 9, 6, 6, 6, 6, 3, 0};
+static signed char A3HMTrtbl60nit[10] = {0, 8, 12, 9, 7, 6, 6, 6, 3, 0};
+static signed char A3HMTrtbl64nit[10] = {0, 12, 10, 8, 6, 6, 6, 6, 3, 0};
+static signed char A3HMTrtbl68nit[10] = {0, 8, 11, 8, 7, 6, 5, 6, 3, 0};
+static signed char A3HMTrtbl72nit[10] = {0, 8, 11, 8, 6, 5, 6, 6, 3, 0};
+static signed char A3HMTrtbl77nit[10] = {0, 7, 7, 6, 4, 4, 3, 4, 2, 0};
+static signed char A3HMTrtbl82nit[10] = {0, 5, 8, 6, 4, 3, 4, 4, 2, 0};
+static signed char A3HMTrtbl87nit[10] = {0, 6, 8, 6, 4, 3, 3, 5, 3, 0};
+static signed char A3HMTrtbl93nit[10] = {0, 7, 7, 6, 4, 3, 3, 4, 3, 0};
+static signed char A3HMTrtbl99nit[10] = {0, 8, 7, 6, 3, 3, 3, 4, 2, 0};
+static signed char A3HMTrtbl105nit[10] = {0, 9, 7, 6, 3, 3, 3, 4, 2, 0};
+
+static signed char A3HMTctbl10nit[30] = {0, 0, 0, 0, 0, 0,-1, 3, -6, -3, 3, -8, -5, 3, -8, -5, 3, -7, -3, 2, -4, -1, 0, -1, -1, 0, -1, 0, 0, 0};
+static signed char A3HMTctbl11nit[30] = {0, 0, 0, 0, 0, 0,-2, 4, -10, -2, 2, -6, -6, 3, -8, -5, 3, -7, -3, 1, -3, -2, 0, -3, -1, 0, -1, 0, 0, 0};
+static signed char A3HMTctbl12nit[30] = {0, 0, 0, 0, 0, 0,0, 4, -9, -2, 2, -6, -5, 3, -7, -6, 3, -7, -3, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0};
+static signed char A3HMTctbl13nit[30] = {0, 0, 0, 0, 0, 0,-1, 3, -8, -4, 3, -8, -4, 3, -6, -6, 3, -7, -3, 1, -3, -2, 0, -3, 0, 0, 0, 0, 0, 0};
+static signed char A3HMTctbl14nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -2, 2, -6, -7, 3, -8, -5, 2, -6, -2, 1, -3, -1, 0, -2, -1, 0, -1, 0, 0, 0};
+static signed char A3HMTctbl15nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -10, -4, 3, -7, -4, 2, -6, -5, 2, -6, -3, 1, -4, -1, 0, -2, -1, 0, 0, 0, 0, 0};
+static signed char A3HMTctbl16nit[30] = {0, 0, 0, 0, 0, 0,-2, 5, -11, -2, 3, -6, -5, 3, -7, -5, 2, -6, -3, 1, -3, -1, 0, -1, 0, 0, 0, 0, 0, 0};
+static signed char A3HMTctbl17nit[30] = {0, 0, 0, 0, 0, 0,-3, 4, -10, -3, 3, -6, -5, 3, -7, -5, 2, -6, -2, 1, -3, -1, 0, -1, 0, 0, -1, 0, 0, 0};
+static signed char A3HMTctbl19nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -4, 4, -8, -5, 2, -6, -5, 2, -5, -1, 1, -3, -1, 0, -1, -1, 0, -2, 0, 0, 2};
+static signed char A3HMTctbl20nit[30] = {0, 0, 0, 0, 0, 0,-6, 5, -12, -4, 3, -8, -5, 3, -6, -4, 2, -4, -2, 1, -4, -2, 0, -2, 0, 0, -1, 0, 0, 2};
+static signed char A3HMTctbl21nit[30] = {0, 0, 0, 0, 0, 0,-4, 4, -10, -5, 3, -8, -5, 3, -6, -4, 2, -5, -3, 1, -3, -1, 0, -2, 0, 0, 0, 1, 0, 2};
+static signed char A3HMTctbl22nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -4, 3, -8, -4, 3, -6, -4, 2, -4, -2, 1, -3, -1, 0, -1, 0, 0, -1, 1, 0, 3};
+static signed char A3HMTctbl23nit[30] = {0, 0, 0, 0, 0, 0,-2, 5, -10, -6, 3, -8, -4, 2, -6, -5, 2, -5, -2, 1, -3, -2, 0, -2, 0, 0, -1, 0, 0, 2};
+static signed char A3HMTctbl25nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -5, 3, -8, -6, 2, -6, -3, 2, -4, -1, 1, -2, -1, 0, -2, -1, 0, -2, 1, 0, 3};
+static signed char A3HMTctbl27nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -6, 3, -8, -4, 2, -6, -4, 2, -4, -1, 0, -2, -1, 0, -2, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl29nit[30] = {0, 0, 0, 0, 0, 0,-5, 5, -12, -5, 3, -7, -5, 2, -5, -3, 2, -4, -1, 1, -3, -1, 0, -2, 0, 0, 0, 0, 0, 3};
+static signed char A3HMTctbl31nit[30] = {0, 0, 0, 0, 0, 0,-5, 5, -12, -5, 3, -7, -5, 2, -6, -3, 1, -4, -2, 1, -3, -1, 0, -2, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl33nit[30] = {0, 0, 0, 0, 0, 0,-5, 5, -12, -5, 3, -7, -4, 2, -6, -3, 2, -4, -2, 1, -3, -1, 0, -1, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl35nit[30] = {0, 0, 0, 0, 0, 0,-5, 5, -12, -5, 4, -8, -4, 2, -4, -4, 1, -4, -1, 1, -2, -1, 0, -3, 1, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl37nit[30] = {0, 0, 0, 0, 0, 0,-5, 5, -12, -4, 3, -6, -4, 2, -5, -3, 1, -4, -2, 1, -3, 0, 0, -1, 0, 0, 0, 0, 0, 3};
+static signed char A3HMTctbl39nit[30] = {0, 0, 0, 0, 0, 0,-6, 5, -12, -4, 2, -6, -4, 2, -5, -3, 1, -4, -2, 1, -2, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl41nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -6, 3, -7, -4, 2, -4, -3, 1, -4, -1, 1, -2, 0, 0, -1, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl44nit[30] = {0, 0, 0, 0, 0, 0,-5, 6, -12, -5, 3, -7, -4, 1, -4, -3, 1, -4, -1, 1, -2, 0, 0, -1, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl47nit[30] = {0, 0, 0, 0, 0, 0,-4, 6, -12, -6, 3, -7, -4, 1, -4, -3, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl50nit[30] = {0, 0, 0, 0, 0, 0,-6, 6, -12, -5, 2, -6, -3, 1, -3, -3, 1, -4, -2, 1, -3, 0, 0, 0, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl53nit[30] = {0, 0, 0, 0, 0, 0,-6, 5, -12, -5, 2, -6, -2, 1, -3, -3, 1, -4, -2, 1, -3, 1, 0, 0, 0, 0, 1, 1, 0, 2};
+static signed char A3HMTctbl56nit[30] = {0, 0, 0, 0, 0, 0,-6, 6, -13, -6, 2, -6, -2, 1, -2, -2, 1, -4, -1, 1, -3, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl60nit[30] = {0, 0, 0, 0, 0, 0,-7, 5, -12, -5, 3, -6, -3, 1, -3, -3, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl64nit[30] = {0, 0, 0, 0, 0, 0,-7, 6, -13, -5, 3, -6, -2, 1, -2, -2, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 3};
+static signed char A3HMTctbl68nit[30] = {0, 0, 0, 0, 0, 0,-8, 6, -12, -4, 2, -5, -2, 1, -3, -2, 1, -4, -1, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl72nit[30] = {0, 0, 0, 0, 0, 0,-9, 5, -12, -4, 2, -6, -1, 1, -2, -2, 1, -3, -1, 1, -2, 0, 0, 0, 0, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl77nit[30] = {0, 0, 0, 0, 0, 0,-4, 5, -11, -3, 2, -4, -3, 1, -2, -1, 1, -2, -1, 0, -2, 0, 0, 0, 1, 0, 0, 1, 0, 3};
+static signed char A3HMTctbl82nit[30] = {0, 0, 0, 0, 0, 0,-6, 4, -10, -3, 2, -4, -2, 1, -2, -2, 1, -3, 0, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl87nit[30] = {0, 0, 0, 0, 0, 0,-5, 4, -10, -4, 2, -4, -2, 0, -2, -2, 1, -2, 0, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl93nit[30] = {0, 0, 0, 0, 0, 0,-6, 4, -10, -2, 2, -4, -2, 0, -2, -3, 1, -3, 0, 0, -2, 0, 0, 0, 1, 0, 0, 0, 0, 2};
+static signed char A3HMTctbl99nit[30] = {0, 0, 0, 0, 0, 0,-5, 4, -10, -4, 2, -5, -2, 0, -2, -1, 1, -2, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1, 0, 4};
+static signed char A3HMTctbl105nit[30] = {0, 0, 0, 0, 0, 0,-6, 5, -10, -3, 1, -3, -2, 0, -2, -2, 1, -3, 0, 0, -1, 1, 0, 0, 0, 0, 0, 1, 0, 3};
+
 
 static unsigned char HMTaid8001[4] = { 0xB2, 0x03, 0x12, 0x03};
 
-static unsigned char HMTaid8001_1[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_2[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_3[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_4[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_5[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_6[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_7[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_8[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_9[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_10[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_11[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_12[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_13[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_14[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_15[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_16[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_17[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_18[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_19[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_20[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_21[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_22[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_23[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_24[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_25[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_26[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_27[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_28[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_29[4] = { 0xB2, 0x03, 0x12, 0x03};
-static unsigned char HMTaid8001_30[4] = { 0xB2, 0x03, 0x12, 0x03};
-
 static unsigned char HMTaid7003[4] = {0xB2, 0x03, 0x13, 0x04};
-static unsigned char HMTaid7003_1[4] = {0xB2, 0x03, 0x13, 0x04};
-static unsigned char HMTaid7003_2[4] = {0xB2, 0x03, 0x13, 0x04};
-static unsigned char HMTaid7003_3[4] = {0xB2, 0x03, 0x13, 0x04};
-static unsigned char HMTaid7003_4[4] = {0xB2, 0x03, 0x13, 0x04};
-static unsigned char HMTaid7003_5[4] = {0xB2, 0x03, 0x13, 0x04};
 static unsigned char HMTelv[3] = {
 	0xB6, 0x8C, 0x0A
 };

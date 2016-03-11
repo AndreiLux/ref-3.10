@@ -58,6 +58,7 @@ extern u64 exynos_get_eint_wake_mask(void);
 static inline u64 exynos_get_eint_wake_mask(void) { return 0xffffffffL; }
 #endif
 
+extern void exynos_show_eint_mask_registers(void);
 
 /* cpu sequencer control function */
 extern void exynos_cpu_sequencer_ctrl(bool enable);

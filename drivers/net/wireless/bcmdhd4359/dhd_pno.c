@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pno.c 423669 2013-09-18 13:01:55Z yangj$
+ * $Id: dhd_pno.c 606280 2015-12-15 05:28:25Z $
  */
 
 #if defined(GSCAN_SUPPORT) && !defined(PNO_SUPPORT)
@@ -280,7 +280,7 @@ _dhd_pno_enable(dhd_pub_t *dhd, int enable)
 	}
 	if (enable) {
 		if ((_pno_state->pno_mode & DHD_PNO_LEGACY_MODE) &&
-			dhd_is_associated(dhd, NULL, NULL)) {
+			dhd_is_associated(dhd, 0, NULL)) {
 			DHD_ERROR(("%s Legacy PNO mode cannot be enabled "
 				"in assoc mode , ignore it\n", __FUNCTION__));
 			err = BCME_BADOPTION;

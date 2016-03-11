@@ -11,7 +11,7 @@
 
 /dts-v1/;
 #include "exynos7420-zero_common.dtsi"
-#include "exynos7420-zeroflte_eur_battery_08.dtsi"
+#include "exynos7420-zeroflte_eur_battery_09.dtsi"
 #include "exynos7420-zeroflte_gpio_07.dtsi"
 #include "exynos7420-zerolte_modem-shannon_ds.dtsi"
 #include "exynos7420-zerolte_fingerprint-sensor_00.dtsi"
@@ -72,7 +72,7 @@
 				752 114
 				1257 217
 			>;
-
+			wlf,hs-mic = <3>;
 			wlf,micd-configs = <
 				0x0 2 0
 			>;
@@ -293,7 +293,6 @@
 			ssp-mag-array = <10213 (-360) 154 (-206) 8673 (-59) (-66) (-59) 10479>; /* Only for YAS532 */
 			ssp-hw-rev = <3>;
 			ssp-glass-type = <0>;
-			ssp-acc-type = <1>;
 
 			controller-data {
 				cs-gpio = <&gpd6 3 0>;

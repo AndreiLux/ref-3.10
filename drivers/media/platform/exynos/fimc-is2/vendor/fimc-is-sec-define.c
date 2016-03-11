@@ -18,6 +18,9 @@
 #include <linux/i2c.h>
 #include "fimc-is-device-eeprom.h"
 #endif
+#if defined(CONFIG_OIS_USE)
+#include "fimc-is-device-ois.h"
+#endif
 
 bool crc32_fw_check = true;
 bool crc32_setfile_check = true;
@@ -39,16 +42,14 @@ bool crc32_c1_check_factory = true;
 bool companion_lsc_isvalid = false;
 bool companion_coef_isvalid = false;
 #ifdef CONFIG_COMPANION_C2_USE
+bool crc32_c1_check_front = true;
 bool companion_front_lsc_isvalid = false;
 #endif
 #endif
+bool is_hw_init_running = false;
 
 #define FIMC_IS_DEFAULT_CAL_SIZE	(20 * 1024)
 #define FIMC_IS_DUMP_CAL_SIZE	(172 * 1024)
-#define FIMC_IS_LATEST_FROM_VERSION_A	'A'
-#define FIMC_IS_LATEST_FROM_VERSION_B	'B'
-#define FIMC_IS_LATEST_FROM_VERSION_C	'C'
-#define FIMC_IS_LATEST_FROM_VERSION_D	'D'
 #define FIMC_IS_LATEST_FROM_VERSION_M	'M'
 
 //static bool is_caldata_read = false;
@@ -273,6 +274,7 @@ bool fimc_is_sec_check_from_ver(struct fimc_is_core *core, int position)
 	struct exynos_platform_fimc_is *core_pdata = NULL;
 	char compare_version;
 	u8 from_ver;
+	u8 latest_from_ver;
 
 	core_pdata = dev_get_platdata(fimc_is_dev);
 	if (!core_pdata) {
@@ -286,16 +288,21 @@ bool fimc_is_sec_check_from_ver(struct fimc_is_core *core, int position)
 	}
 
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
-	if (position == SENSOR_POSITION_FRONT)
+	if (position == SENSOR_POSITION_FRONT) {
 		finfo = &sysfs_finfo_front;
-	else
+		latest_from_ver = CAL_MAP_ES_VERSION_FRONT;
+		compare_version = CAMERA_MODULE_ES_VERSION_FRONT;
+	} else
 #endif
+	{
 		finfo = &sysfs_finfo;
+		latest_from_ver = CAL_MAP_ES_VERSION_REAR;
+		compare_version = CAMERA_MODULE_ES_VERSION_REAR;
+	}
 
-	compare_version = FIMC_IS_LATEST_FROM_VERSION_B;
 	from_ver = fimc_is_sec_compare_ver(position);
 
-	if ((from_ver < FROM_VERSION_V003) ||
+	if ((from_ver < latest_from_ver) ||
 		(finfo->header_ver[10] < compare_version)) {
 		err("invalid from version. from_ver %u, header_ver[10] %c", from_ver, finfo->header_ver[10]);
 		return false;
@@ -396,8 +403,10 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 	checksum = (u32)getCRC((u16 *)&buf32[check_base], check_length, NULL, NULL);
 	if (checksum != buf32[checksum_base]) {
 		err("Camera: CRC32 error at the OEM (0x%08X != 0x%08X)", checksum, buf32[checksum_base]);
+#if !defined(CONFIG_CAMERA_ROYCE)
 		crc32_temp = false;
 		goto out;
+#endif
 	}
 #endif
 
@@ -465,7 +474,7 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 		goto out;
 	}
 
-#ifdef CONFIG_COMPANION_C2_USE
+#if defined(CONFIG_COMPANION_C2_USE) && !defined(CONFIG_FRONT_COMPANION_C2_DISABLE)
 	/* c2 Shading */
 	if (id == SENSOR_POSITION_FRONT) {
 		check_base = finfo->c2_shading_start_addr / 4;
@@ -478,6 +487,7 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 			err("Camera: C2 Shading address has error: start(0x%08X), end(0x%08X)",
 				finfo->c2_shading_start_addr, finfo->c2_shading_end_addr);
 			crc32_temp = false;
+			crc32_c1_check_front = false;
 			goto out;
 		}
 
@@ -485,6 +495,7 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 		if (checksum != buf32[checksum_base]) {
 			err("Camera: CRC32 error at the C2 Shading (0x%08X != 0x%08X)", checksum, buf32[checksum_base]);
 			crc32_temp = false;
+			crc32_c1_check_front = false;
 			goto out;
 		}
 	}
@@ -1077,6 +1088,94 @@ static int fimc_is_get_cal_data(void)
 
 #endif
 
+int fimc_is_sec_rom_power_on(struct fimc_is_core *core, int position)
+{
+	int ret = 0;
+	struct exynos_platform_fimc_is_module *module_pdata;
+	struct fimc_is_module_enum *module = NULL;
+	int sensor_id = 0;
+	int i = 0;
+
+	info("%s: Sensor position = %d.", __func__, position);
+
+	if(position == SENSOR_POSITION_REAR)
+		sensor_id = core->pdata->rear_sensor_id;
+	else
+		sensor_id = core->pdata->front_sensor_id;
+
+	for (i = 0; i < FIMC_IS_SENSOR_COUNT; i++) {
+		fimc_is_search_sensor_module(&core->sensor[i], sensor_id, &module);
+		if (module)
+			break;
+	}
+	if (!module) {
+		err("%s: Could not find sensor id.", __func__);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	module_pdata = module->pdata;
+
+	if (!module_pdata->gpio_cfg) {
+		err("gpio_cfg is NULL");
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	ret = module_pdata->gpio_cfg(module->pdev, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON);
+	if (ret) {
+		err("gpio_cfg is fail(%d)", ret);
+		goto p_err;
+	}
+
+p_err:
+	return ret;
+}
+
+int fimc_is_sec_rom_power_off(struct fimc_is_core *core, int position)
+{
+	int ret = 0;
+	struct exynos_platform_fimc_is_module *module_pdata;
+	struct fimc_is_module_enum *module = NULL;
+	int sensor_id = 0;
+	int i = 0;
+
+	info("%s: Sensor position = %d.", __func__, position);
+
+	if(position == SENSOR_POSITION_REAR)
+		sensor_id = core->pdata->rear_sensor_id;
+	else
+		sensor_id = core->pdata->front_sensor_id;
+
+	for (i = 0; i < FIMC_IS_SENSOR_COUNT; i++) {
+		fimc_is_search_sensor_module(&core->sensor[i], sensor_id, &module);
+		if (module)
+			break;
+	}
+	if (!module) {
+		err("%s: Could not find sensor id.", __func__);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	module_pdata = module->pdata;
+
+	if (!module_pdata->gpio_cfg) {
+		err("gpio_cfg is NULL");
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+	ret = module_pdata->gpio_cfg(module->pdev, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF);
+	if (ret) {
+		err("gpio_cfg is fail(%d)", ret);
+		goto p_err;
+	}
+
+p_err:
+	return ret;
+}
+
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR) || defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
 int fimc_is_i2c_read(struct i2c_client *client, void *buf, u32 addr, size_t size)
 {
@@ -1397,7 +1496,7 @@ crc_retry:
 			err("Shading end_addr has error!! 0x%08x", finfo->shading_end_addr);
 			finfo->shading_end_addr = 0x3AFF;
 		}
-#ifdef CONFIG_COMPANION_C2_USE
+#if defined(CONFIG_COMPANION_C2_USE) && !defined(CONFIG_FRONT_COMPANION_C2_DISABLE)
 		finfo->c2_shading_start_addr = *((u32 *)&buf[EEP_HEADER_C2_SHADING_START_ADDR_FRONT]);
 		finfo->c2_shading_end_addr = *((u32 *)&buf[EEP_HEADER_C2_SHADING_END_ADDR_FRONT]);
 		info("c2_shading start = 0x%08x, end = 0x%08x\n",
@@ -1561,7 +1660,7 @@ crc_retry:
 		}
 	}
 
-#ifdef CONFIG_COMPANION_C2_USE
+#if defined(CONFIG_COMPANION_C2_USE) && !defined(CONFIG_FRONT_COMPANION_C2_DISABLE)
 	if (fimc_is_sec_check_from_ver(core, position)) {
 		/* If FROM LSC value is not valid, loading default lsc data */
 		if (*((u32 *)&cal_buf_front[sysfs_finfo_front.lsc_gain_start_addr]) == 0x00000000) {
@@ -1595,6 +1694,7 @@ int fimc_is_sec_readcal_otprom(struct device *dev, int position)
 	char *buf = NULL;
 	int retry = FIMC_IS_CAL_RETRY_CNT;
 	struct fimc_is_core *core = dev_get_drvdata(dev);
+	struct exynos_platform_fimc_is *core_pdata = NULL;
 	struct fimc_is_from_info *finfo = NULL;
 	int cal_size = 0;
 	struct i2c_client *client = NULL;
@@ -1603,6 +1703,12 @@ int fimc_is_sec_readcal_otprom(struct device *dev, int position)
 	mm_segment_t old_fs;
 	loff_t pos = 0;
 	char selected_page[2] = {0,};
+
+	core_pdata = dev_get_platdata(fimc_is_dev);
+	if (!core_pdata) {
+		err("core->pdata is null");
+		return -EINVAL;
+	}
 
 	if (position == SENSOR_POSITION_FRONT) {
 #if defined(CONFIG_CAMERA_OTPROM_SUPPORT_FRONT)
@@ -1730,7 +1836,7 @@ crc_retry:
 		} else {
 			crc32_check_factory_front = false;
 		}
-		if (core->use_module_check) {
+		if (core_pdata->use_module_check) {
 			if (finfo->header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M) {
 				is_final_cam_module_front = true;
 			} else {
@@ -1747,7 +1853,7 @@ crc_retry:
 		}
 
 
-		if (!core->use_module_check) {
+		if (!core_pdata->use_module_check) {
 			is_latest_cam_module = true;
 		} else {
 			if (sysfs_finfo.header_ver[10] >= CAMERA_MODULE_ES_VERSION) {
@@ -1757,7 +1863,7 @@ crc_retry:
 			}
 		}
 
-		if (!core->use_module_check) {
+		if (!core_pdata->use_module_check) {
 			is_final_cam_module = true;
 		} else {
 			if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M) {
@@ -2162,26 +2268,9 @@ int fimc_is_sec_write_fw(struct fimc_is_core *core, struct device *dev)
 
 	info("FW file exist, Write Firmware to FROM .\n");
 
-	if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM")) {
-		info("enable %s in the %s\n", "VDDIO_1.8V_CAM", __func__);
-#ifdef CONFIG_OIS_USE
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", true);
-		if (ret) {
-			err("error, failed to ois_vdd(on)");
-		}
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", true);
-		if (ret) {
-			err("error, failed to ois_vm(on)");
-		}
-#endif
-		ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", true);
-		if (ret) {
-			err("error, failed to cam_io(on)");
-			ret = -EIO;
-			goto isp_fw_err;
-		}
+	if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM"))
+		fimc_is_sec_rom_power_on(core, SENSOR_POSITION_REAR);
 
-	}
 #ifdef CONFIG_COMPANION_USE
 	fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
 #endif
@@ -2210,44 +2299,11 @@ int fimc_is_sec_write_fw(struct fimc_is_core *core, struct device *dev)
 #endif
 
 	/* Off to reset FROM operation. Without this routine, spi read does not work. */
-	if (!core->running_rear_camera) {
-		info("disable %s in the %s\n", "VDDIO_1.8V_CAM", __func__);
-		ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", false);
-		if (ret) {
-			err("error, failed to cam_io(off)");
-			ret = -EIO;
-		}
-#ifdef CONFIG_OIS_USE
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", false);
-		if (ret) {
-			err("error, failed to ois_vdd(off)");
-		}
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", false);
-		if (ret) {
-			err("error, failed to ois_vm(off)");
-		}
-#endif
-	}
+	if (!core->running_rear_camera)
+		fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
 
-	if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM")) {
-		info("enable %s in the %s\n", "VDDIO_1.8V_CAM", __func__);
-#ifdef CONFIG_OIS_USE
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", true);
-		if (ret) {
-			err("error, failed to ois_vdd(on)");
-		}
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", true);
-		if (ret) {
-			err("error, failed to ois_vm(on)");
-		}
-#endif
-		ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", true);
-		if (ret) {
-			err("error, failed to cam_io(on)");
-			ret = -EIO;
-			goto isp_fw_err;
-		}
-	}
+	if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM"))
+		fimc_is_sec_rom_power_on(core, SENSOR_POSITION_REAR);
 
 #ifdef CONFIG_COMPANION_USE
 	fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
@@ -2262,24 +2318,8 @@ int fimc_is_sec_write_fw(struct fimc_is_core *core, struct device *dev)
 	fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
 #endif
 
-	if (!core->running_rear_camera) {
-		info("disable %s in the %s\n", "VDDIO_1.8V_CAM", __func__);
-		ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", false);
-		if (ret) {
-			err("error, failed to cam_io(off)");
-			ret = -EIO;
-		}
-#ifdef CONFIG_OIS_USE
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", false);
-		if (ret) {
-			err("error, failed to ois_vdd(off)");
-		}
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", false);
-		if (ret) {
-			err("error, failed to ois_vm(off)");
-		}
-#endif
-	}
+	if (!core->running_rear_camera)
+		fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
 
 isp_fw_err:
 	if (isp_fw_fp)
@@ -2317,6 +2357,7 @@ int fimc_is_sec_check_reload(void)
 	} else {
 		info("Reload KEY exist, reload cal data.\n");
 		force_caldata_dump = true;
+		supend_resume_disable = true;
 	}
 
 	if (reload_key_fp)
@@ -2670,7 +2711,7 @@ crc_retry:
 	if (!core_pdata->use_module_check) {
 		is_latest_cam_module = true;
 	} else {
-		if (sysfs_finfo.header_ver[10] >= FIMC_IS_LATEST_FROM_VERSION_B) {
+		if (sysfs_finfo.header_ver[10] >= CAMERA_MODULE_ES_VERSION_REAR) {
 			is_latest_cam_module = true;
 		} else {
 			is_latest_cam_module = false;
@@ -3071,6 +3112,97 @@ exit:
 	return ret;
 }
 
+bool fimc_is_sec_check_sensor(struct fimc_is_core *core)
+{
+	int i = 0;
+	bool ret = false;
+	int retry_count = 20;
+
+	do {
+		ret = false;
+		for (i = 0; i < FIMC_IS_SENSOR_COUNT; i++) {
+			if (!core->sensor[i].is_probed) {
+				ret = true;
+				break;
+			}
+		}
+
+		if (i == FIMC_IS_SENSOR_COUNT && ret == false) {
+			info("Retry count = %d\n", retry_count);
+			break;
+		}
+
+		mdelay(100);
+		if (retry_count > 0) {
+			--retry_count;
+		} else {
+			err("Could not get sensor before start ois fw update routine.\n");
+			break;
+		}
+	} while (ret);
+
+	return ret;
+}
+
+void fimc_is_sec_check_hw_init_running(void)
+{
+	int retry = 50;
+
+	do {
+		if (!is_hw_init_running) {
+			info("ois power is available.\n");
+			break;
+		}
+		--retry;
+		msleep(100);
+	} while (retry > 0);
+
+	if (retry <= 0) {
+		err("HW init is not completed.");
+	}
+
+	return;
+}
+
+int fimc_is_sec_hw_init(struct fimc_is_core *core)
+{
+	bool ret = false;
+	struct device *dev  = dev = &core->ischain[0].pdev->dev;
+
+	is_hw_init_running = true;
+	ret = fimc_is_sec_check_sensor(core);
+	if (ret) {
+		err("Do not init hw routine. Check sensor failed!\n");
+		is_hw_init_running = false;
+		return -EINVAL;
+	} else {
+		info("Start hw init. Check sensor success!\n");
+	}
+
+	ret = fimc_is_sec_run_fw_sel(dev, SENSOR_POSITION_REAR);
+	if (ret) {
+		err("fimc_is_sec_run_fw_sel for rear is fail(%d)", ret);
+	}
+
+	ret = fimc_is_sec_run_fw_sel(dev, SENSOR_POSITION_FRONT);
+	if (ret) {
+		err("fimc_is_sec_run_fw_sel for front is fail(%d)", ret);
+	}
+
+	ret = fimc_is_sec_concord_fw_sel(core, dev);
+	if (ret) {
+		err("fimc_is_sec_concord_fw_sel is fail(%d)", ret);
+	}
+
+#ifdef CONFIG_OIS_USE
+	fimc_is_ois_fw_update(core);
+#endif
+
+	is_hw_init_running = false;
+
+	return 0;
+}
+
 int fimc_is_sec_fw_find(struct fimc_is_core *core)
 {
 	int sensor_id = 0;
@@ -3267,30 +3399,12 @@ int fimc_is_sec_fw_sel_eeprom(struct device *dev, int id, bool headerOnly)
 				info("forced caldata dump!!\n");
 
 			if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_VT")) {
-				ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_VT", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to VDDIO_1.8V_VT(on)");
-					goto exit;
-				}
+				fimc_is_sec_rom_power_on(core, SENSOR_POSITION_FRONT);
 				is_ldo_enabled[0] = true;
 			}
 
 			if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM")) {
-#ifdef CONFIG_OIS_USE
-				ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to ois_vdd(on)");
-				}
-				ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to ois_vm(on)");
-				}
-#endif
-				ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to VDDIO_1.8V_CAM(on)");
-					goto exit;
-				}
+				fimc_is_sec_rom_power_on(core, SENSOR_POSITION_REAR);
 				is_ldo_enabled[1] = true;
 			}
 
@@ -3309,21 +3423,7 @@ int fimc_is_sec_fw_sel_eeprom(struct device *dev, int id, bool headerOnly)
 				info("forced caldata dump!!\n");
 
 			if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM")) {
-#ifdef CONFIG_OIS_USE
-				ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to ois_vdd(on)");
-				}
-				ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to ois_vm(on)");
-				}
-#endif
-				ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", true);
-				if (ret) {
-					err("fimc_is_sec_fw_sel_eeprom: error, failed to VDDIO_1.8V_CAM(on)");
-					goto exit;
-				}
+				fimc_is_sec_rom_power_on(core, SENSOR_POSITION_REAR);
 				is_ldo_enabled[0] = true;
 			}
 
@@ -3406,40 +3506,16 @@ read_phone_fw_exit:
 exit:
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
 	if (id == SENSOR_POSITION_FRONT) {
-		if (is_ldo_enabled[0] && !core->running_front_camera) {
-			ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_VT", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to VDDIO_1.8V_VT(off)");
-		}
-		if (is_ldo_enabled[1] && !core->running_rear_camera) {
-			ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to VDDIO_1.8V_CAM(off)");
-#ifdef CONFIG_OIS_USE
-			ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to OIS_VDD_2.8V(off)");
-			ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to OIS_VM_2.8V(off)");
-#endif
-		}
+		if (is_ldo_enabled[0] && !core->running_front_camera)
+			fimc_is_sec_rom_power_off(core, SENSOR_POSITION_FRONT);
+
+		if (is_ldo_enabled[1] && !core->running_rear_camera)
+			fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
 	} else
 #endif
 	{
-		if (is_ldo_enabled[0] && !core->running_rear_camera) {
-			ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to VDDIO_1.8V_CAM(off)");
-#ifdef CONFIG_OIS_USE
-			ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to OIS_VDD_2.8V(off)");
-			ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", false);
-			if (ret)
-				err("fimc_is_sec_fw_sel_eeprom: error, failed to OIS_VM_2.8V(off)");
-#endif
-		}
+		if (is_ldo_enabled[0] && !core->running_rear_camera)
+			fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
 	}
 
 	mutex_unlock(&core->spi_lock);
@@ -3491,23 +3567,7 @@ int fimc_is_sec_fw_sel(struct fimc_is_core *core, struct device *dev, bool heade
 			info("forced caldata dump!!\n");
 
 		if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM")) {
-			info("enable %s in the %s\n", "VDDIO_1.8V_CAM", __func__);
-#ifdef CONFIG_OIS_USE
-			ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", true);
-			if (ret) {
-				err("fimc_is_sec_fw_sel: error, failed to ois_vdd(on)");
-			}
-			ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", true);
-			if (ret) {
-				err("fimc_is_sec_fw_sel: error, failed to ois_vm(on)");
-			}
-#endif
-			ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", true);
-			if (ret) {
-				err("fimc_is_sec_fw_sel: error, failed to cam_io(on)");
-				goto exit;
-			}
-
+			fimc_is_sec_rom_power_on(core, SENSOR_POSITION_REAR);
 			is_ldo_enabled = true;
 		}
 		info("read cal data from FROM\n");
@@ -3656,10 +3716,8 @@ read_phone_fw_exit:
 		if (ret < 0)
 			goto exit;
 
-#ifdef CAMERA_MODULE_DUALIZE
-#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
-		if (CAMERA_MODULE_SKIP_DUMP_VERSION != sysfs_finfo.header_ver[0]) {
-#endif
+#if defined(CAMERA_MODULE_DUALIZE) && defined(CAMERA_MODULE_AVAILABLE_DUMP_VERSION)
+		if (!strncmp(CAMERA_MODULE_AVAILABLE_DUMP_VERSION, sysfs_finfo.header_ver, 3)) {
 			from_fw_revision = fimc_is_sec_fw_revision(sysfs_finfo.header_ver);
 			phone_fw_revision = fimc_is_sec_fw_revision(phone_fw_version);
 			if (is_dump_existed) {
@@ -3760,9 +3818,7 @@ read_phone_fw_exit:
 					set_fs(old_fs);
 				}
 			}
-#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
 		}
-#endif
 #endif
 
 		if (is_dump_needed && is_dumped_fw_loading_needed) {
@@ -3780,22 +3836,12 @@ read_phone_fw_exit:
 
 exit:
 #ifdef CONFIG_COMPANION_USE
-	fimc_is_spi_s_pin(spi_gpio, PINCFG_TYPE_FUNC, 0);
+	/* Prevent IO_1.8V Floating */ 
+	fimc_is_spi_s_pin(spi_gpio, PINCFG_TYPE_DAT, 0);
+	fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
 #endif
-	if (is_ldo_enabled && !core->running_rear_camera) {
-		info("disable %s in the %s\n", "VDDIO_1.8V_CAM", __func__);
-		ret = fimc_is_sec_ldo_enable(dev, "VDDIO_1.8V_CAM", false);
-		if (ret)
-			err("fimc_is_sec_fw_sel: error, failed to cam_io(off)");
-#ifdef CONFIG_OIS_USE
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VDD_2.8V", false);
-		if (ret)
-			err("fimc_is_sec_fw_sel: error, failed to OIS_VDD_2.8V(off)");
-		ret = fimc_is_sec_ldo_enable(dev, "OIS_VM_2.8V", false);
-		if (ret)
-			err("fimc_is_sec_fw_sel: error, failed to OIS_VM_2.8V(off)");
-#endif
-	}
+	if (is_ldo_enabled && !core->running_rear_camera)
+		fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
 
 	mutex_unlock(&core->spi_lock);
 
@@ -3825,7 +3871,9 @@ int fimc_is_sec_concord_fw_sel(struct fimc_is_core *core, struct device *dev)
 	bool is_dump_existed = false;
 	bool is_dump_needed = false;
 	int sensor_id = 0;
+	bool is_ldo_enabled = false;
 
+	mutex_lock(&core->spi_lock);
 	if ((!sysfs_finfo.is_c1_caldata_read &&
 	    (cam_id == CAMERA_SINGLE_REAR /* || cam_id == CAMERA_DUAL_FRONT*/)) ||
 	    force_caldata_dump) {
@@ -4042,10 +4090,8 @@ read_phone_fw_exit:
 		if (ret < 0)
 			goto exit;
 
-#ifdef CAMERA_MODULE_DUALIZE
-#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
-		if (CAMERA_MODULE_SKIP_DUMP_VERSION != sysfs_finfo.concord_header_ver[0]) {
-#endif
+#if defined(CAMERA_MODULE_DUALIZE) && defined(CAMERA_MODULE_AVAILABLE_DUMP_VERSION)
+		if (!strncmp(CAMERA_MODULE_AVAILABLE_DUMP_VERSION, sysfs_finfo.header_ver, 3)) {
 			from_c1_fw_revision = fimc_is_sec_fw_revision(sysfs_finfo.concord_header_ver);
 			phone_c1_fw_revision = fimc_is_sec_fw_revision(phone_c1_fw_version);
 			if (is_dump_existed) {
@@ -4089,8 +4135,17 @@ read_phone_fw_exit:
 			if (is_dump_needed) {
 				info("Dump companion Firmware.\n");
 				crc32_c1_fw_check = false;
+				if (!fimc_is_sec_ldo_enabled(dev, "VDDIO_1.8V_CAM")) {
+					fimc_is_sec_rom_power_on(core, SENSOR_POSITION_REAR);
+					is_ldo_enabled = true;
+				}
+
 				fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
+
 				ret = fimc_is_sec_read_companion_fw(core);
+
+				/* Prevent IO_1.8V Floating */ 
+				fimc_is_spi_s_pin(spi_gpio, PINCFG_TYPE_DAT, 0);
 				fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
 				if (ret < 0) {
 					if (!crc32_c1_fw_check) {
@@ -4098,14 +4153,15 @@ read_phone_fw_exit:
 						err("Companion Firmware CRC is not valid. Does not use dumped firmware.\n");
 					}
 				}
+
+				if (is_ldo_enabled && !core->running_rear_camera)
+					fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
 			}
 
 			if (phone_c1_fw_version[0] == 0) {
 				strcpy(sysfs_pinfo.concord_header_ver, "NULL");
 			}
-#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
 		}
-#endif
 #endif
 
 		if (is_dump_needed && is_dumped_c1_fw_loading_needed) {
@@ -4121,6 +4177,8 @@ read_phone_fw_exit:
 	}
 
 exit:
+	mutex_unlock(&core->spi_lock);
+
 	return ret;
 }
 #endif

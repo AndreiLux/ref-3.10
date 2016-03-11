@@ -25,19 +25,28 @@ enum otg_notify_events {
 	NOTIFY_EVENT_MMDOCK,
 	NOTIFY_EVENT_HMT,
 	NOTIFY_EVENT_DRIVE_VBUS,
-	NOTIFY_EVENT_DISABLE_NOTIFY,
+	NOTIFY_EVENT_ALL_DISABLE,
+	NOTIFY_EVENT_HOST_DISABLE,
+	NOTIFY_EVENT_CLIENT_DISABLE,
 	NOTIFY_EVENT_OVERCURRENT,
 	NOTIFY_EVENT_SMSC_OVC,
 	NOTIFY_EVENT_SMTD_EXT_CURRENT,
 	NOTIFY_EVENT_MMD_EXT_CURRENT,
 	NOTIFY_EVENT_VBUSPOWER,
+	NOTIFY_EVENT_VIRTUAL,
 };
+
+#define VIRT_EVENT(a) (a+NOTIFY_EVENT_VIRTUAL)
+#define PHY_EVENT(a) (a%NOTIFY_EVENT_VIRTUAL)
+#define IS_VIRTUAL(a) (a >= NOTIFY_EVENT_VIRTUAL ? 1 : 0)
 
 enum otg_notify_event_status {
 	NOTIFY_EVENT_DISABLED,
 	NOTIFY_EVENT_DISABLING,
-	NOTIFY_EVENT_ENBLED,
-	NOTIFY_EVENT_ENBLING,
+	NOTIFY_EVENT_ENABLED,
+	NOTIFY_EVENT_ENABLING,
+	NOTIFY_EVENT_BLOCKED,
+	NOTIFY_EVENT_BLOCKING,
 };
 
 enum otg_notify_evt_type {
@@ -47,6 +56,15 @@ enum otg_notify_evt_type {
 	NOTIFY_EVENT_NEED_VBUSDRIVE = (1 << 3),
 	NOTIFY_EVENT_NOBLOCKING = (1 << 4),
 	NOTIFY_EVENT_NOSAVE = (1 << 5),
+	NOTIFY_EVENT_NEED_HOST = (1 << 6),
+	NOTIFY_EVENT_NEED_CLIENT = (1 << 7),
+};
+
+enum otg_notify_block_type {
+	NOTIFY_BLOCK_TYPE_NONE = 0,
+	NOTIFY_BLOCK_TYPE_HOST = (1 << 0),
+	NOTIFY_BLOCK_TYPE_CLIENT = (1 << 1),
+	NOTIFY_BLOCK_TYPE_ALL = (1 << 0 | 1 << 1),
 };
 
 enum otg_notify_gpio {
@@ -72,10 +90,10 @@ struct otg_notify {
 	int booting_delay_sec;
 	int disable_control;
 	const char *muic_name;
-	int (*pre_gpio) (int gpio, int use);
-	int (*post_gpio) (int gpio, int use);
-	int (*vbus_drive) (bool);
-	int (*set_host) (bool);
+	int (*pre_gpio)(int gpio, int use);
+	int (*post_gpio)(int gpio, int use);
+	int (*vbus_drive)(bool);
+	int (*set_host)(bool);
 	int (*set_peripheral)(bool);
 	int (*set_charger)(bool);
 	int (*post_vbus_detect)(bool);
@@ -86,7 +104,7 @@ struct otg_notify {
 
 struct otg_booster {
 	char *name;
-	int (*booster) (bool);
+	int (*booster)(bool);
 };
 
 #ifdef CONFIG_USB_NOTIFY_LAYER

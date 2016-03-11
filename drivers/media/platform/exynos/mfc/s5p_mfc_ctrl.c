@@ -512,7 +512,7 @@ int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 {
 	struct s5p_mfc_ctx *ctx;
 	int ret;
-	int old_state;
+	int old_state, i;
 
 	mfc_debug_enter();
 
@@ -523,8 +523,19 @@ int s5p_mfc_sleep(struct s5p_mfc_dev *dev)
 
 	ctx = dev->ctx[dev->curr_ctx];
 	if (!ctx) {
-		mfc_err("no mfc context to run\n");
-		return -EINVAL;
+        for (i = 0; i < MFC_NUM_CONTEXTS; i++) {
+            if (dev->ctx[i]) {
+                ctx = dev->ctx[i];
+                break;
+            }
+        }
+        if (!ctx) {
+            mfc_err("no mfc context to run\n");
+            return -EINVAL;
+        } else {
+            dev->curr_ctx = ctx->num;
+            dev->curr_ctx_drm = ctx->is_drm;
+        }
 	}
 	old_state = ctx->state;
 	ctx->state = MFCINST_ABORT;

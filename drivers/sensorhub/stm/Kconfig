@@ -44,6 +44,20 @@ config SENSORS_MAX86902
 	  This driver can also be built as a module.  If so, the module
 	  will be called MAX86902.
 
+config SENSORS_ADPD142
+	depends on I2C
+	tristate "ADI hrm sensor driver"
+	default n
+	help
+	  This option enables hrm sensors using adpd142 driver.
+
+config SENSORS_ADPD143
+	depends on I2C
+	tristate "ADI hrm sensor driver"
+	default n
+	help
+	  This option enables hrm sensors using adpd143 driver.
+
 config SENSORS_MULTIPLE_GLASS_TYPE
 	tristate "Sensors ssp multiple glass type"
 	default n
@@ -110,5 +124,11 @@ config SENSORS_SSP_VLTE
 	help
 	  If you want to use v project, it should be set.
 
+config SENSORS_SSP_ROYCELTE
+	tristate "Sensors ssp for royce project"
+	default n
+	help
+	  If you want to use royce project, it should be set.
+
 source "drivers/sensorhub/stm/factory/Kconfig"
-source "drivers/sensorhub/brcm/max_notchfilter/Kconfig"
+source "drivers/sensorhub/stm/max_notchfilter/Kconfig"

@@ -192,8 +192,10 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # "make" in the configured kernel build directory always uses that.
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
-ARCH		?= arm64
-CROSS_COMPILE	?= ../PLATFORM/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+#ARCH		?= $(SUBARCH)
+#CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
+ARCH		= arm64
+CROSS_COMPILE = ../PLATFORM/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -686,6 +688,11 @@ ifeq ($(CONFIG_TIMA),y)
     KBUILD_CFLAGS += -DTIMA_LKM_AUTH_ENABLED -Idrivers/gud/gud-exynos7420/MobiCoreKernelApi/include/
     KBUILD_AFLAGS += -DTIMA_LKM_AUTH_ENABLED
 endif
+endif
+
+#ICCC
+ifeq ($(CONFIG_TZ_ICCC),y)
+    KBUILD_CFLAGS += -Idrivers/gud/gud-exynos7420/MobiCoreKernelApi/include/
 endif
 
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments

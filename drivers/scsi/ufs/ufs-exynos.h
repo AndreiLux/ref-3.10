@@ -161,6 +161,7 @@ enum {
  #define NSSMU		BIT(14)
 #define DESCTYPE(type)	((type & 0x3) << 19)
 #define PROTBYTZPC	BIT(31)
+#define SMU_ABORT(type)		((type & 0x2) >> 1)
 #define UFSPVERSION	0x01C
 #define UFSPRENCKEY0	0x020
 #define UFSPRENCKEY1	0x024
@@ -246,6 +247,7 @@ enum {
 #define PA_DBG_IGNORE_INCOMING		0x9559
 #define PA_DBG_LINE_RESET_THLD		0x9561
 #define PA_DBG_OPTION_SUITE		0x9564
+#define PA_DBG_BURST_END_REQ		0x9565
 
 /*
  * MIBs for Transport Layer debug registers

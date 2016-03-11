@@ -50,6 +50,18 @@
 		uart2 = &serial_2;
 		uart3 = &serial_3;
 		uart4 = &serial_4;
+		hsi2c0 = &hsi2c_0;
+		hsi2c1 = &hsi2c_1;
+		hsi2c2 = &hsi2c_2;
+		hsi2c3 = &hsi2c_3;
+		hsi2c4 = &hsi2c_4;
+		hsi2c5 = &hsi2c_5;
+		hsi2c6 = &hsi2c_6;
+		hsi2c7 = &hsi2c_7;
+		hsi2c8 = &hsi2c_8;
+		hsi2c9 = &hsi2c_9;
+		hsi2c10 = &hsi2c_10;
+		hsi2c11 = &hsi2c_11;
 		fimg2d0 = &fimg2d_0;
 		scaler0 = &scaler_0;
 		scaler1 = &scaler_1;
@@ -554,7 +566,7 @@
 		clocks = <&clock 416>, <&clock 432>, <&clock 455>;
 		clock-names = "gate_pclk4", "gate_uart4", "sclk_uart4";
 		samsung,lpass-subip;
-		uart-sclk-frequency = <246000000>;
+		uart-sclk-frequency = <117000000>;
 		status = "disabled";
 	};
 

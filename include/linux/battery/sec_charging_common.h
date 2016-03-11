@@ -80,6 +80,7 @@ enum sec_wireless_info_mode {
 	SEC_WIRELESS_TX_FIRM_RESULT,
 	SEC_WIRELESS_TX_FIRM_VER,
 	SEC_TX_FIRMWARE,
+	SEC_WIRELESS_OTP_FIRM_VERIFY,
 };
 
 enum sec_wireless_firm_update_mode {
@@ -87,6 +88,7 @@ enum sec_wireless_firm_update_mode {
 	SEC_WIRELESS_RX_BUILT_IN_MODE,
 	SEC_WIRELESS_TX_ON_MODE,
 	SEC_WIRELESS_TX_OFF_MODE,
+	SEC_WIRELESS_RX_INIT,
 };
 
 enum sec_tx_firmware_mode {
@@ -111,6 +113,10 @@ enum sec_wireless_control_mode {
 	WIRELESS_PAD_LED_ON,
 	WIRELESS_VRECT_ADJ_ON,
 	WIRELESS_VRECT_ADJ_OFF,
+	WIRELESS_VRECT_ADJ_ROOM_0,
+	WIRELESS_VRECT_ADJ_ROOM_1,
+	WIRELESS_VRECT_ADJ_ROOM_2,
+	WIRELESS_VRECT_ADJ_ROOM_3,
 };
 #endif
 
@@ -154,6 +160,7 @@ enum sec_battery_adc_channel {
 #endif
 	SEC_BAT_ADC_CHANNEL_WPC_TEMP,
 	SEC_BAT_ADC_CHANNEL_NUM,
+	SEC_BAT_ADC_CHANNEL_CAMERA_TEMP,
 };
 
 
@@ -468,6 +475,19 @@ extern const char *charger_chip_name;
 #define sec_charging_current_t \
 	struct sec_charging_current
 
+#if defined(CONFIG_BATTERY_AGE_FORECAST)
+struct sec_age_data {
+	unsigned int cycle;
+	unsigned int float_voltage;
+	unsigned int recharge_condition_vcell;
+	unsigned int full_condition_vcell;
+	unsigned int full_condition_soc;
+};
+
+#define sec_age_data_t \
+	struct sec_age_data
+#endif
+
 struct sec_battery_platform_data {
 	/* NO NEED TO BE CHANGED */
 	/* callback functions */
@@ -585,6 +605,7 @@ struct sec_battery_platform_data {
 	sec_bat_adc_table_data_t *chg_temp_adc_table;
 	sec_bat_adc_table_data_t *wpc_temp_adc_table;
 	sec_bat_adc_table_data_t *inbat_adc_table;
+	sec_bat_adc_table_data_t *camera_temp_adc_table;
 #else
 	const sec_bat_adc_table_data_t *temp_adc_table;
 	const sec_bat_adc_table_data_t *temp_amb_adc_table;
@@ -594,6 +615,7 @@ struct sec_battery_platform_data {
 	unsigned int chg_temp_adc_table_size;
 	unsigned int wpc_temp_adc_table_size;
 	unsigned int inbat_adc_table_size;
+	unsigned int camera_temp_adc_table_size;
 
 	sec_battery_temp_check_t temp_check_type;
 	unsigned int temp_check_count;
@@ -606,6 +628,11 @@ struct sec_battery_platform_data {
 	 * depending on temp_check_type
 	 * temperature should be temp x 10 (0.1 degree)
 	 */
+
+	bool camera_temp_check;
+	int camera_temp_limit;
+	int camera_temp_recov;
+
 	int temp_highlimit_threshold_event;
 	int temp_highlimit_recovery_event;
 	int temp_high_threshold_event;
@@ -639,6 +666,12 @@ struct sec_battery_platform_data {
 	unsigned int sleep_mode_limit_current;
 	unsigned int wpc_skip_check_time;
 	unsigned int wpc_skip_check_capacity;
+
+#if defined(CONFIG_WIRELESS_CHARGER_INBATTERY)	
+	bool wpc_delayed_current_en;
+	unsigned int wpc_delayed_current;
+	unsigned int wpc_delayed_current_time;
+#endif
 
 	/* If these is NOT full check type or NONE full check type,
 	 * it is skipped
@@ -694,6 +727,7 @@ struct sec_battery_platform_data {
 	/* wirelss charger */
 	char *wireless_charger_name;
 	int wireless_cc_cv;
+	int wpc_det;
 
 	int chg_gpio_en;
 	/* 1 : active high, 0 : active low */
@@ -713,8 +747,10 @@ struct sec_battery_platform_data {
 	int chg_float_voltage;
 #endif
 #if defined(CONFIG_BATTERY_AGE_FORECAST)
-	int last_age_cycle;
-	int age_float_voltage;
+	int num_age_step;
+	int age_step;
+	int age_data_length;
+	sec_age_data_t* age_data;
 #endif
 	sec_charger_functions_t chg_functions_setting;
 
@@ -742,7 +778,7 @@ struct sec_charger_platform_data {
 
 	/* wirelss charger */
 	char *wireless_charger_name;
-
+	char *fuelgauge_name;
 	int vbus_ctrl_gpio;
 	int chg_gpio_en;
 	/* 1 : active high, 0 : active low */
@@ -775,6 +811,11 @@ struct sec_charger_platform_data {
 	int siop_wireless_charging_limit_current;
 	int siop_hv_wireless_input_limit_current;
 	int siop_hv_wireless_charging_limit_current;
+
+#if defined(CONFIG_WIRELESS_CHARGER_INBATTERY)
+		bool wpc_delayed_current_en;
+		unsigned int wpc_delayed_current;
+#endif
 
 	/* OVP/UVLO check */
 	sec_battery_ovp_uvlo_t ovp_uvlo_check_type;
@@ -817,6 +858,10 @@ struct sec_fuelgauge_platform_data {
 	int capacity_min;
 	int rcomp0;
 	int rcomp_charging;
+
+#if defined(CONFIG_BATTERY_AGE_FORECAST)
+	unsigned int full_condition_soc;
+#endif
 };
 
 #define sec_battery_platform_data_t \

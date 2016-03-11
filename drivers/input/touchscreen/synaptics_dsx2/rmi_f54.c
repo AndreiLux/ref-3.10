@@ -476,7 +476,8 @@ static struct attribute_group cmd_attr_group = {
  * handgrip_enable : Enable reporting the grip infomation based on hover shape.
  * set_tsp_test_result : Write the result of tsp test in config area.
  * get_tsp_test_result : Read the result of tsp test in config area.
- */
+ * lcd_orientation : Get LCD orientation status inform(param/degree) : (0/0), (1/90), (2/180), (3/270)
+  */
 
 static void fw_update(void *dev_data);
 static void get_fw_ver_bin(void *dev_data);
@@ -533,6 +534,7 @@ static void stylus_enable(void *dev_data);
 #ifdef USE_LPGW_MODE
 static void lpm_mode(void *dev_data);
 #endif
+static void lcd_orientation(void *dev_data);
 
 static void not_support_cmd(void *dev_data);
 
@@ -596,6 +598,7 @@ static struct ft_cmd ft_cmds[] = {
 #ifdef USE_LPGW_MODE
 	{FT_CMD("lpm_mode", lpm_mode),},
 #endif
+	{FT_CMD("lcd_orientation", lcd_orientation),},
 	{FT_CMD("not_support_cmd", not_support_cmd),},
 };
 #endif
@@ -4146,11 +4149,19 @@ static ssize_t rmi_scrub_position(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", buff);
 }
 
+/*
+#define	ORIENTATION_0	0
+#define	ORIENTATION_90	1
+#define	ORIENTATION_180	2
+#define	ORIENTATION_270	3
+F12 CTRL27(02)/00 :  0x01 : left->right , 0x02 : right-> left, 0x04 : up->down
+*/
 int set_lpgw_mode(struct synaptics_rmi4_data *rmi4_data, int on)
 {
 	int retval;
 	unsigned char report_flags_data[3];
-	unsigned char wake_up_gesture_data[2];
+	unsigned char wake_up_gesture_data[7];
+	int orient_value = 0;
 
 	if (on) {
 		rmi4_data->use_lpwg_sleep = true;
@@ -4177,11 +4188,22 @@ int set_lpgw_mode(struct synaptics_rmi4_data *rmi4_data, int on)
 					__func__, wake_up_gesture_data[1], rmi4_data->f12.ctrl27_addr);
 		/* set value */
 		wake_up_gesture_data[1] = 0x32;
+
+		if (rmi4_data->orientation == 0)		// 0     : 0x04 : up->down
+			orient_value = 0x04;
+		else  if (rmi4_data->orientation == 1)	// 90   : 0x02 : right-> left
+			orient_value = 0x02;
+		else  if (rmi4_data->orientation == 2)	// 180 : 0x08 : down-> up,
+			orient_value = 0x08;
+		else  if (rmi4_data->orientation == 3)	// 270 : 0x01 : left -> right
+			orient_value = 0x01;
+
+		wake_up_gesture_data[6] = orient_value;
 		/* write value */
 		retval = rmi4_data->i2c_write(rmi4_data, rmi4_data->f12.ctrl27_addr, wake_up_gesture_data, sizeof(wake_up_gesture_data));
 		tsp_debug_info(true, &rmi4_data->i2c_client->dev,
-					"%s: WRITE wake_up_gesture_data[1] = [0x%X] addr = [0x%X]\n",
-					__func__, wake_up_gesture_data[1], rmi4_data->f12.ctrl27_addr);
+					"%s: WRITE wake_up_gesture_data[1][6] = [0x%X][0x%X] addr = [0x%X]\n",
+					__func__, wake_up_gesture_data[1], wake_up_gesture_data[6], rmi4_data->f12.ctrl27_addr);
 
 	} else {
 		rmi4_data->use_lpwg_sleep = false;
@@ -4258,6 +4280,103 @@ out:
 
 }
 #endif
+
+static void lcd_orientation(void *dev_data)
+{
+	struct synaptics_rmi4_data *rmi4_data = (struct synaptics_rmi4_data *)dev_data;
+	struct synaptics_rmi4_f54_handle *f54 = rmi4_data->f54;
+	struct factory_data *data = f54->factory_data;
+
+	unsigned char wake_up_gesture_data[7];
+	int orient_value = 0;
+	int retval = 0;
+
+	set_default_result(data);
+
+	if (data->cmd_param[0] < 0 || data->cmd_param[0] > 3) {
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s: LCD orientation value error.\n", __func__);
+		snprintf(data->cmd_buff, sizeof(data->cmd_buff), "NG");
+		data->cmd_state = CMD_STATUS_FAIL;
+		goto out;
+	}
+
+	switch (data->cmd_param[0]) {
+	case ORIENTATION_0: /* Out lpwg mode */
+		tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s: Get 0 degree LCD orientation.\n", __func__);
+		break;
+	case ORIENTATION_90: /* Enter lpwg mode */
+		tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s: Get 90 degree LCD orientation.\n", __func__);
+		break;
+	case ORIENTATION_180: /* Enter lpwg mode */
+		tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s: Get 180 degree LCD orientation.\n", __func__);
+		break;
+	case ORIENTATION_270: /* Enter lpwg mode */
+		tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s: Get 270 degree LCD orientation.\n", __func__);
+		break;
+	default:
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s: LCD orientation value error.\n", __func__);
+		retval = -1;
+		break;
+	}
+
+	if (retval < 0) {
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s: Failed to set LCD orientation.\n", __func__);
+		snprintf(data->cmd_buff, sizeof(data->cmd_buff), "NG");
+		data->cmd_state = CMD_STATUS_FAIL;
+		goto out;
+	}
+
+	rmi4_data->orientation = data->cmd_param[0];
+
+	if(rmi4_data->use_lpwg_sleep){
+		mutex_lock(&rmi4_data->rmi4_lpgw_mutex);
+		/* read value : F12_2D_CTRL27(01)/00 (0x001E, 01) Report Rate Wakeup Gesture (8 bits) set 0x32 */
+		/* read value : F12_2D_CTRL27(02)/00 (0x001E, 06) Allowed Swipes (4 bits)  */
+		retval = rmi4_data->i2c_read(rmi4_data, rmi4_data->f12.ctrl27_addr,
+										wake_up_gesture_data, sizeof(wake_up_gesture_data));
+		tsp_debug_dbg(true, &rmi4_data->i2c_client->dev,
+					"%s: READ wake_up_gesture_data[6] = [0x%X] addr = [0x%X]\n",
+					__func__, wake_up_gesture_data[6], rmi4_data->f12.ctrl27_addr);
+		/* set value */
+		if (rmi4_data->orientation == 0)		// 0     : 0x04 : up->down
+			orient_value = 0x04;
+		else  if (rmi4_data->orientation == 1)	// 90   : 0x02 : right-> left
+			orient_value = 0x02;
+		else  if (rmi4_data->orientation == 2)	// 180 : 0x08 : down-> up,
+			orient_value = 0x08;
+		else  if (rmi4_data->orientation == 3)	// 270 : 0x01 : left -> right
+			orient_value = 0x01;
+
+		wake_up_gesture_data[6] = orient_value;
+		/* write value */
+		retval = rmi4_data->i2c_write(rmi4_data, rmi4_data->f12.ctrl27_addr, wake_up_gesture_data, sizeof(wake_up_gesture_data));
+		tsp_debug_info(true, &rmi4_data->i2c_client->dev,
+					"%s: WRITE wake_up_gesture_data[6] = [0x%X] addr = [0x%X]\n",
+					__func__, wake_up_gesture_data[6], rmi4_data->f12.ctrl27_addr);
+
+		mutex_unlock(&rmi4_data->rmi4_lpgw_mutex);
+	}
+
+	if (retval < 0) {
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s: Failed to set LCD orientation.\n", __func__);
+		snprintf(data->cmd_buff, sizeof(data->cmd_buff), "NG");
+		data->cmd_state = CMD_STATUS_FAIL;
+		goto out;
+	}
+
+	snprintf(data->cmd_buff, sizeof(data->cmd_buff), "OK");
+	data->cmd_state = CMD_STATUS_OK;
+
+out:
+	set_cmd_result(data, data->cmd_buff, strlen(data->cmd_buff));
+
+	mutex_lock(&data->cmd_lock);
+	data->cmd_is_running = false;
+	mutex_unlock(&data->cmd_lock);
+
+	data->cmd_state = CMD_STATUS_WAITING;
+
+}
 
 static void not_support_cmd(void *dev_data)
 {

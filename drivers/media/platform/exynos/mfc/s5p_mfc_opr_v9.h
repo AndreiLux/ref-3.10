@@ -148,29 +148,9 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 	} while (0)
 
 /* Definition */
-#define ENC_MULTI_SLICE_MB_MAX		((1 << 30) - 1)
-#define ENC_MULTI_SLICE_BIT_MIN		2800
-#define ENC_MULTI_SLICE_BYTE_MIN	350
-#define ENC_MULTI_SLICE_MB_ROW_MAX	255
-#define ENC_INTRA_REFRESH_MB_MAX	((1 << 18) - 1)
-#define ENC_VBV_BUF_SIZE_MAX		((1 << 30) - 1)
-#define ENC_H264_LOOP_FILTER_AB_MIN	-12
-#define ENC_H264_LOOP_FILTER_AB_MAX	12
-#define ENC_H264_RC_FRAME_RATE_MAX	((1 << 16) - 1)
-#define ENC_H263_RC_FRAME_RATE_MAX	((1 << 16) - 1)
-#define ENC_H264_PROFILE_MAX		3
-#define ENC_H264_LEVEL_MAX		42
-#define ENC_MPEG4_VOP_TIME_RES_MAX	((1 << 16) - 1)
 #define FRAME_DELTA_DEFAULT		1
 #define TIGHT_CBR_MAX			10
 #define I_LIMIT_CBR_MAX			5
-#define ENC_HEVC_RC_FRAME_RATE_MAX	((1 << 16) - 1)
-#define ENC_HEVC_QP_INDEX_MIN	-12
-#define ENC_HEVC_QP_INDEX_MAX	12
-#define ENC_HEVC_LOOP_FILTER_MIN	-12
-#define ENC_HEVC_LOOP_FILTER_MAX	12
-#define ENC_HEVC_RC_FRAME_RATE_MAX	((1 << 16) - 1)
-#define ENC_HEVC_LEVEL_MAX		62
 
 /* Definitions for shared memory compatibility */
 #define PIC_TIME_TOP		S5P_FIMV_D_RET_PICTURE_TAG_TOP
@@ -233,12 +213,6 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 /* Encoder buffer size for hevc */
 #define ENC_HEVC_ME_SIZE(x, y)				\
 			((((x * 32 / 8 + 63) / 64 * 64) * ((y * 8) + 64)) + (x * y * 32))
-
-/* MV range is [16,256] for v6.1, [16,128] for v6.5 */
-#define ENC_V61_MV_RANGE		256
-#define ENC_V65_MV_RANGE		128
-/* MV range is [16,32] for v7.8 */
-#define ENC_V78_MV_RANGE		32
 
 #define NUM_MPEG4_LF_BUF		2
 

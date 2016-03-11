@@ -31,6 +31,8 @@ typedef unsigned int u32; /* define for platform build */
 #define Call_TTY_VCO			11 /* Call, TTY HCO NB */
 #define Call_TTY_HCO			12 /* Call, TTY VCO NB */
 #define Call_TTY_FULL		13 /* Call, TTY FULL NB */
+#define Call_FT_EVS			14 /* Call, Far Talk, EVS */
+#define Call_CT_EVS			15 /* Call, Close Talk, EVS */
 #define LOOPBACK_CT		17 /* Loopback, Close Talk */
 #define LOOPBACK_FT			18 /* Loopback, Far Talk */
 #define LOOPBACK_HS		19 /* Loopback, Headset */
@@ -57,8 +59,8 @@ enum {
 	ROUTE_TTY_VCO,
 	ROUTE_TTY_HCO,
 	ROUTE_TTY_FULL,
-	ROUTE_DUMMY_C,
-	ROUTE_DUMMY_D,		/* 15 */
+	ROUTE_FT_EVS_NS_ON,
+	ROUTE_CT_EVS_NS_ON,		/* 15 */
 	ROUTE_DUMMY_E,
 	ROUTE_CT_LOOPBACK,
 	ROUTE_FT_LOOPBACK,
@@ -106,6 +108,8 @@ enum {
 #define ALGO_2MIC_NS_CT_NB	0x9031022A /* 554 */
 #define ALGO_2MIC_NS_FT_WB	0x90310392 /* 914 */
 #define ALGO_2MIC_NS_CT_WB	0x9031022B /* 555 */
+#define ALGO_2MIC_NS_FT_EVS 	0x90310393 /* 915 */
+#define ALGO_2MIC_NS_CT_EVS 	0x9031022C /* 556 */
 #define ALGO_NS_16K			0x9031024F /* 591 */
 #define VP_OFF				0x9031026D /* 621 */
 #define ROUTE_2CH_BYPASS	0x90310483 /* 1155 */
@@ -213,11 +217,17 @@ static const u32 route_id_13[] = { /* ROUTE_TTY_FULL */
 	TERMINATED
 };
 
-static const u32 route_id_14[] = { /* ROUTE_DUMMY_C */
+static const u32 route_id_14[] = { /* ROUTE_FT_EVS_NS_ON */
+	AUD_FMT,
+	ROUTE_2MIC_1FEOUT_FT,
+	ALGO_2MIC_NS_FT_EVS,
 	TERMINATED
 };
 
-static const u32 route_id_15[] = { /* ROUTE_DUMMY_D */
+static const u32 route_id_15[] = { /* ROUTE_CT_NB_NS_ON */
+	AUD_FMT,
+	ROUTE_2MIC_1FEOUT_CT,
+	ALGO_2MIC_NS_CT_EVS,
 	TERMINATED
 };
 

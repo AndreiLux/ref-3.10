@@ -62,6 +62,10 @@ config SEC_MODEM_DEBUGFS
 	depends on SEC_MODEM_DEBUG
 	default n
 
+config DEBUG_PKTLOG
+	bool "IPC pcap logging feature"
+	default n
+
 config LINK_DEVICE_C2C
 	bool "Pseudo shared-memory with chip-to-chip (C2C) interface"
 	depends on SEC_MODEM_V1

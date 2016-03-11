@@ -970,6 +970,7 @@ static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 		goto err_out_unregister;
 
 	kobject_uevent(&policy->kobj, KOBJ_ADD);
+	kobject_uevent(&dev->kobj, KOBJ_POLICY_INIT);
 	module_put(cpufreq_driver->owner);
 	pr_debug("initialization complete\n");
 

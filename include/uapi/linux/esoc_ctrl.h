@@ -59,6 +59,7 @@ enum esoc_notify {
 	ESOC_PRIMARY_REBOOT,
 	ESOC_FORCE_CPCRASH,
 	ESOC_DIAG_DISABLE,
+	ESOC_CP_SILENT_RESET,
 };
 
 enum esoc_req {

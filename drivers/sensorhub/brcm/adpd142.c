@@ -282,6 +282,7 @@ struct adpd142_data {
 	int osc_trim_addr28_value;
 	int osc_trim_addr29_value;
 	int dual_hrm;
+	int threshold;
 	u8 osc_trim_open_enable;
 	u8 skip_i2c_msleep;
 };
@@ -2331,6 +2332,36 @@ static ssize_t adpd142_elf_lib_ver_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", pst_adpd->elf_lib_ver);
 }
 
+static ssize_t adpd142_threshold_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct adpd142_data *pst_adpd = dev_get_drvdata(dev);
+	int err = 0;
+
+	err = kstrtoint(buf, 10, &pst_adpd->threshold);
+	if (err < 0) {
+		pr_err("%s - kstrtoint failed.(%d)\n", __func__, err);
+		return err;
+	}
+
+	pr_info("%s - threshold = %d\n", __func__, pst_adpd->threshold);
+	return size;
+}
+
+static ssize_t adpd142_threshold_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct adpd142_data *pst_adpd = dev_get_drvdata(dev);
+
+	if (pst_adpd->threshold) {
+		pr_info("%s - threshold = %d\n", __func__, pst_adpd->threshold);
+		return snprintf(buf, PAGE_SIZE, "%d\n", pst_adpd->threshold);
+	} else {
+		pr_info("%s - threshold = 0\n", __func__);
+		return snprintf(buf, PAGE_SIZE, "%d\n", 0);
+	}
+}
+
 static DEVICE_ATTR(name, S_IRUGO, adpd142_name_show, NULL);
 static DEVICE_ATTR(vendor, S_IRUGO, adpd142_vendor_show, NULL);
 static DEVICE_ATTR(eol_test, S_IRUGO | S_IWUSR | S_IWGRP,
@@ -2352,6 +2383,8 @@ static DEVICE_ATTR(adpd_configuration, S_IRUGO | S_IWUSR | S_IWGRP,
 	attr_config_get, attr_config_set);
 static DEVICE_ATTR(adpd_stat, S_IRUGO | S_IWUSR | S_IWGRP,
 	attr_stat_get, attr_stat_set);
+static DEVICE_ATTR(threshold, S_IRUGO | S_IWUSR | S_IWGRP,
+	adpd142_threshold_show, adpd142_threshold_store);
 
 static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_name,
@@ -2366,6 +2399,7 @@ static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_adpd_reg_write,
 	&dev_attr_adpd_configuration,
 	&dev_attr_adpd_stat,
+	&dev_attr_threshold,
 	NULL,
 };
 
@@ -2436,6 +2470,7 @@ adpd_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	pst_adpd->ptr_config = pdata;
 	pst_adpd->read = adpd142_i2c_read;
 	pst_adpd->write = adpd142_i2c_write;
+	pst_adpd->threshold = 0;
 	/*Need to allocate and assign data then use the below function */
 	i2c_set_clientdata(client, (struct adpd142_data *)pst_adpd);
 	/*chip ID verification */

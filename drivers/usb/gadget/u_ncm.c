@@ -211,15 +211,18 @@ void set_ncm_ready(bool ready)
 	{
 		printk(KERN_DEBUG "usb: %s old status=%d, new status=%d\n",
 				__func__, ncm_connect, ready);
+		ncm_connect = ready;
 		schedule_work(&_ncm_dev->work);
 	}
+	else
+		ncm_connect = ready;
 
-	ncm_connect = ready;
 	if (ready == false) {
 		terminal_mode_version = 0;
 		terminal_mode_vendor_id = 0;
 	}
 }
+EXPORT_SYMBOL(set_ncm_ready);
 
 static ssize_t terminal_version_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -244,6 +247,8 @@ static ssize_t terminal_version_store(struct device *dev,
 	/* only set ncm ready when terminal verision value is not zero */
 	if(value)
 		set_ncm_ready(true);
+	else
+		set_ncm_ready(false);
 	return size;
 }
 

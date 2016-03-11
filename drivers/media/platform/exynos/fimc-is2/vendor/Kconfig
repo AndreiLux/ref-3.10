@@ -82,9 +82,15 @@ config CAMERA_NOBLE
         default n
         help
           This camera is noble project.
- config CAMERA_ZENLTE
+config CAMERA_ZENLTE
         bool "This camera is zenlte project"
         depends on VIDEO_EXYNOS_FIMC_IS
         default n
         help
           This camera is zenlte project.
+config CAMERA_ROYCE
+        bool "This camera is royce project"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          This camera is royce project.

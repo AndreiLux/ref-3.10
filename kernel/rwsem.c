@@ -15,9 +15,23 @@
 /*
  * lock for reading
  */
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+extern  int printk(const char *s, ...);
+extern void dump_stack(void);
+extern char _text, _etext;
+#define check_kernel_text(addr) \
+        ((addr >= (u64)(&_text)) && \
+         (addr <  (u64)(&_etext))) 
+#endif
 void __sched down_read(struct rw_semaphore *sem)
 {
 	might_sleep();
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	if (check_kernel_text((u64)sem)) {
+		printk("[RKP] Lock is in text area(%llx ~ %llx) %llx\n", (u64)&_text, (u64)&_etext, (u64)sem);
+		dump_stack();
+	}
+#endif
 	rwsem_acquire_read(&sem->dep_map, 0, 0, _RET_IP_);
 
 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);

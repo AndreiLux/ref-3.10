@@ -59,3 +59,5 @@ obj-$(CONFIG_KEYBOARD_W90P910)		+= w90p910_keypad.o
 obj-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_MBR31X5)	+= cypress_20075/
 obj-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20075)	+= cypress_20075/
 obj-$(CONFIG_KEYBOARD_ABOV_TOUCH)	+= abov_touchkey.o
+obj-$(CONFIG_KEYBOARD_ABOV_TOUCH_FOLDER)	+= abov_touchkey_folder.o
+obj-$(CONFIG_KEYBOARD_ABOV_FT16XX_TOUCH_VALLEY)	+= abov_touchkey_dual.o

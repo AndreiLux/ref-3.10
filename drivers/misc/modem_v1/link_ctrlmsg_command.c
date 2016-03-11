@@ -42,6 +42,17 @@
 @{
 */
 
+
+/**
+ * iosm wrapper functions called from mem_init_comm function
+ */
+void __tx_iosm_message(struct mem_link_device *mld, u8 id)
+{
+	send_ipc_irq(mld, cmd2int(id));
+}
+void tx_iosm_message(struct mem_link_device *mld, u8 id, u32 *args) {}
+
+
 static bool rild_ready(struct link_device *ld)
 {
 	struct io_device *fmt_iod;

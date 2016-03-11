@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id$
+ * $Id: osl_decl.h 591283 2015-10-07 11:52:00Z $
  */
 
 #ifndef _osl_decl_h_

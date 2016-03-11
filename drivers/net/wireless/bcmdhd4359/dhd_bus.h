@@ -27,7 +27,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_bus.h 542048 2015-03-18 15:37:26Z $
+ * $Id: dhd_bus.h 602721 2015-11-27 10:32:48Z $
  */
 
 #ifndef _dhd_bus_h_
@@ -191,6 +191,7 @@ extern int dhd_bus_flow_ring_flush_request(struct dhd_bus *bus, void *flow_ring_
 extern void dhd_bus_flow_ring_flush_response(struct dhd_bus *bus, uint16 flowid, uint32 status);
 extern uint32 dhd_bus_max_h2d_queues(struct dhd_bus *bus);
 extern int dhd_bus_schedule_queue(struct dhd_bus *bus, uint16 flow_id, bool txs);
+extern void dhd_bus_set_linkdown(dhd_pub_t *dhdp, bool val);
 
 
 extern int dhdpcie_bus_clock_start(struct dhd_bus *bus);

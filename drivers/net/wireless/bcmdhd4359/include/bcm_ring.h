@@ -101,7 +101,9 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id$
+ * <<Broadcom-WL-IPTag/Open:>>
+ *
+ * $Id: bcm_ring.h 591283 2015-10-07 11:52:00Z $
  *
  * -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*-
  * vim: set ts=4 noet sw=4 tw=80:

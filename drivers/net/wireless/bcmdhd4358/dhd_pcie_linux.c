@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_pcie_linux.c 545664 2015-04-01 09:11:26Z $
+ * $Id: dhd_pcie_linux.c 601802 2015-11-24 07:05:07Z $
  */
 
 
@@ -252,6 +252,7 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 		DHD_ERROR(("%s: pci_set_power_state error %d\n",
 			__FUNCTION__, ret));
 	}
+	disable_irq(dev->irq);
 	return ret;
 }
 
@@ -267,58 +268,53 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	err = pci_enable_device(dev);
 	if (err) {
 		printf("%s:pci_enable_device error %d \n", __FUNCTION__, err);
-		return err;
+		goto out;
 	}
 	pci_set_master(dev);
 	err = pci_set_power_state(dev, PCI_D0);
 	if (err) {
 		printf("%s:pci_set_power_state error %d \n", __FUNCTION__, err);
-		return err;
+		goto out;
 	}
+
+out:
+	enable_irq(dev->irq);
 	return err;
 }
-
-#ifdef CONFIG_MACH_UNIVERSAL7420
-#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
-extern int exynos_pcie_pm_suspend(int ch_num);
-extern int exynos_pcie_pm_resume(int ch_num);
-#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
-#endif /* CONFIG_MACH_UNIVERSAL7420 */
 
 int dhdpcie_pci_suspend_resume(dhd_bus_t *bus, bool state)
 {
 	int rc;
-
 	struct pci_dev *dev = bus->dev;
 #ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+#ifdef CONFIG_MACH_UNIVERSAL7420
 	struct pci_dev *rc_pci_dev;
+#endif /* CONFIG_MACH_UNIVERSAL7420 */
 #endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
 
 	if (state) {
 #ifndef BCMPCIE_OOB_HOST_WAKE
 		dhdpcie_pme_active(bus->osh, state);
-#endif /* !BCMPCIE_OOB_HOST_WAKE */
+#endif /* BCMPCIE_OOB_HOST_WAKE */
 		rc = dhdpcie_suspend_dev(dev);
-#ifdef CONFIG_MACH_UNIVERSAL7420
 #ifdef USE_EXYNOS_PCIE_RC_PMPATCH
 		if (!rc) {
-			rc_pci_dev = pci_get_device(0x144d, 0xa575, NULL);
+#ifdef CONFIG_MACH_UNIVERSAL7420
+			rc_pci_dev = pci_get_device(0x144d, EXYNOS_PCIE_DEVICE_ID, NULL);
 			pci_save_state(rc_pci_dev);
-			exynos_pcie_pm_suspend(1);
+#endif /* CONFIG_MACH_UNIVERSAL7420 */
+			exynos_pcie_pm_suspend(EXYNOS_PCIE_CH_NUM);
 		}
 #endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
-#endif /* CONFIG_MACH_UNIVERSAL7420 */
 	} else {
-#ifdef CONFIG_MACH_UNIVERSAL7420
 #ifdef USE_EXYNOS_PCIE_RC_PMPATCH
-		exynos_pcie_pm_resume(1);
+		exynos_pcie_pm_resume(EXYNOS_PCIE_CH_NUM);
 #endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
-#endif /* CONFIG_MACH_UNIVERSAL7420 */
 
 		rc = dhdpcie_resume_dev(dev);
 #ifndef BCMPCIE_OOB_HOST_WAKE
 		dhdpcie_pme_active(bus->osh, state);
-#endif /* !BCMPCIE_OOB_HOST_WAKE */
+#endif /* BCMPCIE_OOB_HOST_WAKE */
 	}
 	return rc;
 }
@@ -609,9 +605,10 @@ void dhdpcie_linkdown_cb(struct msm_pcie_notify *noti)
 					DHD_ERROR(("%s: Event HANG send up "
 						"due to PCIe linkdown\n",
 						__FUNCTION__));
-					bus->islinkdown = TRUE;
+					bus->no_cfg_restore = TRUE;
 					DHD_OS_WAKE_LOCK(dhd);
-					dhd_os_check_hang(dhd, 0, -ETIMEDOUT);
+					dhd->hang_reason = HANG_REASON_PCIE_LINK_DOWN;
+					dhd_os_send_hang_message(dhd);
 				}
 			}
 		}
@@ -703,7 +700,7 @@ int dhdpcie_init(struct pci_dev *pdev)
 		bus->pcie_event.callback = dhdpcie_linkdown_cb;
 		bus->pcie_event.options = MSM_PCIE_CONFIG_NO_RECOVERY;
 		msm_pcie_register_event(&bus->pcie_event);
-		bus->islinkdown = FALSE;
+		bus->no_cfg_restore = FALSE;
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 
@@ -841,16 +838,14 @@ dhdpcie_start_host_pcieclock(dhd_bus_t *bus)
 
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
-	if (bus->islinkdown) {
+	if (bus->no_cfg_restore) {
 		options = MSM_PCIE_CONFIG_NO_CFG_RESTORE;
 	}
 	ret = msm_pcie_pm_control(MSM_PCIE_RESUME, bus->dev->bus->number,
 		bus->dev, NULL, options);
-	if (bus->islinkdown && !ret) {
+	if (bus->no_cfg_restore && !ret) {
 		msm_pcie_recover_config(bus->dev);
-		if (bus->dhd)
-			DHD_OS_WAKE_UNLOCK(bus->dhd);
-		bus->islinkdown = FALSE;
+		bus->no_cfg_restore = FALSE;
 	}
 #else
 	ret = msm_pcie_pm_control(MSM_PCIE_RESUME, bus->dev->bus->number,
@@ -887,8 +882,9 @@ dhdpcie_stop_host_pcieclock(dhd_bus_t *bus)
 
 #ifdef CONFIG_ARCH_MSM
 #ifdef SUPPORT_LINKDOWN_RECOVERY
-	if (bus->islinkdown)
+	if (bus->no_cfg_restore) {
 		options = MSM_PCIE_CONFIG_NO_CFG_RESTORE | MSM_PCIE_CONFIG_LINKDOWN;
+	}
 
 	ret = msm_pcie_pm_control(MSM_PCIE_SUSPEND,	bus->dev->bus->number,
 		bus->dev, NULL, options);

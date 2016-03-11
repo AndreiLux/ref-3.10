@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmdefs.h 553280 2015-04-29 07:55:29Z $
+ * $Id: bcmdefs.h 601026 2015-11-20 06:53:19Z $
  */
 
 #ifndef	_bcmdefs_h_
@@ -180,6 +180,10 @@ typedef dma64addr_t dmaaddr_t;
 #define PHYSADDRHISET(_pa, _val) PHYSADDR64HISET(_pa, _val)
 #define PHYSADDRLO(_pa)  PHYSADDR64LO(_pa)
 #define PHYSADDRLOSET(_pa, _val) PHYSADDR64LOSET(_pa, _val)
+#define PHYSADDRTOULONG(_pa, _ulong) \
+	do { \
+		_ulong = ((unsigned long)(_pa).hiaddr << 32) | ((_pa).loaddr); \
+	} while (0)
 
 #else
 typedef unsigned long dmaaddr_t;

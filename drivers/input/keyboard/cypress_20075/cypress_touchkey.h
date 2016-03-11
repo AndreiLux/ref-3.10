@@ -232,6 +232,7 @@ struct touchkey_i2c {
 #ifdef TK_USE_OPEN_DWORK
 	struct delayed_work open_work;
 #endif
+	struct delayed_work keyboard_cover_work;
 #ifdef TK_INFORM_CHARGER
 	struct touchkey_callbacks callbacks;
 	bool charging_mode;

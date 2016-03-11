@@ -42,6 +42,18 @@ enum fimc_is_cam_info_upgrade {
 	CAM_INFO_FW_UPGRADE_CAMON,
 };
 
+enum fimc_is_cam_info_fw_write {
+	CAM_INFO_FW_WRITE_NONE = 0,
+	CAM_INFO_FW_WRITE_OS,
+	CAM_INFO_FW_WRITE_SD,
+	CAM_INFO_FW_WRITE_ALL,
+};
+
+enum fimc_is_cam_info_fw_dump {
+	CAM_INFO_FW_DUMP_NONE = 0,
+	CAM_INFO_FW_DUMP_USE,
+};
+
 enum fimc_is_cam_info_companion {
 	CAM_INFO_COMPANION_NONE = 0,
 	CAM_INFO_COMPANION_USE,
@@ -58,6 +70,8 @@ struct fimc_is_cam_info {
 	unsigned int read_version;
 	unsigned int core_voltage;
 	unsigned int upgrade;
+	unsigned int fw_write;
+	unsigned int fw_dump;
 	unsigned int companion;
 	unsigned int ois;
 };

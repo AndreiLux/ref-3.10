@@ -88,6 +88,9 @@ static u32 exynos_mphy_cal_ovtm_init(void *mphy_addr)
 	/* Masking DIF-P when enter H8 */
 	writel(0x21, mphy_addr + 0x37*4);
 
+	writel(0x0, mphy_addr + 0x8C*4);
+	writel(0x0, mphy_addr + 0x8D*4);
+
 	return 0;
 }
 
@@ -284,6 +287,9 @@ static u32 exynos_mphy_cal_pma_HS_G2A_init(void *pma_addr,
 	/* Enable DIF-Z always */
 	writel(0x81, pma_addr + 0x4D*4);
 	/* ------------- DIPD tuning 2014-02-21 ---- end  ---------------- */
+
+	writel(0x10, pma_addr + 0x4A*4);
+	writel(0x10, pma_addr + 0x5C*4);
 
 	return 0;
 }

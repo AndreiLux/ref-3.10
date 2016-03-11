@@ -19,6 +19,10 @@
  * 2015.03.25 : Release Version 2.1.4
  *    - Add FMODE_NONMAPPABLE, FMODE_NONCACHEABLE flag to file->f_mode
  *    - Modify do_mmap_pgoff because of new f_mode flags
+ * 2015.07.   : Release Version 3.0.0
+ * 2015.11.24 : Release Version 3.1.0
+ *    - Add unlink_callback(), get_lower_inode()
+ *    - Add mount option type, label
  */
 
-#define SDCARDFS_VERSION "2.1.4"
+#define SDCARDFS_VERSION "3.1.0"

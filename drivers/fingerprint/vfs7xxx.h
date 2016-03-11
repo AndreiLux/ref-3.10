@@ -128,6 +128,9 @@
 						19, unsigned int)
 #define VFSSPI_IOCTL_SET_SENSOR_TYPE     _IOW(VFSSPI_IOCTL_MAGIC,	\
 							20, unsigned int)
+/* IOCTL #21 was already used Synaptics service. Do not use #21 */
+#define VFSSPI_IOCTL_SET_LOCKSCREEN     _IOW(VFSSPI_IOCTL_MAGIC,	\
+							22, unsigned int)
 #endif
 /* get sensor orienation from the SPI driver*/
 #define VFSSPI_IOCTL_GET_SENSOR_ORIENT	\

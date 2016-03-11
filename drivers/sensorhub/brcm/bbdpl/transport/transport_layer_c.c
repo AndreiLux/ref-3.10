@@ -530,6 +530,7 @@ unsigned char TransportLayer_BuildAndSendPacket(struct sTransportLayer* p,
     p->m_aucTxBuffer[ulPacketSize++] = ESCAPE_CHARACTER;
     p->m_aucTxBuffer[ulPacketSize++] = EOP_CHARACTER;
 
+    bbd_update_stat(STAT_TX_TL, ulPacketSize);
     p->m_callback->OnDataToSend(p->m_callback, p->m_aucTxBuffer,
                         ulPacketSize);
     return ucTxSeqId;

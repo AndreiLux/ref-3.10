@@ -20,6 +20,15 @@
 
 #if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
 #include "mdnie.h"
+#if defined(CONFIG_PANEL_S6E3HF2_DYNAMIC)
+#include "mdnie_lite_table_zero.h"
+#elif defined(CONFIG_PANEL_S6E3HA2_DYNAMIC)
+#include "mdnie_lite_table_zerof.h"
+#elif defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
+#include "mdnie_lite_table_noble.h"
+#elif defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+#include "mdnie_lite_table_zen.h"
+#endif
 #endif
 
 #if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
@@ -153,7 +162,7 @@ static int dsim_panel_probe(struct dsim_device *dsim)
 	coordinate[0] = (u16)panel->coordinate[0];
 	coordinate[1] = (u16)panel->coordinate[1];
 	if (panel->mdnie_support)
-		mdnie_register(&dsim->lcd->dev, dsim, (mdnie_w)mdnie_lite_send_seq, (mdnie_r)mdnie_lite_read, coordinate);
+		mdnie_register(&dsim->lcd->dev, dsim, (mdnie_w)mdnie_lite_send_seq, (mdnie_r)mdnie_lite_read, coordinate, &tune_info);
 #endif
 
 probe_err:

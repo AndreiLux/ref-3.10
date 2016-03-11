@@ -61,7 +61,7 @@ static int fts_fw_wait_for_flash_ready(struct fts_ts_info *info)
 }
 
 #ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
-static bool get_PureAutotune_status(struct fts_ts_info *info)
+bool get_PureAutotune_status(struct fts_ts_info *info)
 {
 	int rc;
 	unsigned char regAdd[3];
@@ -87,14 +87,15 @@ static bool get_PureAutotune_status(struct fts_ts_info *info)
 	if (!rc)
 	{
 		tsp_debug_info(true, info->dev, "%s: PureAutotune Information Read Fail!! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
-		return rc;
 	}
-
-	if((buf[1] == 0xA5) && (buf[2] == 0x96))
-		retVal = true;
-	tsp_debug_info(true, info->dev, "%s: PureAutotune Information !! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
+	else
+	{
+		if((buf[1] == 0xA5) && (buf[2] == 0x96)) retVal = 1;
+		tsp_debug_info(true, info->dev, "%s: PureAutotune Information !! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
+	}
 	return retVal;
 }
+EXPORT_SYMBOL(get_PureAutotune_status);
 
 static bool get_AFE_status(struct fts_ts_info *info)
 {

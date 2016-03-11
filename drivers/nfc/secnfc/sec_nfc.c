@@ -429,6 +429,9 @@ static ssize_t felica_epc_read(struct file *file, char __user *buf,
 		return -EFAULT;
 	}
 
+        if (len > sizeof(read_buff))
+		len = sizeof(read_buff);
+
 	ret = copy_to_user(buf, &read_buff, len);
 	if (ret != 0) {
 		EPC_ERR("[MFDD] %s ERROR(copy_to_user), ret=[%d]",

@@ -91,6 +91,17 @@ struct max77843_muic_data {
 	/* muic hvcontrol value */
 	u8				hvcontrol1;
 	u8				hvcontrol2;
+#if defined(CONFIG_MUIC_DET_JACK)
+	struct input_dev		*input;
+	struct work_struct		earjack_work;
+	struct work_struct		earjackkey_work;
+	bool				eardetected;
+	bool				earkeypressed;
+	int				init_detect_done;
+	unsigned int			old_keycode;
+	unsigned int			keycode;
+	unsigned int			mic_en_gpio;
+#endif
 
 };
 
@@ -149,9 +160,9 @@ enum max77843_reg_bit_control {
 #define CTRL2_CPEN_MASK			(0x1 << CTRL2_CPEN_SHIFT)
 #define CTRL2_ACCDET_MASK		(0x1 << CTRL2_ACCDET_SHIFT)
 #define CTRL2_CPEN1_LOWPWD0	((MAX77843_ENABLE_BIT << CTRL2_CPEN_SHIFT) | \
-				(MAX77843_DISABLE_BIT << CTRL2_ADCLOWPWR_SHIFT))
+				(MAX77843_DISABLE_BIT << CTRL2_LOWPWR_SHIFT))
 #define CTRL2_CPEN0_LOWPWD1	((MAX77843_DISABLE_BIT << CTRL2_CPEN_SHIFT) | \
-				(MAX77843_ENABLE_BIT << CTRL2_ADCLOWPWR_SHIFT))
+				(MAX77843_ENABLE_BIT << CTRL2_LOWPWR_SHIFT))
 
 /* MAX77843 CONTROL3 register */
 #define CTRL3_JIGSET_SHIFT		0
@@ -273,6 +284,14 @@ enum {
 	MAX77843_MUIC_CTRL4_ADCMODE_ONE_SHOT		= 0x02,
 	MAX77843_MUIC_CTRL4_ADCMODE_2S_PULSE		= 0x03
 };
+
+#if defined(CONFIG_MUIC_DET_JACK)
+enum {
+	MAX77843_NOT_INIT = 0,
+	MAX77843_INIT_START,
+	MAX77843_INIT_DONE,
+};
+#endif
 
 extern struct device *switch_device;
 

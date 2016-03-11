@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgp2p.h 536426 2015-02-23 05:49:43Z $
+ * $Id: wl_cfgp2p.h 597512 2015-11-05 11:37:36Z $
  */
 #ifndef _wl_cfgp2p_h_
 #define _wl_cfgp2p_h_
@@ -84,7 +84,7 @@ struct p2p_info {
 	s8 p2p_go_count;
 };
 
-#define MAX_VNDR_IE_NUMBER	5
+#define MAX_VNDR_IE_NUMBER	7
 
 struct parsed_vndr_ie_info {
 	char *ie_ptr;
@@ -135,13 +135,24 @@ enum wl_cfgp2p_status {
 /* dword align allocation */
 #define WLC_IOCTL_MAXLEN 8192
 
-#ifdef CUSTOMER_HW4
+#ifdef CUSTOMER_HW4_DEBUG
 #define CFGP2P_ERROR_TEXT		"CFGP2P-INFO2) "
 #else
 #define CFGP2P_ERROR_TEXT		"CFGP2P-ERROR) "
-#endif
+#endif /* CUSTOMER_HW4_DEBUG */
 
-
+#ifdef DHD_LOG_DUMP
+#define CFGP2P_ERR(args)									\
+	do {										\
+		if (wl_dbg_level & WL_DBG_ERR) {				\
+			printk(KERN_INFO CFGP2P_ERROR_TEXT "%s : ", __func__);	\
+			printk args;						\
+			dhd_log_dump_print("[%s] %s: ",	\
+			dhd_log_dump_get_timestamp(), __func__);	\
+			dhd_log_dump_print args;	\
+		}									\
+	} while (0)
+#else
 #define CFGP2P_ERR(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_ERR) {				\
@@ -149,6 +160,7 @@ enum wl_cfgp2p_status {
 			printk args;						\
 		}									\
 	} while (0)
+#endif /* DHD_LOG_DUMP */
 #define	CFGP2P_INFO(args)									\
 	do {										\
 		if (wl_dbg_level & WL_DBG_INFO) {				\
@@ -220,6 +232,8 @@ enum wl_cfgp2p_status {
 #else
 #define bcm_struct_cfgdev	struct net_device
 #endif /* WL_CFG80211_P2P_DEV_IF */
+
+#define P2P_ECSA_CNT 50
 
 extern void
 wl_cfgp2p_listen_expired(unsigned long data);
@@ -341,6 +355,9 @@ wl_cfgp2p_get_p2p_noa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* b
 
 extern s32
 wl_cfgp2p_set_p2p_ps(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
+
+extern s32
+wl_cfgp2p_set_p2p_ecsa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* buf, int len);
 
 extern u8 *
 wl_cfgp2p_retreive_p2pattrib(void *buf, u8 element_id);

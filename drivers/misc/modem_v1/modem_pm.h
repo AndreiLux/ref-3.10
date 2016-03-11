@@ -183,6 +183,7 @@ struct modem_link_pm {
 	bool active;
 
 	struct pm_fsm fsm;
+	atomic_t ref_cnt;
 
 	struct wake_lock wlock;
 	char wlock_name[MAX_NAME_LEN];

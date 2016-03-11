@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_wlfc.c 557276 2015-05-18 12:37:31Z $
+ * $Id: dhd_wlfc.c 579277 2015-08-14 04:49:50Z $
  *
  */
 
@@ -1299,10 +1299,11 @@ _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 	int total_entries;
 	void* p = NULL;
 	int i;
+	uint8 credit_spent = ((prec == AC_COUNT) && !ctx->bcmc_credit_supported) ? 0 : 1;
 
 	*entry_out = NULL;
 	/* most cases a packet will count against FIFO credit */
-	*ac_credit_spent = ((prec == AC_COUNT) && !ctx->bcmc_credit_supported) ? 0 : 1;
+	*ac_credit_spent = credit_spent;
 
 	/* search all entries, include nodes as well as interfaces */
 	if (only_no_credit) {
@@ -1324,6 +1325,7 @@ _dhd_wlfc_deque_delayedq(athost_wl_status_info_t* ctx, int prec,
 		if (entry->occupied && _dhd_wlfc_is_destination_open(ctx, entry, prec) &&
 			(entry->transit_count < WL_TXSTATUS_FREERUNCTR_MASK) &&
 			(!entry->suppressed)) {
+			*ac_credit_spent = credit_spent;
 			if (entry->state == WLFC_STATE_CLOSE) {
 				*ac_credit_spent = 0;
 			}
@@ -2499,6 +2501,14 @@ _dhd_wlfc_suppress_txq(dhd_pub_t *dhd, f_processpkt_t fn, void *arg)
 		PKTSETLINK(pkt, NULL);
 
 		entry = _dhd_wlfc_find_table_entry(wlfc, pkt);
+		if (entry) {
+			if (entry->onbus_pkts_count > 0)
+				entry->onbus_pkts_count--;
+			if (entry->suppressed &&
+				(!entry->onbus_pkts_count) &&
+				(!entry->suppr_transit_count))
+				entry->suppressed = FALSE;
+		}
 
 		/* fake a suppression txstatus */
 		htod = DHD_PKTTAG_H2DTAG(PKTTAG(pkt));

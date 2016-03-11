@@ -89,6 +89,7 @@ static void active_sleep_enable(void *device_data);
 static void second_screen_enable(void *device_data);
 static void set_longpress_enable(void *device_data);
 static void set_sidescreen_x_length(void *device_data);
+static void set_tunning_data(void *device_data);
 static void set_dead_zone(void *device_data);
 static void dead_zone_enable(void *device_data);
 
@@ -191,6 +192,7 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("second_screen_enable", second_screen_enable),},
 	{FT_CMD("set_longpress_enable", set_longpress_enable),},
 	{FT_CMD("set_sidescreen_x_length", set_sidescreen_x_length),},
+	{FT_CMD("set_tunning_data", set_tunning_data),},
 	{FT_CMD("set_dead_zone", set_dead_zone),},
 	{FT_CMD("dead_zone_enable", dead_zone_enable),},
 #ifdef FTS_SUPPORT_STRINGLIB
@@ -3148,6 +3150,56 @@ static void set_sidescreen_x_length(void *device_data)
 		snprintf(buff, sizeof(buff), "%s", "OK");
 		info->cmd_state = CMD_STATUS_OK;
 	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void set_tunning_data(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	int i, ret;
+	unsigned char regAdd[3] = {0xC6, 0x00, 0x00};
+
+	set_default_result(info);
+	memset(buff, 0, sizeof(buff));
+
+	for (i = 0; i < 4; i++) {
+		if (info->cmd_param[i]) {
+			if (i == 0)
+				regAdd[1] = 0x02;
+			else if (i == 1)
+				regAdd[1] = 0x03;
+			else if (i == 2)
+				regAdd[1] = 0x05;
+			else
+				regAdd[1] = 0x07;
+
+			regAdd[2] = info->cmd_param[i];
+
+			ret = fts_write_reg(info, regAdd, 3);
+			if (ret < 0) {
+				tsp_debug_err(true, &info->client->dev, "%s: write tunning data failed!\n", __func__);
+				snprintf(buff, sizeof(buff), "%s", "NG");
+				info->cmd_state = CMD_STATUS_FAIL;
+				goto out;
+			} else
+				tsp_debug_dbg(true, &info->client->dev, "%s: write tunning data:%d, %d, %d, ret:%d\n", __func__,
+					regAdd[0], regAdd[1], regAdd[2], ret);
+
+			fts_delay(5);
+		}
+	}
+
+	snprintf(buff, sizeof(buff), "%s", "OK");
+	info->cmd_state = CMD_STATUS_OK;
+out:
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 
 	mutex_lock(&info->cmd_lock);

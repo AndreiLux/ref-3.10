@@ -1371,7 +1371,7 @@ INT32 ffsMapCluster(struct inode *inode, INT32 clu_offset, UINT32 *clu)
 			}
 		}
 
-		inode->i_blocks += num_alloced << (p_fs->cluster_size_bits - 9);
+		inode->i_blocks += num_alloced << (p_fs->cluster_size_bits - sb->s_blocksize_bits);
 	}
 
 	fid->hint_last_off = (INT32)(fid->rwoffset >> p_fs->cluster_size_bits);
@@ -3625,7 +3625,7 @@ INT32 find_empty_entry(struct inode *inode, CHAIN_T *p_dir, INT32 num_entries)
 		EXFAT_I(inode)->mmu_private += p_fs->cluster_size;
 		EXFAT_I(inode)->fid.size += p_fs->cluster_size;
 		EXFAT_I(inode)->fid.flags = p_dir->flags;
-		inode->i_blocks += 1 << (p_fs->cluster_size_bits - 9);
+		inode->i_blocks += 1 << (p_fs->cluster_size_bits - sb->s_blocksize_bits);
 	}
 
 	return(dentry);

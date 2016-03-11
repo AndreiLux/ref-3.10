@@ -174,6 +174,7 @@ long knox_kap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 const struct file_operations knox_kap_fops = {
 	.open	= knox_kap_open,
+	.release	= single_release,
 	.read	= seq_read,
 	.write	= knox_kap_write,
 	.unlocked_ioctl  = knox_kap_ioctl,

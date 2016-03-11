@@ -103,7 +103,6 @@ static int mptcp_v6_rtx_synack(struct sock *meta_sk, struct request_sock *req)
 		return tcp_v6_rtx_synack(meta_sk, req);
 
 	TCP_INC_STATS_BH(sock_net(meta_sk), TCP_MIB_RETRANSSEGS);
-	NET_INC_STATS_BH(sock_net(meta_sk), LINUX_MIB_TCPSYNRETRANS);
 	return mptcp_v6v4_send_synack(meta_sk, req, 0);
 }
 
@@ -184,7 +183,7 @@ static struct dst_entry *mptcp_v6_route_req(struct sock *sk, struct flowi *fl,
 /* Similar to tcp6_request_sock_ops */
 struct request_sock_ops mptcp6_request_sock_ops __read_mostly = {
 	.family		=	AF_INET6,
-	.obj_size	=	sizeof(struct mptcp_request_sock),
+	.obj_size	=	sizeof(struct mptcp6_request_sock),
 	.rtx_syn_ack	=	mptcp_v6_rtx_synack,
 	.send_ack	=	tcp_v6_reqsk_send_ack,
 	.destructor	=	mptcp_v6_reqsk_destructor,

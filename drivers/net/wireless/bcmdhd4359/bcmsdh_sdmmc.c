@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary,Open:>>
  *
- * $Id: bcmsdh_sdmmc.c 514727 2014-11-12 03:02:48Z $
+ * $Id: bcmsdh_sdmmc.c 591104 2015-10-07 04:45:18Z $
  */
 #include <typedefs.h>
 
@@ -525,7 +525,7 @@ sdioh_iovar_op(sdioh_info_t *si, const char *name,
 		/* Now set it */
 		si->client_block_size[func] = blksize;
 
-#if defined(CUSTOMER_HW4) && defined(USE_DYNAMIC_F2_BLKSIZE)
+#ifdef USE_DYNAMIC_F2_BLKSIZE
 		if (si->func[func] == NULL) {
 			sd_err(("%s: SDIO Device not present\n", __FUNCTION__));
 			bcmerror = BCME_NORESOURCE;
@@ -537,7 +537,7 @@ sdioh_iovar_op(sdioh_info_t *si, const char *name,
 			sd_err(("%s: Failed to set F%d blocksize to %d(%d)\n",
 				__FUNCTION__, func, blksize, bcmerror));
 		sdio_release_host(si->func[func]);
-#endif /* CUSTOMER_HW4 && USE_DYNAMIC_F2_BLKSIZE */
+#endif /* USE_DYNAMIC_F2_BLKSIZE */
 		break;
 	}
 

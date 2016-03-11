@@ -18,7 +18,7 @@ config SDCARD_FS_CI_SEARCH
 
 config SDCARD_FS_XATTR
 	bool "Sdcardfs extended attribute"
-	default n
+	default y
 	depends on SDCARD_FS
 	help
 	  Modification of sdcard file system for xattr

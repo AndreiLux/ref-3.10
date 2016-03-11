@@ -106,6 +106,11 @@ struct audit_names {
 	bool			should_free;
 };
 
+struct audit_proctitle {
+	int	len;	/* length of the cmdline field. */
+	char	*value;	/* the cmdline field */
+};
+
 /* The per-task audit context. */
 struct audit_context {
 	int		    dummy;	/* must be the first element */
@@ -199,6 +204,7 @@ struct audit_context {
 		} mmap;
 	};
 	int fds[2];
+	struct audit_proctitle proctitle;
 
 #if AUDIT_DEBUG
 	int		    put_count;

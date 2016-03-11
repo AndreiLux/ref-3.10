@@ -1892,8 +1892,10 @@ static int do_test(int m)
 		ret += alg_test("hmac(sha384-generic)", "hmac(sha384)", 0, 0);
 		ret += alg_test("hmac(sha512-generic)", "hmac(sha512)", 0, 0);
 
+#ifdef CONFIG_CRYPTO_ANSI_CPRNG
 		/* RNG */
 		ret += alg_test("fips_ansi_cprng", "ansi_cprng", 0, 0);
+#endif
 
 #ifdef CONFIG_CRYPTO_DRBG
 		/* DRBG */

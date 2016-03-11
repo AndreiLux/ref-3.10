@@ -27,6 +27,11 @@ config LCD_ALPM
 	tristate "Support ALPM display"
 	default n
 
+config LCD_BURNIN_CORRECTION
+	depends on EXYNOS_DECON_LCD
+	tristate "Support Burnin correction"
+	default n
+
 config LCD_HBM_INTERPOLATION
 	depends on EXYNOS_DECON_LCD
 	tristate "Support HBM brightness table"

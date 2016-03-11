@@ -36,7 +36,9 @@ static void mfc_qos_operate(struct s5p_mfc_ctx *ctx, int opr_type, int idx)
 	struct s5p_mfc_platdata *pdata = dev->pdata;
 	struct s5p_mfc_qos *qos_table = pdata->qos_table;
 
-	if (ctx->buf_process_type & MFCBUFPROC_COPY) {
+	if (ctx->qos_changed)
+		ctx->qos_changed = 0;
+	if (ctx->use_extra_qos) {
 		if (pdata->qos_extra[idx].thrd_mb != MFC_QOS_FLAG_NODATA) {
 			qos_table = pdata->qos_extra;
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
@@ -210,6 +212,9 @@ static void mfc_qos_add_or_update(struct s5p_mfc_ctx *ctx, int total_mb)
 				mfc_qos_operate(ctx, MFC_QOS_ADD, i);
 			} else if (atomic_read(&dev->qos_req_cur) != (i + 1)) {
 				mfc_qos_print(ctx, qos_table, i);
+				mfc_qos_operate(ctx, MFC_QOS_UPDATE, i);
+			} else if (atomic_read(&dev->qos_req_cur) == (i + 1) &&
+					ctx->qos_changed) {
 				mfc_qos_operate(ctx, MFC_QOS_UPDATE, i);
 			}
 			break;

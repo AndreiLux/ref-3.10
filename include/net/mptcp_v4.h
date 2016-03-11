@@ -30,7 +30,7 @@
 #ifndef MPTCP_V4_H_
 #define MPTCP_V4_H_
 
-
+#ifdef CONFIG_MPTCP
 #include <linux/in.h>
 #include <linux/skbuff.h>
 #include <net/mptcp.h>
@@ -64,4 +64,5 @@ static inline int mptcp_v4_do_rcv(const struct sock *meta_sk,
 
 #endif /* CONFIG_MPTCP */
 
+#endif /* CONFIG_MPTCP */
 #endif /* MPTCP_V4_H_ */

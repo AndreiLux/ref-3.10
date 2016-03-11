@@ -24,23 +24,18 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary,Open:>>
  *
- * $Id: bcmsdh_sdmmc.h 514727 2014-11-12 03:02:48Z $
+ * $Id: bcmsdh_sdmmc.h 591160 2015-10-07 06:01:58Z $
  */
 
 #ifndef __BCMSDH_SDMMC_H__
 #define __BCMSDH_SDMMC_H__
 
-#define sd_err(x)
+#define sd_err(x)	do { if (sd_msglevel & SDH_ERROR_VAL) printf x; } while (0)
 #define sd_trace(x)
 #define sd_info(x)
 #define sd_debug(x)
 #define sd_data(x)
 #define sd_ctrl(x)
-
-#ifdef CUSTOMER_HW4
-#undef sd_err
-#define sd_err(x) do {printf x;} while (0)
-#endif
 
 #define sd_sync_dma(sd, read, nbytes)
 #define sd_init_dma(sd)

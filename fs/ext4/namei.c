@@ -2657,6 +2657,14 @@ int ext4_orphan_add(handle_t *handle, struct inode *inode)
 	/* Insert this inode at the head of the on-disk orphan list... */
 	NEXT_ORPHAN(inode) = le32_to_cpu(EXT4_SB(sb)->s_es->s_last_orphan);
 	EXT4_SB(sb)->s_es->s_last_orphan = cpu_to_le32(inode->i_ino);
+
+	if (test_opt(sb, DEBUG_BDINFO)) {
+		EXT4_SB(sb)->s_es->s_bd_reset_cnt =
+			cpu_to_le32(EXT4_SB(sb)->s_bd_reset_cnt);
+		strncpy(EXT4_SB(sb)->s_es->s_bd_reset_time,
+				EXT4_SB(sb)->s_bd_reset_time, 16);
+	}
+
 	err = ext4_handle_dirty_super(handle, sb);
 	rc = ext4_mark_iloc_dirty(handle, inode, &iloc);
 	if (!err)
@@ -2730,6 +2738,14 @@ int ext4_orphan_del(handle_t *handle, struct inode *inode)
 		if (err)
 			goto out_brelse;
 		sbi->s_es->s_last_orphan = cpu_to_le32(ino_next);
+
+		if (test_opt(inode->i_sb, DEBUG_BDINFO)) {
+			sbi->s_es->s_bd_reset_cnt = cpu_to_le32(
+					sbi->s_bd_reset_cnt);
+			strncpy(sbi->s_es->s_bd_reset_time,
+					sbi->s_bd_reset_time, 16);
+		}
+
 		err = ext4_handle_dirty_super(handle, inode->i_sb);
 	} else {
 		struct ext4_iloc iloc2;

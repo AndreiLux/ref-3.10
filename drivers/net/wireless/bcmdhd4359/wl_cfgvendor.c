@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgvendor.c 455257 2014-02-20 08:10:24Z $
+ * $Id: wl_cfgvendor.c 605796 2015-12-11 13:45:36Z $
  */
 
 /*
@@ -97,7 +97,11 @@ int wl_cfgvendor_send_async_event(struct wiphy *wiphy,
 	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 
 	/* Alloc the SKB for vendor_event */
+#if defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)
+	skb = cfg80211_vendor_event_alloc(wiphy, NULL, len, event_id, kflags);
+#else
 	skb = cfg80211_vendor_event_alloc(wiphy, len, event_id, kflags);
+#endif /* CONFIG_ARCH_MSM && SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC */
 	if (!skb) {
 		WL_ERR(("skb alloc failed"));
 		return -ENOMEM;
@@ -262,7 +266,11 @@ wl_cfgvendor_send_hotlist_event(struct wiphy *wiphy,
 		kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 
 		/* Alloc the SKB for vendor_event */
+#if defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)
+		skb = cfg80211_vendor_event_alloc(wiphy, NULL, malloc_len, event, kflags);
+#else
 		skb = cfg80211_vendor_event_alloc(wiphy, malloc_len, event, kflags);
+#endif /* CONFIG_ARCH_MSM && SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC */
 		if (!skb) {
 			WL_ERR(("skb alloc failed"));
 			return -ENOMEM;
@@ -840,7 +848,11 @@ wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 	rtt_list = (struct list_head *)rtt_data;
 	kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 	/* Alloc the SKB for vendor_event */
+#if defined(CONFIG_ARCH_MSM) && defined(SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC)
+	skb = cfg80211_vendor_event_alloc(wiphy, NULL, tot_len, GOOGLE_RTT_COMPLETE_EVENT, kflags);
+#else
 	skb = cfg80211_vendor_event_alloc(wiphy, tot_len, GOOGLE_RTT_COMPLETE_EVENT, kflags);
+#endif /* CONFIG_ARCH_MSM && SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC */
 	if (!skb) {
 		WL_ERR(("skb alloc failed"));
 		goto exit;
@@ -1503,8 +1515,9 @@ static const struct  nl80211_vendor_cmd_info wl_vendor_events [] = {
 #endif /* RTT_SUPPORT */
 #ifdef GSCAN_SUPPORT
 		{ OUI_GOOGLE, GOOGLE_SCAN_COMPLETE_EVENT },
-		{ OUI_GOOGLE, GOOGLE_GSCAN_GEOFENCE_LOST_EVENT }
+		{ OUI_GOOGLE, GOOGLE_GSCAN_GEOFENCE_LOST_EVENT },
 #endif /* GSCAN_SUPPORT */
+		{ OUI_BRCM, BRCM_VENDOR_EVENT_IDSUP_STATUS }
 };
 
 int wl_cfgvendor_attach(struct wiphy *wiphy)

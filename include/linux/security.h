@@ -85,7 +85,7 @@ struct timezone;
 #define rocred_uc_set(x,v) atomic_set((&x->usage),v)
 #endif
 
-#define CRED_RO_AREA __attribute__((section (".tima.rkp.initcred")))
+#define RKP_RO_AREA __attribute__((section (".rkp.prot.page")))
 extern int rkp_cred_enable;
 extern char __rkp_ro_start[], __rkp_ro_end[];
 /*Check whether the address belong to Cred Area*/
@@ -101,7 +101,7 @@ static inline u8 rkp_ro_page(unsigned long addr)
 extern int security_integrity_current(void);
 
 #else
-#define CRED_RO_AREA   
+#define RKP_RO_AREA   
 #define security_integrity_current()  0
 #endif /*CONFIG_RKP_KDP*/
 

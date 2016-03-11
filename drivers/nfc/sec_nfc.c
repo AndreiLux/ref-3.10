@@ -422,7 +422,7 @@ int sec_nfc_i2c_probe(struct i2c_client *client)
 	}
 #endif
 
-	dev_dbg(info->dev, "%s: success: %p\n", __func__, info);
+	pr_info("%s: success\n", __func__);
 	return 0;
 
 err_irq_req:
@@ -555,7 +555,7 @@ static void sec_nfc_set_mode(struct sec_nfc_info *info,
 	if(wake_lock_active(&info->nfc_wake_lock))
 		wake_unlock(&info->nfc_wake_lock);
 
-	dev_dbg(info->dev, "Power mode is : %d\n", mode);
+	pr_info("%s Power mode is : %d\n", __func__, mode);
 }
 
 static long sec_nfc_ioctl(struct file *file, unsigned int cmd,
@@ -612,7 +612,7 @@ static long sec_nfc_ioctl(struct file *file, unsigned int cmd,
 #endif
 
 	default:
-		dev_err(info->dev, "Unknow ioctl 0x%x\n", cmd);
+		pr_info("%s Unknow ioctl 0x%x\n", __func__, cmd);
 		ret = -ENOIOCTLCMD;
 		break;
 	}
@@ -628,7 +628,7 @@ static int sec_nfc_open(struct inode *inode, struct file *file)
 						struct sec_nfc_info, miscdev);
 	int ret = 0;
 
-	dev_dbg(info->dev, "%s: info : %p" , __func__, info);
+	pr_info("%s\n" , __func__);
 
 	mutex_lock(&info->mutex);
 	if (info->mode != SEC_NFC_MODE_OFF) {
@@ -649,7 +649,7 @@ static int sec_nfc_close(struct inode *inode, struct file *file)
 	struct sec_nfc_info *info = container_of(file->private_data,
 						struct sec_nfc_info, miscdev);
 
-	dev_dbg(info->dev, "%s: info : %p" , __func__, info);
+	pr_info("%s\n" , __func__);
 
 	mutex_lock(&info->mutex);
 	sec_nfc_set_mode(info, SEC_NFC_MODE_OFF);

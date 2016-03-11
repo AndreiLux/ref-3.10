@@ -306,7 +306,7 @@ static void dsim_panel_set_elvss(struct dsim_device *dsim)
 
 static int dsim_panel_set_acl(struct dsim_device *dsim, int force)
 {
-	int ret = 0, level = ACL_STATUS_8P;
+	int ret = 0, level, enabled;
 	struct panel_private *panel = &dsim->priv;
 
 	if (panel == NULL) {
@@ -314,26 +314,32 @@ static int dsim_panel_set_acl(struct dsim_device *dsim, int force)
 			goto exit;
 	}
 
-	if (panel->siop_enable || LEVEL_IS_HBM(panel->auto_brightness))  // auto acl or hbm is acl on
+	level = ACL_OPR_15P;
+	enabled = ACL_STATUS_ON;
+
+	// siop = weak temperature
+	if (panel->siop_enable)  // auto acl or hbm is acl on
 		goto acl_update;
 
-	if (!panel->acl_enable)
-		level = ACL_STATUS_0P;
+	level = dsim->priv.acl_enable;
+	enabled = (dsim->priv.acl_enable != ACL_OPR_OFF);
 
 acl_update:
-	if(force || panel->current_acl != panel->acl_cutoff_tbl[level][1]) {
-		if((ret = dsim_write_hl_data(dsim,  panel->acl_opr_tbl[level], 2)) < 0) {
+	if(force || dsim->priv.current_acl != level) {
+//		dsim_info("acl : opr_tbl %d %d %02x %02x %02x %02x %02x\n", level, (int) ACL_OPR_LEN, panel->acl_opr_tbl[level][0], panel->acl_opr_tbl[level][1], panel->acl_opr_tbl[level][2], panel->acl_opr_tbl[level][3], panel->acl_opr_tbl[level][4] );
+		if((ret = dsim_write_hl_data(dsim,  panel->acl_opr_tbl[level], ACL_OPR_LEN)) < 0) {
 			dsim_err("fail to write acl opr command.\n");
 			goto exit;
 		}
-		if((ret = dsim_write_hl_data(dsim, panel->acl_cutoff_tbl[level], 2)) < 0) {
+//		dsim_info("acl : cutoff_tbl %d %d  %02x %02x \n", enabled, (int) ACL_CMD_LEN, panel->acl_cutoff_tbl[enabled][0], panel->acl_cutoff_tbl[enabled][1] );
+		if((ret = dsim_write_hl_data(dsim, panel->acl_cutoff_tbl[enabled], ACL_CMD_LEN)) < 0) {
 			dsim_err("fail to write acl command.\n");
 			goto exit;
 		}
+		dsim->priv.current_acl = level;
 		dsim_info("acl : %x, opr: %x\n",
-			panel->acl_cutoff_tbl[level][1], panel->acl_opr_tbl[level][1]);
-		panel->current_acl = panel->acl_cutoff_tbl[level][1];
-		dsim_info("acl: %x, auto_brightness: %d\n", panel->current_acl, panel->auto_brightness);
+			panel->acl_cutoff_tbl[enabled][1], panel->acl_opr_tbl[level][ACL_OPR_LEN-1]);
+		dsim_info("acl: %d(%x), auto_brightness: %d\n", dsim->priv.current_acl, panel->acl_opr_tbl[level][ACL_OPR_LEN-1],dsim->priv.auto_brightness);
 	}
 exit:
 	if (!ret)
@@ -415,11 +421,16 @@ static int low_level_set_brightness(struct dsim_device *dsim ,int force)
 	dsim_panel_gamma_ctrl(dsim);
 
 #ifdef AID_INTERPOLATION
+#ifdef CONFIG_LCD_BURNIN_CORRECTION
+	if((dsim->priv.ldu_correction_state == 0) &&
+		((dsim->priv.weakness_hbm_comp != HBM_COLORBLIND_ON) || (dsim->priv.interpolation != 1))) {
+#else
 	if((dsim->priv.weakness_hbm_comp != HBM_COLORBLIND_ON) || (dsim->priv.interpolation != 1)) {
+#endif
 		if (dynamic_lcd_type ==	LCD_TYPE_S6E3HA2_WQHD)
 			dsim_panel_aid_ctrl(dsim);
 		else
-		dsim_panel_dynamic_aid_ctrl(dsim);
+			dsim_panel_dynamic_aid_ctrl(dsim);
 	}
 	else
 		dsim_panel_aid_ctrl(dsim);
@@ -518,13 +529,14 @@ int dsim_panel_set_brightness(struct dsim_device *dsim, int force)
 		dsim_info("%s : this panel does not support dimming\n", __func__);
 		return ret;
 	}
-	panel->acl_enable = 1;
+	panel->acl_enable = ACL_OPR_15P;
 
 	if(bIsHbmArea) {
 		auto_offset = 13 - panel->auto_brightness;
 		panel->br_index = MAX_BR_INFO - auto_offset;
 		acutal_br = real_br = get_actual_br_value(dsim, panel->br_index);
 		panel->interpolation = 1;
+		panel->acl_enable = ACL_OPR_8P;
 		goto set_brightness;
 	} else {
 		panel->interpolation = 0;
@@ -541,6 +553,7 @@ int dsim_panel_set_brightness(struct dsim_device *dsim, int force)
 	if(bIsHbm) {
 		panel->br_index = panel->hbm_index;
 		panel->caps_enable = 1;				// hbm is caps on
+		panel->acl_enable = ACL_OPR_8P;
 	}
 
 	if (real_br > MAX_BRIGHTNESS) {
@@ -548,11 +561,15 @@ int dsim_panel_set_brightness(struct dsim_device *dsim, int force)
 	} else {
 		panel->interpolation = 0;
 	}
-	if (panel->weakness_hbm_comp == HBM_GALLERY_ON) {
-		if((!bIsHbm) && (p_br == 255)) {
-			panel->acl_enable = 0;
+	if((!bIsHbm) && (p_br == 255)) {
+		if (panel->weakness_hbm_comp == HBM_GALLERY_ON) {
+			panel->acl_enable = ACL_OPR_OFF;
+		} else {
+			panel->acl_enable = ACL_OPR_8P;
 		}
 	}
+
+
 	if (panel->state != PANEL_STATE_RESUMED) {
 		dsim_info("%s : panel is not active state..\n", __func__);
 		goto set_br_exit;
@@ -562,11 +579,26 @@ int dsim_panel_set_brightness(struct dsim_device *dsim, int force)
     if (!force && panel->br_index == prev_index) {
 		if (dynamic_lcd_type ==	LCD_TYPE_S6E3HA2_WQHD)
 			goto set_br_exit;
-
+#ifdef CONFIG_LCD_BURNIN_CORRECTION
+		if((panel->ldu_correction_state == 0) &&
+			((panel->weakness_hbm_comp != HBM_COLORBLIND_ON) || (panel->interpolation != 1))) {
+#else
 		if((panel->weakness_hbm_comp != HBM_COLORBLIND_ON) || (panel->interpolation != 1)) {
+#endif
 			mutex_lock(&panel->lock);
 			dsim_panel_aid_interpolation(dsim);
+
+	        ret = dsim_write_hl_data(dsim, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
+	        if (ret < 0) {
+		        dsim_err("%s : fail to write CMD : SEQ_TEST_KEY_ON_F0\n", __func__);
+		        goto set_br_exit;
+	        }
 			dsim_panel_set_acl(dsim, 1);
+	        ret = dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+	        if (ret < 0) {
+		        dsim_err("%s : fail to write CMD : SEQ_TEST_KEY_ON_F0\n", __func__);
+		        goto set_br_exit;
+	        }
 			mutex_unlock(&panel->lock);
 		}
 		goto set_br_exit;
@@ -673,19 +705,28 @@ static void dsim_panel_gamma_ctrl_for_hmt(struct dsim_device *dsim)
 static void dsim_panel_aid_ctrl_for_hmt(struct dsim_device *dsim)
 {
 	u8 *aid = NULL;
+	unsigned char SEQ_AID[AID_CMD_CNT_MAX] = {0, };
+
 	aid = get_aid_from_index_for_hmt(dsim, dsim->priv.hmt_br_index);
+
 	if (aid == NULL) {
 		dsim_err("%s : faield to get aid value\n", __func__);
 		return;
 	}
-	if (dsim_write_hl_data(dsim, aid, aid_dimming_dynamic.aid_cmd_cnt + 1) < 0)
-		dsim_err("%s : failed to write hmt aid \n", __func__);
+
+	SEQ_AID[0] = aid[0];
+	memcpy(&SEQ_AID[1], dsim->priv.aid, aid_dimming_dynamic.aid_cmd_cnt - 1);
+	memcpy(&SEQ_AID[aid_dimming_dynamic.aid_reg_offset], aid + 1, aid_dimming_dynamic.aid_cmd_cnt - aid_dimming_dynamic.aid_reg_offset + 1);
+
+	if (dsim_write_hl_data(dsim, SEQ_AID, aid_dimming_dynamic.aid_cmd_cnt) < 0)
+		dsim_err("%s : failed to write aid \n", __func__);
+
 }
 
 static void dsim_panel_set_elvss_for_hmt(struct dsim_device *dsim)
 {
 	u8 *elvss = NULL;
-	unsigned char SEQ_ELVSS[ELVSS_LEN_MAX] = {aid_dimming_dynamic.elvss_reg, };
+	unsigned char SEQ_ELVSS[ELVSS_LEN_MAX] = {0, };
 
 	SEQ_ELVSS[0] = aid_dimming_dynamic.elvss_reg;
 	elvss = get_elvss_from_index_for_hmt(dsim, dsim->priv.hmt_br_index, dsim->priv.acl_enable);
@@ -696,11 +737,10 @@ static void dsim_panel_set_elvss_for_hmt(struct dsim_device *dsim)
 	memcpy(&SEQ_ELVSS[1], dsim->priv.elvss_set, aid_dimming_dynamic.elvss_len - 1);
 	memcpy(SEQ_ELVSS, elvss, aid_dimming_dynamic.elvss_cmd_cnt);
 
-	if(UNDER_MINUS_20(dsim->priv.temperature))				// tset
-		SEQ_ELVSS[aid_dimming_dynamic.elvss_len - 1] -= aid_dimming_dynamic.tset_minus_offset;
-
-	if (dsim_write_hl_data(dsim, SEQ_ELVSS, aid_dimming_dynamic.elvss_len) < 0)
-		dsim_err("%s : failed to write elvss \n", __func__);
+	SEQ_ELVSS[aid_dimming_dynamic.elvss_len - 1] += dsim_panel_get_elvssoffset(dsim);
+	dsim_info("%s elvss ha3/hf3\n", __func__);
+	memcpy(dsim->priv.tset, &SEQ_ELVSS[1], aid_dimming_dynamic.elvss_len - 1);
+	dsim_panel_set_tset(dsim, 1);
 }
 
 static int low_level_set_brightness_for_hmt(struct dsim_device *dsim ,int force)
@@ -724,8 +764,6 @@ static int low_level_set_brightness_for_hmt(struct dsim_device *dsim ,int force)
 		dsim_err("%s : failed to write gamma \n", __func__);
 
 	dsim_panel_set_acl(dsim, force);
-
-	dsim_panel_set_tset(dsim, force);
 
 	if (dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC)) < 0)
 		dsim_err("%s : fail to write F0 on command.\n", __func__);

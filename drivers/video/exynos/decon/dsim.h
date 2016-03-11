@@ -118,11 +118,14 @@ struct panel_private {
 	unsigned int current_hbm;
 	unsigned int current_vint;
 	unsigned int siop_enable;
-
+#ifdef CONFIG_LCD_BURNIN_CORRECTION
+	unsigned char ldu_correction_state;
+	unsigned int *ldu_tbl[8];			// 0 : default, 1 : ldu comp
+#endif
 	void *dim_data;
 	void *dim_info;
-    unsigned int *br_tbl;
-    unsigned char *inter_aor_tbl;
+	unsigned int *br_tbl;
+	unsigned char *inter_aor_tbl;
 	unsigned int *hbm_inter_br_tbl;
 	unsigned int *gallery_br_tbl;
 	unsigned char **hbm_tbl;
@@ -160,20 +163,11 @@ struct panel_private {
 	char hbm_elvss_comp;
 	unsigned char hbm_elvss;
 	unsigned int hbm_index;
-/* hbm interpolation for color weakness */
+
+	/* hbm interpolation for color weakness */
 	unsigned int weakness_hbm_comp;
-
-/*variable for A3 Line */
-	struct delayed_work octa_a3_read_data_work;
-	struct workqueue_struct	*octa_a3_read_data_work_q;
-	unsigned int octa_a3_read_cnt;
-
-	unsigned int a3_elvss_updated;
-	char a3_elvss_temp_0[5];
-	char a3_elvss_temp_20[5];
-	unsigned char a3_vint[10];
-	unsigned int a3_vint_updated;
-	char* strDatFile;
+	int is_br_override;
+	int override_br_value;
 
 	int esd_disable;
 };

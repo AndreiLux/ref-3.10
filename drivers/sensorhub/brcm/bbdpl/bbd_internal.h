@@ -105,12 +105,27 @@ struct bbd_queue {
 #define BBD_SERIAL_SPI  0               /* stacked ssi-spi driver for 4773 */
 #define BBD_SERIAL_TTY  1               /* stacked tty driver for 477x */
 
-#define SUPPORT_MCU_HOST_WAKE            /* JK temporary patch for new HW */
-#define BBD_NEW_HW_REV  3               /* connnected mcu_req, mcu_resp from HW rev 8 */
-
 /*
  * bbd device structure
  */
+enum {
+	STAT_TX_LHD = 0,
+	STAT_TX_SSP,
+	STAT_TX_RPC,
+	STAT_TX_TL,
+	STAT_TX_SSI,
+
+	STAT_RX_SSI,
+	STAT_RX_TL,
+	STAT_RX_RPC,
+	STAT_RX_SSP,
+	STAT_RX_LHD,
+
+	STAT_MAX
+};
+
+void bbd_update_stat(int idx, unsigned int count);
+
 struct bbd_device {
         struct BbdEngine    bbd_engine;
 	struct cdev dev    [BBD_DEVICE_INDEX];  /* device for bbd */

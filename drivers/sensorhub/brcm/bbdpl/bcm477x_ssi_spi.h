@@ -4,7 +4,7 @@
 
 
 //KOM FIXME: Compilation Bugs fixed. Coppied from bcm477x_ssi_spi.c#1
-#define MAX_TX_RX_BUF_SIZE (2048 + 2)
+#define MAX_TX_RX_BUF_SIZE (1024*64)
 
 enum
 {

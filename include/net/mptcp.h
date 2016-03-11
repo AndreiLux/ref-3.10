@@ -30,6 +30,7 @@
 #ifndef _MPTCP_H
 #define _MPTCP_H
 
+#ifdef CONFIG_MPTCP
 #include <linux/inetdevice.h>
 #include <linux/ipv6.h>
 #include <linux/list.h>
@@ -1521,4 +1522,5 @@ static inline void mptcp_remove_shortcuts(const struct mptcp_cb *mpcb,
 static inline void mptcp_delete_synack_timer(struct sock *meta_sk) {}
 #endif /* CONFIG_MPTCP */
 
+#endif /* CONFIG_MPTCP */
 #endif /* _MPTCP_H */

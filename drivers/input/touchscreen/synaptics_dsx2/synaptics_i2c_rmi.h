@@ -70,7 +70,7 @@
 /* #define HAS_ALTERNATER_R_R */
 
 /* only for V model feature*/
-#define GESTURE_3FIN
+//#define GESTURE_3FIN	// Disable 3 finger gesture scenario
 #define USE_LPGW_MODE
 
 /**************************************/
@@ -328,6 +328,11 @@
 #ifdef USE_LPGW_MODE
 #define	GESTURE_SWIPE			0x07
 #endif
+
+#define	ORIENTATION_0	0
+#define	ORIENTATION_90	1
+#define	ORIENTATION_180	2
+#define	ORIENTATION_270	3
 
 #ifdef SIDE_TOUCH
 #define MAX_SIDE_BUTTONS	8
@@ -1502,6 +1507,7 @@ struct synaptics_rmi4_data {
 #ifdef GESTURE_3FIN
 	int gesture_3fin_code;
 #endif
+	int orientation;
 	struct pinctrl *pinctrl;
 
 	int (*i2c_read)(struct synaptics_rmi4_data *pdata, unsigned short addr,

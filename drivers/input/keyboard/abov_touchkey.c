@@ -641,8 +641,6 @@ static ssize_t read_fw_ver(struct device *dev,
 		info->fw_ver = 0;
 	}
 
-	abov_tk_i2c_read_checksum(info);
-
 	return sprintf(buf, "0x%02x\n", info->fw_ver);
 }
 
@@ -1552,16 +1550,16 @@ int abov_power(void *data, bool on)
 	}
 
 	if (on) {
-		if (info->pdata->avdd_vreg) {
-			ret = regulator_enable(info->pdata->avdd_vreg);
-			if(ret){
-				tk_debug_err(true, &client->dev, "%s : avdd reg enable fail\n", __func__);
-			}
-		}
 		if (info->pdata->dvdd_vreg) {
 			ret = regulator_enable(info->pdata->dvdd_vreg);
 			if(ret){
 				tk_debug_err(true, &client->dev, "%s : dvdd reg enable fail\n", __func__);
+			}
+		}
+		if (info->pdata->avdd_vreg) {
+			ret = regulator_enable(info->pdata->avdd_vreg);
+			if(ret){
+				tk_debug_err(true, &client->dev, "%s : avdd reg enable fail\n", __func__);
 			}
 		}
 	} else {

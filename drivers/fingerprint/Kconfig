@@ -35,4 +35,9 @@ config SENSORS_ET310
 	help
 	  If you say yes here you get support for Egistec's
 	  fingerprint sensor ET310.
+config SENSORS_FP_LOCKSCREEN_MODE
+	tristate "fingerprint sensor support fast wake up"
+	default n
+	help
+	  If you say yes here you get support lockscreen mode
 endif

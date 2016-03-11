@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2015 Samsung Electronics Co., Ltd.
+ *
+ * Sensitive Data Protection
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
 #ifndef _SDP_FS_HANDLER_H
 #define _SDP_FS_HANDLER_H
 
@@ -17,15 +36,6 @@
 #define OP_SDP_SET_DIR_PROTECTED 11
 
 #define OP_SDP_ERROR 99
-
-typedef struct __sdp_chamber_dir_cmd {
-    unsigned int request_id;
-    unsigned int userid;
-
-    unsigned char opcode;
-    unsigned char partition_id;
-    unsigned long ino;
-}sdp_chamber_dir_cmd_t;
 
 typedef struct result {
     u32 request_id;
@@ -59,7 +69,7 @@ typedef struct __sdp_fs_handler_request {
 
     enum req_state state;
 
-    sdp_chamber_dir_cmd_t command;
+    sdp_fs_command_t command;
     result_t result;
 
     fs_request_cb_t callback;

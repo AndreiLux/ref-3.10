@@ -18,69 +18,12 @@
 
 #ifdef GROUP_MEM_LINK_IOSM_MESSAGE
 
+#ifdef CONFIG_SEC_MODEM_DEBUG
 #define pr_circ_idx(hdr) \
 	mif_info("circ: in=%d, out=%d\n", hdr->w_idx, hdr->r_idx);
-
-struct iosm_msg_area_head {
-	u32	w_idx;		/* Write index */
-	u32	r_idx;		/* Read index */
-	u32	reserved[2];
-	u32	num_msg;	/* Is this actually required? */
-} __packed;
-
-struct iosm_msg {
-	u8	msg_id;		/* message id */
-	u8	trs_id;		/* transaction id */
-	union {
-		struct __packed {
-			u8	reserved[2];
-			u32	addr;
-		} ap_ready;
-		struct __packed {
-			u8	ch_id;
-			u8	cfg;
-		} open_ch;
-		struct __packed {
-			u8	ch_id;
-			u8	cfg;
-		} close_ch;
-		struct __packed {
-			u8	ch_id;
-			u8	cfg;
-		} conf_ch_req;
-		struct __packed {
-			u8	ch_id;
-			u8	cfg;
-		} conf_ch_rsp;
-		struct __packed {
-			u8	ch_id;
-		} stop_tx_ch;
-		struct __packed {
-			u8	ch_id;
-		} start_tx_ch;
-		struct __packed {
-			u8	ch_id;
-			u8	msg_id;
-		} ack;
-		struct __packed {
-			u8	ch_id;
-			u8	msg_id;
-			u8	err_class;
-			u8	err_subclass;
-		} nack;
-		u8	reserved[10];
-	};
-} __packed;
-
-#define IOSM_NUM_ELEMENTS ( \
-	(IOSM_MSG_AREA_SIZE - sizeof(struct iosm_msg_area_head)) \
-		/ sizeof(struct iosm_msg))
-
-/* Message Area definition */
-struct iosm_msg_area {
-	struct iosm_msg_area_head hdr;
-	struct iosm_msg	elements[IOSM_NUM_ELEMENTS];
-} __packed;
+#else
+#define pr_circ_idx(hdr) {}
+#endif
 
 static struct workqueue_struct *iosm_wq;
 static struct mutex iosm_mtx;
@@ -95,6 +38,8 @@ static const char const *tx_iosm_str[] = {
 	[IOSM_A2C_START_TX_CH] = "START_TX_CH",
 	[IOSM_A2C_ACK] = "ACK",
 	[IOSM_A2C_NACK] = "NACK",
+	[IOSM_A2C_PIN_INIT_DONE] = "PIN_INIT_DONE",
+	[IOSM_A2C_INIT_END] = "INIT_END",
 };
 
 /* 8-bit transaction ID: holds unique id value (1 ~ 255)
@@ -154,6 +99,9 @@ inline void create_iosm_message(struct iosm_msg *txmsg, u8 mid, u32 *args)
 		txmsg->close_ch.ch_id = *((u32 *)args);
 		txmsg->close_ch.cfg = 0x7;
 		break;
+	case IOSM_A2C_PIN_INIT_DONE:
+	case IOSM_A2C_INIT_END:
+		break;
 	case IOSM_A2C_ACK:
 	case IOSM_A2C_NACK:
 		msg = (struct iosm_msg *) args;
@@ -174,17 +122,27 @@ inline void create_iosm_message(struct iosm_msg *txmsg, u8 mid, u32 *args)
 	txmsg->trs_id = get_transaction_id();
 }
 
+void __tx_iosm_message(struct mem_link_device *mld, u8 id)
+{
+	tx_iosm_message(mld, id, 0);
+}
 void tx_iosm_message(struct mem_link_device *mld, u8 id, u32 *args)
 {
 	struct iosm_msg_area *base;
 	struct iosm_msg_area_head *hdr;
 	struct iosm_msg *msg;
+	int space;
 	struct link_device *ld = &mld->link_dev;
 	struct modem_ctl *mc = ld->mc;
-	int space, retry_cnt = 500;
 
-	if (!cp_online(mc))
-		return;
+#ifndef CONFIG_SEC_MODEM_XMM7260_CAT6
+	if (atomic_read(&mld->cp_boot_done)) {
+#endif
+		if (!cp_online(mc))
+			return;
+#ifndef CONFIG_SEC_MODEM_XMM7260_CAT6
+	}
+#endif
 
 	mutex_lock(&iosm_mtx);
 
@@ -211,25 +169,18 @@ void tx_iosm_message(struct mem_link_device *mld, u8 id, u32 *args)
 
 	mutex_unlock(&iosm_mtx);
 
-	if (cp_online(mc) && mld->forbid_cp_sleep)
-		mld->forbid_cp_sleep(mld);
-
-	/* As of now, tx path of iosm message should always guarantee
-	 * process context. We don't have to care rx path because cp
-	 * might try to mount lli i/f before sending data. */
-	while (!mld->link_active(mld)) {
-		if (--retry_cnt == 0) {
-			modemctl_notify_event(MDM_EVENT_CP_FORCE_CRASH);
-			return;
+	if (cp_online(mc) && mld->forbid_cp_sleep_wait) {
+		if (mld->forbid_cp_sleep_wait(mld, REFCNT_IOSM)) {
+			send_ipc_irq(mld, mask2int(MASK_CMD_VALID));
+			mif_info("sent msg %s\n", tx_iosm_str[msg->msg_id]);
+		} else {
+			mif_err("failed to send iosm msg(%s)\n",
+				tx_iosm_str[msg->msg_id]);
 		}
-		usleep_range(10000, 11000);
 	}
 
-	send_ipc_irq(mld, mask2int(MASK_CMD_VALID));
-	mif_info("sent msg %s\n", tx_iosm_str[msg->msg_id]);
-
 	if (cp_online(mc) && mld->permit_cp_sleep)
-		mld->permit_cp_sleep(mld);
+		mld->permit_cp_sleep(mld, REFCNT_IOSM);
 }
 
 void mdm_ready_handler(struct mem_link_device *mld, struct iosm_msg *msg)
@@ -249,6 +200,7 @@ void mdm_ready_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 	ld->netif_stop_mask = 0;
 	atomic_set(&ld->netif_stopped, 0);
 	atomic_set(&mc->forced_cp_crash, 0);
+	atomic_set(&mld->cp_boot_done, 1);
 
 	mc->iod->modem_state_changed(mc->iod, STATE_ONLINE);
 
@@ -260,7 +212,7 @@ void mdm_ready_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 	}
 
 	if (cp_online(mc) && mld->forbid_cp_sleep)
-		mld->forbid_cp_sleep(mld);
+		mld->forbid_cp_sleep(mld, REFCNT_IOSM);
 #endif
 
 	tx_iosm_message(mld, IOSM_A2C_ACK, (u32 *)msg);
@@ -299,7 +251,11 @@ void stop_tx_ch_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 {
 	struct link_device *ld = &mld->link_dev;
 
+#ifdef CONFIG_SEC_MODEM_XMM7260_CAT6
 	stop_net_iface(ld, msg->stop_tx_ch.ch_id);
+#else
+	stop_net_ifaces(ld);
+#endif
 	tx_iosm_message(mld, IOSM_A2C_ACK, (u32 *)msg);
 }
 
@@ -307,7 +263,11 @@ void start_tx_ch_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 {
 	struct link_device *ld = &mld->link_dev;
 
+#ifdef CONFIG_SEC_MODEM_XMM7260_CAT6
 	resume_net_iface(ld, msg->start_tx_ch.ch_id);
+#else
+	resume_net_ifaces(ld);
+#endif
 	tx_iosm_message(mld, IOSM_A2C_ACK, (u32 *)msg);
 }
 
@@ -321,7 +281,9 @@ static void action(struct io_device *iod, void *args)
 void ack_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 {
 	struct link_device *ld = &mld->link_dev;
+#if defined(CONFIG_LINK_POWER_MANAGEMENT) && defined(CONFIG_SEC_MODEM_XMM7260_CAT6)
 	struct modem_ctl *mc = ld->mc;
+#endif
 
 	mif_err("got ack for msg id = 0x%x\n", msg->ack.msg_id);
 
@@ -331,10 +293,10 @@ void ack_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 		iodevs_for_each(ld->msd, action, mld);
 		break;
 	case IOSM_A2C_OPEN_CH:
-#ifdef CONFIG_LINK_POWER_MANAGEMENT
+#if defined(CONFIG_LINK_POWER_MANAGEMENT) && defined(CONFIG_SEC_MODEM_XMM7260_CAT6)
 	if (msg->ack.ch_id == SIPC5_CH_ID_FMT_0) {
 		if (cp_online(mc) && mld->permit_cp_sleep)
-			mld->permit_cp_sleep(mld);
+			mld->permit_cp_sleep(mld, REFCNT_IOSM);
 	}
 #endif
 		break;
@@ -349,6 +311,118 @@ void nack_handler(struct mem_link_device *mld, struct iosm_msg *msg)
 	mif_err("got nack for msg id = 0x%x\n", msg->nack.msg_id);
 }
 
+static bool rild_ready(struct link_device *ld)
+{
+	struct io_device *fmt_iod;
+	struct io_device *rfs_iod;
+	int fmt_opened;
+	int rfs_opened;
+
+	fmt_iod = link_get_iod_with_channel(ld, SIPC5_CH_ID_FMT_0);
+	if (!fmt_iod) {
+		mif_err("%s: No FMT io_device\n", ld->name);
+		return false;
+	}
+
+	rfs_iod = link_get_iod_with_channel(ld, SIPC5_CH_ID_RFS_0);
+	if (!rfs_iod) {
+		mif_err("%s: No RFS io_device\n", ld->name);
+		return false;
+	}
+
+	fmt_opened = atomic_read(&fmt_iod->opened);
+	rfs_opened = atomic_read(&rfs_iod->opened);
+	mif_err("%s: %s.opened=%d, %s.opened=%d\n", ld->name,
+		fmt_iod->name, fmt_opened, rfs_iod->name, rfs_opened);
+	if (fmt_opened > 0 && rfs_opened > 0)
+		return true;
+
+	return false;
+}
+
+static void init_start_handler(struct mem_link_device *mld, struct iosm_msg *msg)
+{
+	struct link_device *ld = &mld->link_dev;
+	struct modem_ctl *mc = ld->mc;
+	int err;
+
+	mif_err("%s: INIT_START <- %s (%s.state:%s cp_boot_done:%d)\n",
+		ld->name, mc->name, mc->name, mc_state(mc),
+		atomic_read(&mld->cp_boot_done));
+
+	if (!ld->sbd_ipc) {
+		mif_err("%s: LINK_ATTR_SBD_IPC is NOT set\n", ld->name);
+		return;
+	}
+
+	err = init_sbd_link(&mld->sbd_link_dev);
+	if (err < 0) {
+		mif_err("%s: init_sbd_link fail(%d)\n", ld->name, err);
+		return;
+	}
+
+	if (mld->attrs & LINK_ATTR(LINK_ATTR_IPC_ALIGNED))
+		ld->aligned = true;
+	else
+		ld->aligned = false;
+
+	sbd_activate(&mld->sbd_link_dev);
+
+	mif_err("%s: PIF_INIT_DONE -> %s\n", ld->name, mc->name);
+	tx_iosm_message(mld, IOSM_A2C_PIN_INIT_DONE, 0);
+}
+
+static void phone_start_handler(struct mem_link_device *mld, struct iosm_msg *msg)
+{
+	struct link_device *ld = &mld->link_dev;
+	struct modem_ctl *mc = ld->mc;
+	unsigned long flags;
+	int err;
+
+	mif_err("%s: CP_START <- %s (%s.state:%s cp_boot_done:%d)\n",
+		ld->name, mc->name, mc->name, mc_state(mc),
+		atomic_read(&mld->cp_boot_done));
+
+#ifdef CONFIG_LINK_POWER_MANAGEMENT
+	if (mld->start_pm)
+		mld->start_pm(mld);
+#endif
+
+	spin_lock_irqsave(&ld->lock, flags);
+
+	if (ld->state == LINK_STATE_IPC) {
+		/*
+		If there is no INIT_END command from AP, CP sends a CP_START
+		command to AP periodically until it receives INIT_END from AP
+		even though it has already been in ONLINE state.
+		*/
+		if (rild_ready(ld)) {
+			mif_err("%s: INIT_END -> %s\n", ld->name, mc->name);
+			tx_iosm_message(mld, IOSM_A2C_INIT_END, 0);
+		}
+		goto exit;
+	}
+
+	err = mem_reset_ipc_link(mld);
+	if (err) {
+		mif_err("%s: mem_reset_ipc_link fail(%d)\n", ld->name, err);
+		goto exit;
+	}
+
+	if (rild_ready(ld)) {
+		mif_err("%s: INIT_END -> %s\n", ld->name, mc->name);
+		tx_iosm_message(mld, IOSM_A2C_INIT_END, 0);
+		atomic_set(&mld->cp_boot_done, 1);
+	}
+
+	ld->state = LINK_STATE_IPC;
+
+	complete_all(&mc->init_cmpl);
+
+exit:
+	spin_unlock_irqrestore(&ld->lock, flags);
+}
+
 static struct {
 	u16	cmd;
 	char	*name;
@@ -360,6 +434,8 @@ static struct {
 	{ IOSM_C2A_START_TX_CH, "START_TX_CH", start_tx_ch_handler },
 	{ IOSM_C2A_ACK, "ACK", ack_handler },
 	{ IOSM_C2A_NACK, "NACK", nack_handler },
+	{ IOSM_C2A_INIT_START, "INIT_START", init_start_handler },
+	{ IOSM_C2A_PHONE_START, "PHONE_START", phone_start_handler },
 };
 
 void iosm_event_work(struct work_struct *work)
@@ -414,7 +490,9 @@ static int __init iosm_init(void)
 		return -ENOMEM;
 	}
 	mutex_init(&iosm_mtx);
+#ifdef CONFIG_SEC_MODEM_XMM7260_CAT6
 	atomic_set(&mdm_ready, 0);
+#endif
 	mif_info("iosm_msg size = %ld, num of iosm elements = %ld\n",
 			(long)sizeof(struct iosm_msg), (long)IOSM_NUM_ELEMENTS);
 	return 0;

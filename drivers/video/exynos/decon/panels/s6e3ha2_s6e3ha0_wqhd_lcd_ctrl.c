@@ -274,8 +274,8 @@ struct dsim_panel_ops s6e3ha0_panel_ops = {
 
 #ifdef CONFIG_PANEL_AID_DIMMING
 static const unsigned char *HBM_TABLE[HBM_STATUS_MAX] = {S6E3HA2_SEQ_HBM_OFF, S6E3HA2_SEQ_HBM_ON};
-static const unsigned char *ACL_CUTOFF_TABLE[ACL_STATUS_MAX] = {S6E3HA2_SEQ_ACL_OFF, S6E3HA2_SEQ_ACL_8};
-static const unsigned char *ACL_OPR_TABLE[ACL_OPR_MAX] = {S6E3HA2_SEQ_ACL_OFF_OPR, S6E3HA2_SEQ_ACL_ON_OPR};
+static const unsigned char *ACL_CUTOFF_TABLE[ACL_STATUS_MAX] = {S6E3HA2_SEQ_ACL_OFF, S6E3HA2_SEQ_ACL_ON};
+static const unsigned char *ACL_OPR_TABLE[ACL_OPR_MAX] = {S6E3HA2_SEQ_ACL_OFF_OPR, S6E3HA2_SEQ_ACL_ON_OPR_8, S6E3HA2_SEQ_ACL_ON_OPR_15};
 
 static const unsigned int br_tbl [256] = {
 	2, 2, 2, 3,	4, 5, 6, 7,	8,	9,	10,	11,	12,	13,	14,	15,		// 16
@@ -299,7 +299,7 @@ static const unsigned int br_tbl [256] = {
 	282, 282, 282, 300, 300, 300, 300, 300,	300, 300, 300,
 	300, 300, 300, 300, 316, 316, 316, 316, 316, 316, 316,
 	316, 316, 316, 316, 316, 333, 333, 333, 333, 333, 333,
-	333, 333, 333, 333, 333, 333, 360							//7
+	333, 333, 333, 333, 333, 333, 333							//7
 };
 
 

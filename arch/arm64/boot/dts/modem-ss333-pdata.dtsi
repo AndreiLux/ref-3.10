@@ -92,7 +92,7 @@
 				iod,dl_buffer_size = <2048>;
 			};
 			io_device_5 {
-				iod,name = "umts_ciq0";
+				iod,name = "smd4";
 				iod,id = <26>;
 				iod,format = <1>;
 				iod,io_type = <0>;

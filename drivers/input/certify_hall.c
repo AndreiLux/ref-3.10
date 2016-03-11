@@ -110,6 +110,14 @@ static void certify_cover_work(struct work_struct *work)
 	input_report_switch(ddata->input,
 			SW_CERTIFYHALL, certify_cover);
 	input_sync(ddata->input);
+
+/* WorkAround for Hall IRQ Noise problem in connect to GSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	if(certify_cover)
+		hall_irq_set(enable, true);
+	else
+		hall_irq_set(disable, true);
+#endif
 }
 #endif
 

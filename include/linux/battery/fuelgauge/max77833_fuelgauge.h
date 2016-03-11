@@ -166,11 +166,6 @@ struct cv_slope{
 	int time;
 };
 
-struct age_info {
-	int fullcapnom;
-	int float_voltage;
-};
-
 struct max77833_fuelgauge_data {
 	struct device           *dev;
 	struct i2c_client       *i2c;
@@ -218,8 +213,6 @@ struct max77833_fuelgauge_data {
 	int isys_current_avg;
 	struct cv_slope *cv_data;
 	int cv_data_lenth;
-	struct age_info *age_data;
-	int age_data_length;
 
 	bool using_temp_compensation;
 	bool low_temp_compensation_en;

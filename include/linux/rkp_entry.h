@@ -65,7 +65,9 @@
 
 #define RKP_RBUF_VA      (phys_to_virt(TIMA_ROBUF_START))
 #define RO_PAGES  0x7f8 // (TIMA_ROBUF_SIZE/PAGE_SIZE)
-
+#define CRED_JAR_RO "cred_jar_ro"
+#define TSEC_JAR	"tsec_jar"
+#define VFSMNT_JAR	"vfsmnt_cache"
 #endif /* CONFIG_SOC_EXYNOS7420 */
 
 extern u8 rkp_pgt_bitmap[];
@@ -108,6 +110,8 @@ typedef struct kdp_init
 	u32 mm_task;
 	u32 uid_cred;
 	u32 euid_cred;
+	u32 gid_cred;
+	u32 egid_cred;
 	u32 bp_pgd_cred;
 	u32 bp_task_cred;
 	u32 type_cred;
@@ -118,6 +122,8 @@ typedef struct kdp_init
 	u32 pgd_mm;
 	u32 usage_cred;
 	u32 task_threadinfo;
+	u32 sp_size;
+	u32 bp_cred_secptr;
 } kdp_init_t;
 #endif  /* CONFIG_RKP_KDP */
 

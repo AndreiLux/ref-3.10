@@ -26,7 +26,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmwifi_channels.c 309193 2012-01-19 00:03:57Z $
+ * $Id: bcmwifi_channels.c 591285 2015-10-07 11:56:29Z $
  */
 
 #include <bcm_cfg.h>

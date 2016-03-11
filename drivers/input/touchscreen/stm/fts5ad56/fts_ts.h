@@ -199,6 +199,9 @@
 #define FTS_CMD_SLOW_SCAN			0x02
 #define FTS_CMD_USLOW_SCAN			0x03
 
+/* stm4-0x62, stm5-0x79 */
+#define FTS_CMD_THRESHOLD			0x79
+
 #define REPORT_RATE_90HZ				0
 #define REPORT_RATE_60HZ				1
 #define REPORT_RATE_30HZ				2
@@ -237,7 +240,7 @@
 #define FTS_MODE_DIRECT_INDICATOR			(1 << 3)
 
 #define TSP_BUF_SIZE 3000
-#define CMD_STR_LEN 32
+#define CMD_STR_LEN 256
 #define CMD_RESULT_STR_LEN 3000
 #define CMD_PARAM_NUM 8
 
@@ -402,6 +405,7 @@ struct fts_ts_info {
 	unsigned char lowpower_flag;
 	bool lowpower_mode;
 	bool deepsleep_mode;
+	bool wirelesscharger_mode;
 	int fts_power_state;
 	int wakeful_edge_side;
 #ifdef FTS_SUPPORT_STRINGLIB
@@ -441,6 +445,7 @@ struct fts_ts_info {
 	int panel_revision;			/* Octa panel revision */
 	int tspid_val;
 	int tspid2_val;
+	int pat;
 
 #ifdef USE_OPEN_DWORK
 	struct delayed_work open_work;
@@ -509,5 +514,8 @@ int fts_fw_update_on_hidden_menu(struct fts_ts_info *info, int update_type);
 void fts_fw_init(struct fts_ts_info *info);
 void fts_execute_autotune(struct fts_ts_info *info);
 int fts_fw_wait_for_event(struct fts_ts_info *info, unsigned char eid);
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+bool get_PureAutotune_status(struct fts_ts_info *info);
+#endif
 
 #endif				//_LINUX_FTS_TS_H_

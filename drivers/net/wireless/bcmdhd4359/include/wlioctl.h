@@ -27,7 +27,7 @@
  * other than the GPL, without Broadcom's express prior written consent.
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlioctl.h 559443 2015-05-27 16:56:36Z $
+ * $Id: wlioctl.h 601369 2015-11-21 13:07:59Z $
  */
 
 #ifndef _wlioctl_h_
@@ -516,23 +516,25 @@ typedef BWL_PRE_PACKED_STRUCT struct wnm_url {
 	uint8   data[1];
 } BWL_POST_PACKED_STRUCT wnm_url_t;
 
-
-#define WNM_BSSLOAD_MONITOR_VERSION   1
 #define WNM_BSS_SELECT_TYPE_RSSI   0
 #define WNM_BSS_SELECT_TYPE_CU   1
-#define WNM_BSS_SELECT_FACTOR_VERSION   1
 
+#define WNM_BSSLOAD_MONITOR_VERSION   1
 typedef struct wnm_bssload_monitor_cfg {
 	uint8 version;
 	uint8 band;
 	uint8 duration; /* duration between 1 to 20sec */
 } wnm_bssload_monitor_cfg_t;
+
+#define BSS_MAXTABLE_SIZE 10
+#define WNM_BSS_SELECT_FACTOR_VERSION   1
 typedef struct wnm_bss_select_factor_params {
 	uint8 low;
 	uint8 high;
 	uint8 factor;
 	uint8 pad;
 } wnm_bss_select_factor_params_t;
+
 typedef struct wnm_bss_select_factor_cfg {
 	uint8 version;
 	uint8 band;
@@ -550,13 +552,12 @@ typedef struct wnm_bss_select_weight_cfg {
 	uint16 weight; /* weightage for each type between 0 to 100 */
 } wnm_bss_select_weight_cfg_t;
 
-
 #define WNM_ROAM_TRIGGER_VERSION   1
 typedef struct wnm_roam_trigger_cfg {
 	uint8 version;
 	uint8 band;
 	uint16 type;
-	uint16 trigger; /* trigger for each type in new roam algorithm */
+	int16 trigger; /* trigger for each type in new roam algorithm */
 } wnm_roam_trigger_cfg_t;
 
 typedef struct chan_scandata {
@@ -3607,6 +3608,8 @@ typedef struct {
 typedef struct {
 	uint16			period;			/* extended listen period */
 	uint16			interval;		/* extended listen interval */
+	uint16			count;			/* count to repeat */
+	uint16                  pad;                    /* pad for 32bit align */
 } wl_p2po_listen_t;
 
 /* GAS state machine tunable parameters.  Structure field values of 0 means use the default. */
@@ -7572,7 +7575,7 @@ typedef struct wl_bssload_cfg {
 /* Multiple roaming profile suport */
 #define WL_MAX_ROAM_PROF_BRACKETS	4
 
-#define WL_MAX_ROAM_PROF_VER	0
+#define WL_MAX_ROAM_PROF_VER	1
 
 #define WL_ROAM_PROF_NONE	(0 << 0)
 #define WL_ROAM_PROF_LAZY	(1 << 0)
@@ -7580,6 +7583,8 @@ typedef struct wl_bssload_cfg {
 #define WL_ROAM_PROF_SUSPEND	(1 << 2)
 #define WL_ROAM_PROF_SYNC_DTIM	(1 << 6)
 #define WL_ROAM_PROF_DEFAULT	(1 << 7)	/* backward compatible single default profile */
+
+#define WL_FACTOR_TABLE_MAX_LIMIT 5
 
 typedef struct wl_roam_prof {
 	int8	roam_flags;		/* bit flags */
@@ -7593,6 +7598,8 @@ typedef struct wl_roam_prof {
 	uint16	init_scan_period;
 	uint16	backoff_multiplier;
 	uint16	max_scan_period;
+	uint8		channel_usage;
+	uint8		cu_avg_calc_dur;
 } wl_roam_prof_t;
 
 typedef struct wl_roam_prof_band {
@@ -7934,6 +7941,16 @@ typedef enum {
     MAX_SUPP_ULB_BW
 } ulb_bw_type_t;
 #endif /* WL11ULB */
+
+#if defined(WLRCC) || defined(ROAM_CHANNEL_CACHE)
+#define MAX_ROAM_CHANNEL      20
+
+typedef struct {
+	int n;
+	chanspec_t channels[MAX_ROAM_CHANNEL];
+} wl_roam_channel_list_t;
+#endif /* RCC || ROAM_CHANNEL_CACHE */
+
 #ifdef MFP
 /* values for IOV_MFP arg */
 enum {
@@ -7942,5 +7959,59 @@ enum {
     WL_MFP_REQUIRED
 };
 #endif /* MFP */
+
+/*
+ * Neighbor Discover Offload: enable NDO feature
+ * Called  by ipv6 event handler when interface comes up
+ * Set RA rate limit interval value(%)
+ */
+typedef struct nd_ra_ol_limits {
+	uint16 version;         /* version of the iovar buffer */
+	uint16 type;            /* type of data provided */
+	uint16 length;          /* length of the entire structure */
+	uint16 pad1;            /* pad union to 4 byte boundary */
+	union {
+		struct {
+			uint16 min_time;         /* seconds, min time for RA offload hold */
+			uint16 lifetime_percent;
+			/* percent, lifetime percentage for offload hold time */
+		} lifetime_relative;
+		struct {
+			uint16 hold_time;        /* seconds, RA offload hold time */
+			uint16 pad2;             /* unused */
+		} fixed;
+	} limits;
+} nd_ra_ol_limits_t;
+
+#define ND_RA_OL_LIMITS_VER 1
+
+/* nd_ra_ol_limits sub-types */
+#define ND_RA_OL_LIMITS_REL_TYPE   0     /* relative, percent of RA lifetime */
+#define ND_RA_OL_LIMITS_FIXED_TYPE 1     /* fixed time */
+
+/* buffer lengths for the different nd_ra_ol_limits types */
+#define ND_RA_OL_LIMITS_REL_TYPE_LEN   12
+#define ND_RA_OL_LIMITS_FIXED_TYPE_LEN  10
+
+#define ND_RA_OL_SET    "SET"
+#define ND_RA_OL_GET    "GET"
+#define ND_PARAM_SIZE   50
+#define ND_VALUE_SIZE   5
+#define ND_PARAMS_DELIMETER " "
+#define ND_PARAM_VALUE_DELLIMETER   '='
+#define ND_LIMIT_STR_FMT ("%50s %50s")
+
+#define ND_RA_TYPE  "TYPE"
+#define ND_RA_MIN_TIME  "MIN"
+#define ND_RA_PER   "PER"
+#define ND_RA_HOLD  "HOLD"
+
+/*
+ * Temperature Throttling control mode
+ */
+typedef struct wl_temp_control {
+	bool enable;
+	uint16 control_bit;
+} wl_temp_control_t;
 
 #endif /* _wlioctl_h_ */

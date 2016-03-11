@@ -26,7 +26,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id$
+ * $Id: dhd_buzzz.h 591283 2015-10-07 11:52:00Z $
  */
 
 #define dhd_buzzz_attach()              do { /* noop */ } while (0)

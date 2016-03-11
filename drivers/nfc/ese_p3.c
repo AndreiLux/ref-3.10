@@ -54,7 +54,14 @@
 #include <linux/spi/spidev.h>
 #include <linux/clk.h>
 #include <linux/wakelock.h>
+#include <linux/smc.h>
 
+#ifdef CONFIG_ESE_SECURE_ENABLE
+#define TO_STR2(s) #s
+#define TO_STR(s) TO_STR2(s)
+/* SPI_CLK(s) produces "spi3-sclk" */
+#define SPI_CLK(x) "spi" TO_STR(CONFIG_ESE_SECURE_SPI_PORT) "-" #x "clk"
+#endif
 
 /* Device driver's configuration macro */
 /* Macro to configure poll/interrupt based req*/
@@ -140,51 +147,93 @@ struct p3_dev {
 	int cs_gpio;
 };
 
-/* T==1 protocol specific global data */
-const unsigned char SOF = 0xA5u;
+#ifdef CONFIG_ESE_SECURE_ENABLE
+static int p3_suspend(void)
+{
+	u64 r0 = 0, r1 = 1, r2 = 1, r3 = 0;
+	int ret = 0;
 
-/* Only for Qcom*/
-/*static int p3_ioctl_config_spi_gpio(
-	struct p3_dev *p3_device)
+	r0 = (0x83000032);
+	ret = exynos_smc(r0, r1, r2, r3);
+
+	if (ret)
+		P3_ERR_MSG("P3 check suspend status! 0x%X\n", ret);
+
+	return 0;
+}
+
+static int p3_resume(void)
+{
+	u64 r0 = 0, r1 = 1, r2 = 0, r3 = 0;
+	int ret = 0;
+
+	r0 = (0x83000033);
+	ret = exynos_smc(r0, r1, r2, r3);
+
+	if (ret)
+		P3_ERR_MSG("P3 check resume status! 0x%X\n", ret);
+
+	return 0;
+}
+static int p3_enable_clk(struct p3_dev *p3_device)
 {
 	struct spi_device *spidev = NULL;
-	int ret_val = 0;
+	struct clk *spi_pclk, *spi_sclk;
 
-	if (!p3_device->isGpio_cfgDone) {
-		P3_DBG_MSG("%s SET_SPI_CONFIGURATION\n", __func__);
-		spin_lock_irq(&p3_device->ese_spi_lock);
-		spidev = spi_dev_get(p3_device->spi);
-		spin_unlock_irq(&p3_device->ese_spi_lock);
-
-		//ret_val = ese_spi_request_gpios(spidev);
-		if (ret_val < 0)
-			P3_ERR_MSG("%s: couldn't config spi gpio\n", __func__);
-		p3_device->isGpio_cfgDone = true;
-
-		p3_device->null_buffer =
-			kmalloc(DEFAULT_BUFFER_SIZE, GFP_KERNEL);
-		if (p3_device->null_buffer == NULL) {
-			ret_val = -ENOMEM;
-			P3_ERR_MSG("%s null_buffer == NULL, -ENOMEM\n",
-				__func__);
-			//goto vfsspi_open_out;
-		}
-		p3_device->buffer =
-			kmalloc(DEFAULT_BUFFER_SIZE, GFP_KERNEL);
-		if (p3_device->buffer == NULL) {
-			ret_val = -ENOMEM;
-			kfree(p3_device->null_buffer);
-			P3_ERR_MSG("%s buffer == NULL, -ENOMEM\n",
-				__func__);
-			//goto vfsspi_open_out;
-		}
-
-		spi_dev_put(spidev);
-		usleep_range(950, 1000);
+	spin_lock_irq(&p3_device->ese_spi_lock);
+	spidev = spi_dev_get(p3_device->spi);
+	spin_unlock_irq(&p3_device->ese_spi_lock);
+	if (spidev == NULL) {
+		P3_ERR_MSG("%s - Failed to get spi dev.\n", __func__);
+		return -1;
 	}
-	return ret_val;
+	p3_resume();
+
+	spi_pclk = clk_get(NULL, SPI_CLK(p));
+	if (IS_ERR(spi_pclk))
+		pr_err("Can't get spi_pclk\n");
+
+	spi_sclk = clk_get(NULL, SPI_CLK(s));
+	if (IS_ERR(spi_sclk))
+		pr_err("Can't get spi_sclk\n");
+
+	clk_prepare_enable(spi_pclk);
+	clk_prepare_enable(spi_sclk);
+	clk_set_rate(spi_sclk, spidev->max_speed_hz * 2);
+
+	clk_put(spi_pclk);
+	clk_put(spi_sclk);
+
+	return 0;
 }
-*/
+
+static int p3_disable_clk(struct p3_dev *p3_device)
+{
+	struct clk *spi_pclk, *spi_sclk;
+
+	p3_suspend();
+
+	spi_pclk = clk_get(NULL, SPI_CLK(p));
+	if (IS_ERR(spi_pclk))
+		pr_err("Can't get spi_pclk\n");
+
+	spi_sclk = clk_get(NULL, SPI_CLK(s));
+
+	if (IS_ERR(spi_sclk))
+		pr_err("Can't get spi_sclk\n");
+
+	clk_disable_unprepare(spi_pclk);
+	clk_disable_unprepare(spi_sclk);
+
+	clk_put(spi_pclk);
+	clk_put(spi_sclk);
+
+	return 0;
+}
+
+#else
+/* T==1 protocol specific global data */
+const unsigned char SOF = 0xA5u;
 
 static int p3_set_clk(struct p3_dev *p3_device, unsigned long arg)
 {
@@ -257,7 +306,8 @@ static int p3_enable_clk(struct p3_dev *p3_device)
 	/* set spi clock rate */
 	clk_set_rate(sdd->src_clk, spidev->max_speed_hz * 2);
 #ifdef FEATURE_ESE_WAKELOCK
-	wake_lock(&p3_device->ese_lock);
+	if (!wake_lock_active(&p3_device->ese_lock))
+		wake_lock(&p3_device->ese_lock);
 #endif
 	p3_device->enabled_clk = true;
 	spi_dev_put(spidev);
@@ -274,7 +324,8 @@ static int p3_disable_clk(struct p3_dev *p3_device)
 
 	if (!p3_device->enabled_clk) {
 		P3_ERR_MSG("%s - clock was not enabled!\n", __func__);
-		return ret_val;
+		ret_val = -EPERM;
+		goto err;
 	}
 
 	spin_lock_irq(&p3_device->ese_spi_lock);
@@ -282,26 +333,33 @@ static int p3_disable_clk(struct p3_dev *p3_device)
 	spin_unlock_irq(&p3_device->ese_spi_lock);
 	if (spidev == NULL) {
 		P3_ERR_MSG("%s - Failed to get spi dev!\n", __func__);
-		return -1;
+		ret_val = -1;
+		goto err;
 	}
 
 	sdd = spi_master_get_devdata(spidev->master);
 	if (!sdd){
 		P3_ERR_MSG("%s - Failed to get spi dev.\n", __func__);
-		return -EFAULT;
+		spi_dev_put(spidev);
+		ret_val = -EFAULT;
+		goto err;
 	}
 
 	p3_device->enabled_clk = false;
 	pm_runtime_put_sync(&sdd->pdev->dev); /* Disable clock */
 
 	spi_dev_put(spidev);
+
+err:
 #ifdef FEATURE_ESE_WAKELOCK
 	if (wake_lock_active(&p3_device->ese_lock))
 		wake_unlock(&p3_device->ese_lock);
 #endif
 	return ret_val;
 }
+#endif
 
+#ifndef CONFIG_ESE_SECURE_ENABLE
 static int p3_enable_cs(struct p3_dev *p3_device)
 {
 	int ret_val = 0;
@@ -398,6 +456,7 @@ static int p3_disable_clk_cs(struct p3_dev *p3_device)
 
 	return ret_val;
 }
+#endif
 
 static int p3_regulator_onoff(struct p3_dev *data, int onoff)
 {
@@ -429,12 +488,13 @@ static int p3_regulator_onoff(struct p3_dev *data, int onoff)
 
 	/*data->regulator_is_enable = (u8)onoff;*/
 
-	done:
+done:
 	regulator_put(regulator_vdd_1p8);
 
 	return rc;
 }
 
+#ifndef CONFIG_ESE_SECURE_ENABLE
 static int p3_xfer(struct p3_dev *p3_device,
 			struct p3_ioctl_transfer *tr)
 {
@@ -593,6 +653,7 @@ static int p3_swing_on_cs(struct p3_dev *p3_device, int cnt)
 
 	return 0;
 }
+#endif /* Ndef CONFIG_ESE_SECURE_ENABLE */
 /**
  * \ingroup spi_driver
  * \brief Called from SPI LibEse to initilaize the P3 device
@@ -630,19 +691,21 @@ static int p3_dev_open(struct inode *inode, struct file *filp)
 	if (ret < 0)
 		P3_ERR_MSG(" test: failed to do spi_setup-0()\n");
 	*/
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	gpio_set_value(p3_dev->cs_gpio, 1);
-
 #ifdef ENABLE_ESE_P3_EXYNO_SPI
 	if(s3c64xx_spi_change_gpio(ESE_DEFAULT) < 0) {
 		P3_ERR_MSG("fail to set pinctrl default\n"); }
 	else
 		P3_ERR_MSG("ok to set pinctrl default\n");
 #endif
+#endif
 
 	filp->private_data = p3_dev;
 	P3_DBG_MSG("%s : Major No: %d, Minor No: %d\n", __func__,
 		imajor(inode), iminor(inode));
 
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	p3_dev->null_buffer =
 		kmalloc(DEFAULT_BUFFER_SIZE, GFP_KERNEL);
 	if (p3_dev->null_buffer == NULL) {
@@ -658,9 +721,9 @@ static int p3_dev_open(struct inode *inode, struct file *filp)
 			__func__);
 		return -ENOMEM;
 	}
+#endif
 	return 0;
 }
-
 
 static int p3_dev_release(struct inode *inode, struct file *filp)
 {
@@ -690,27 +753,14 @@ static int p3_dev_release(struct inode *inode, struct file *filp)
 	if(s3c64xx_spi_change_gpio(ESE_POWER_OFF) < 0) {
 		P3_ERR_MSG("fail to set pinctrl power_off\n");
 	}
-	//else
-		//P3_DBG_MSG("ok to set pinctrl off 183[%d]\n",gpio_get_value(183));
-#if 0
-{
-	void __iomem *gpg4con, *gpg4dat;
-
-	gpg4con = ioremap(0x14c90000, SZ_4);
-	gpg4dat = ioremap(0x14c90004, SZ_4);
-	__raw_writel(0x1111, gpg4con);
-	__raw_writel(0x2, gpg4dat);
-
-	iounmap(gpg4con);
-	iounmap(gpg4dat);
-}
-#endif
 #endif
 	udelay(2);
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	gpio_direction_output(p3_dev->cs_gpio, 0);
 
 	/* Defence for bit shifting while CLOSE~OPEN */
 	p3_swing_release_cs(p3_dev, 7);
+#endif
 
 	ret = p3_regulator_onoff(p3_dev, 0);
 	if(ret < 0)
@@ -782,18 +832,31 @@ static long p3_dev_ioctl(struct file *filp, unsigned int cmd,
 	case P3_SET_SPI_CONFIG:
 		/*p3_ioctl_config_spi_gpio(p3_dev);*/
 		break;
+
 	case P3_ENABLE_SPI_CLK:
 		P3_DBG_MSG("%s P3_ENABLE_SPI_CLK\n", __func__);
 		ret = p3_enable_clk(p3_dev);
 		break;
+
 	case P3_DISABLE_SPI_CLK:
 		P3_DBG_MSG("%s P3_DISABLE_SPI_CLK\n", __func__);
 		ret = p3_disable_clk(p3_dev);
 		break;
+
+	case P3_SET_SPI_CLK: /* To change CLK */
+#ifndef CONFIG_ESE_SECURE_ENABLE
+		ret = p3_set_clk(p3_dev, arg);
+		if (ret < 0)
+			P3_ERR_MSG("%s P3_SET_SPI_CLK failed [%d].\n",__func__,ret);
+#endif
+		break;
+
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	case P3_ENABLE_SPI_CS:
 		/*P3_DBG_MSG("%s P3_ENABLE_SPI_CS\n", __func__);*/
 		ret = p3_enable_cs(p3_dev);
 		break;
+
 	case P3_DISABLE_SPI_CS:
 		/*P3_DBG_MSG("%s P3_DISABLE_SPI_CS\n", __func__);*/
 		ret = p3_disable_cs(p3_dev);
@@ -804,15 +867,11 @@ static long p3_dev_ioctl(struct file *filp, unsigned int cmd,
 		if (ret < 0)
 			P3_ERR_MSG("%s P3_RW_SPI_DATA failed [%d].\n",__func__,ret);
 		break;
-	case P3_SET_SPI_CLK: /* To change CLK */
-		ret = p3_set_clk(p3_dev, arg);
-		if (ret < 0)
-			P3_ERR_MSG("%s P3_SET_SPI_CLK failed [%d].\n",__func__,ret);
-		break;
 
 	case P3_ENABLE_CLK_CS:
 		P3_DBG_MSG("%s P3_ENABLE_CLK_CS\n", __func__);
 		ret = p3_enable_clk_cs(p3_dev);
+
 		break;
 	case P3_DISABLE_CLK_CS:
 		P3_DBG_MSG("%s P3_DISABLE_CLK_CS\n", __func__);
@@ -823,9 +882,9 @@ static long p3_dev_ioctl(struct file *filp, unsigned int cmd,
 		p3_swing_on_cs(p3_dev, (int)arg);
 		P3_DBG_MSG("%s P3_SWING_CS set %d\n", __func__, (int)arg);
 		break;
-
+#endif
 	default:
-		P3_DBG_MSG("%s no matching ioctl!\n", __func__);
+		P3_DBG_MSG("%s no matching ioctl! (%d)\n", __func__, cmd);
 		ret = -EINVAL;
 	}
 	mutex_unlock(&p3_dev->buffer_mutex);
@@ -846,6 +905,7 @@ static long p3_dev_ioctl(struct file *filp, unsigned int cmd,
  *
 */
 
+#ifndef CONFIG_ESE_SECURE_ENABLE
 static ssize_t p3_dev_write(struct file *filp, const char *buf, size_t count,
         loff_t *offset)
 {
@@ -1015,102 +1075,6 @@ static ssize_t p3_dev_read(struct file *filp, char *buf, size_t count,
 	mutex_unlock(&p3_dev->buffer_mutex);
 	return ret;
 }
-
-
-/**
- * \ingroup spi_driver
- * \brief It will configure the GPIOs required for soft reset, read interrupt & regulated power supply to P3.
- *
- * \param[in]       struct p3_spi_platform_data *
- * \param[in]       struct p3_dev *
- * \param[in]       struct spi_device *
- *
- * \retval 0 if ok.
- *
-*/
-#if 0
-static int p3_hw_setup(struct p3_spi_platform_data *platform_data,
-       struct p3_dev *p3_dev, struct spi_device *spi)
-{
-    int ret = -1;
-
-    P3_DBG_MSG("Entry : %s\n", __FUNCTION__);
-#ifdef P3_IRQ_ENABLE
-    ret = gpio_request(platform_data->irq_gpio, "p3 irq");
-    if (ret < 0)
-    {
-        P3_ERR_MSG("gpio request failed gpio = 0x%x\n", platform_data->irq_gpio);
-        goto fail;
-    }
-
-    ret = gpio_direction_input(platform_data->irq_gpio);
-    if (ret < 0)
-    {
-        P3_ERR_MSG("gpio request failed gpio = 0x%x\n", platform_data->irq_gpio);
-        goto fail_irq;
-    }
-#endif
-
-#ifdef P3_HARD_RESET
-    /* RC : platform specific settings need to be declare */
-    p3_regulator = regulator_get( &spi->dev, "vaux3");
-    if (IS_ERR(p3_regulator))
-    {
-        ret = PTR_ERR(p3_regulator);
-        P3_ERR_MSG(" Error to get vaux3 (error code) = %d\n", ret);
-        return  -ENODEV;
-    }
-    else
-    {
-        P3_DBG_MSG("successfully got regulator\n");
-    }
-
-    ret = regulator_set_voltage(p3_regulator, 1800000, 1800000);
-    if (ret != 0)
-    {
-        P3_ERR_MSG("Error setting the regulator voltage %d\n", ret);
-        regulator_put(p3_regulator);
-        return ret;
-    }
-    else
-    {
-        regulator_enable(p3_regulator);
-        P3_DBG_MSG("successfully set regulator voltage\n");
-
-    }
-#endif
-#ifdef P3_RST_ENABLE
-    ret = gpio_request( platform_data->rst_gpio, "p3 reset");
-    if (ret < 0)
-    {
-        P3_ERR_MSG("gpio reset request failed = 0x%x\n", platform_data->rst_gpio);
-        goto fail_gpio;
-    }
-
-    ret = gpio_direction_output(platform_data->rst_gpio,0);
-    if (ret < 0)
-    {
-        P3_ERR_MSG("gpio rst request failed gpio = 0x%x\n", platform_data->rst_gpio);
-        goto fail_gpio;
-    }
-#endif
-
-    ret = 0;
-    P3_DBG_MSG("Exit : %s\n", __FUNCTION__);
-    return ret;
-
-#ifdef P3_RST_ENABLE
-    fail_gpio:
-    gpio_free(platform_data->rst_gpio);
-#endif
-#ifdef P3_IRQ_ENABLE
-    fail_irq:
-    gpio_free(platform_data->irq_gpio);
-    fail:
-    P3_ERR_MSG("hw_setup failed\n");
-#endif
-    return ret;
-}
 #endif
 
 /**
@@ -1147,71 +1111,23 @@ static inline void *p3_get_data(const struct spi_device *spi)
 /* possible fops on the p3 device */
 static const struct file_operations p3_dev_fops = {
 	.owner = THIS_MODULE,
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	.read = p3_dev_read,
 	.write = p3_dev_write,
+#endif
 	.open = p3_dev_open,
 	.release = p3_dev_release,
 	.unlocked_ioctl = p3_dev_ioctl,
 };
 
-#if 0
-static ssize_t p3_test_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	unsigned char data;
-	//struct spi_device *spi = to_spi_device(dev);
-
-	//ret = spi_read(p3_dev->spi, (void *)&sof, 1);
-
-	P3_DBG_MSG("%s\n", __func__);
-	data='a';
-	return sprintf(buf, "%d\n", data);
-}
-
-static ssize_t p3_test_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	unsigned long data;
-	int error;
-	//struct spi_device *spi = to_spi_device(dev);
-	
-
-	error = kstrtoul(buf, 10, &data);
-	if (error)
-		return error;
-
-	P3_DBG_MSG("%s [%lu]\n", __func__, data);
-
-
-	
-	return count;
-}
-
-static DEVICE_ATTR(test, S_IRUGO|S_IWUSR|S_IWGRP|S_IWOTH,
-		p3_test_show, p3_test_store);
-#endif
-
 static int p3_parse_dt(struct device *dev,
 	struct p3_dev *data)
 {
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	struct device_node *np = dev->of_node;
 	enum of_gpio_flags flags;
 	int errorno = 0;
-	//int gpio;
 
-#if 0//def ENABLE_SENSORS_FPRINT_SECURE
-	if (of_property_read_u32(np, "p3-mosipin", &data->mosipin))
-		data->mosipin = 0;
-	if (of_property_read_u32(np, "p3-misopin", &data->misopin))
-		data->misopin = 0;
-	if (of_property_read_u32(np, "p3-cspin", &data->cspin))
-		data->cspin = 0;
-	if (of_property_read_u32(np, "p3-clkpin", &data->clkpin))
-		data->clkpin = 0;
-
-	//data->tz_mode = true;
-#endif
 	data->cs_gpio = of_get_named_gpio_flags(np,
 		"p3-cs-gpio", 0, &flags);
 	if (data->cs_gpio < 0) {
@@ -1233,8 +1149,11 @@ static int p3_parse_dt(struct device *dev,
 
 	P3_DBG_MSG("%s: mosipin=%d, %d, %d, %d cs_gpio:%d\n", __func__,
 		data->mosipin, data->misopin, data->cspin, data->clkpin, data->cs_gpio);
-//dt_exit:
+
 	return errorno;
+#else
+	return 0; /* for CONFIG_ESE_SECURE_ENABLE */
+#endif
 }
 
 /**
@@ -1280,18 +1199,7 @@ static int p3_probe(struct spi_device *spi)
 	P3_DBG_MSG("%s: tz_mode=%d, isGpio_cfgDone:%d\n", __func__,
 			p3_dev->tz_mode, p3_dev->isGpio_cfgDone);
 
-	//P3_DBG_MSG("%s ------\n", __FUNCTION__);	
-#if 0
-	ret = p3_hw_setup (platform_data, p3_dev, spi);
-	if (ret < 0)
-	{
-		P3_ERR_MSG("Failed to enable IRQ_ENABLE\n");
-		goto err_exit0;
-	}
-#endif
-	//usleep_range(3000,3100);
-	//gpio_direction_output(p3_dev->cs_gpio, 1);
-
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	spi->bits_per_word = 8;
 	spi->mode = SPI_MODE_3;
 	spi->max_speed_hz = 1000000L;
@@ -1301,6 +1209,7 @@ static int p3_probe(struct spi_device *spi)
 		P3_ERR_MSG("failed to do spi_setup()\n");
 		goto p3_spi_setup_failed;
 	}
+#endif
 
 	p3_dev -> spi = spi;
 	p3_dev -> p3_device.minor = MISC_DYNAMIC_MINOR;
@@ -1331,34 +1240,6 @@ static int p3_probe(struct spi_device *spi)
 		goto err_misc_regi;
 	}
 
-#if 0 //test
-{
-	struct device *dev;
-
-	p3_device_class = class_create(THIS_MODULE, "ese");
-	if (IS_ERR(p3_device_class)) {
-		P3_ERR_MSG("%s class_create() is failed:%lu\n",
-			__func__,  PTR_ERR(p3_device_class));
-		//status = PTR_ERR(p3_device_class);
-		//goto vfsspi_probe_class_create_failed;
-	}
-	dev = device_create(p3_device_class, NULL,
-			    0, p3_dev, "p3");
-		P3_ERR_MSG("%s device_create() is failed:%lu\n",
-			__func__,  PTR_ERR(dev));
-
-	if ((device_create_file(dev, &dev_attr_test)) < 0)
-		P3_ERR_MSG("%s device_create_file failed !!!\n", __func__); 
-	else
-		P3_DBG_MSG("%s device_create_file success.\n", __func__);
-	//ret = sysfs_create_group(&spi->dev.kobj,
-	//		&p3_attribute_group);
-	//if (ret < 0)
-	//	P3_ERR_MSG("%s class_create() is failed - \n",
-	//		__func__,  PTR_ERR(p3_device_class));
-}
-#endif
-
 #ifdef ENABLE_ESE_P3_EXYNO_SPI
 {
 	void __iomem *gpg4con, *gpg4dat;
@@ -1372,7 +1253,9 @@ static int p3_probe(struct spi_device *spi)
 	iounmap(gpg4dat);
 }
 #endif
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	gpio_direction_output(p3_dev->cs_gpio, 0);
+#endif
 
 	ret = p3_regulator_onoff(p3_dev, 0);
 	if (ret < 0)
@@ -1393,7 +1276,9 @@ static int p3_probe(struct spi_device *spi)
 	wake_lock_destroy(&p3_dev->ese_lock);
 #endif
 	mutex_destroy(&p3_dev->buffer_mutex);
+#ifndef CONFIG_ESE_SECURE_ENABLE
 	p3_spi_setup_failed:
+#endif
 	p3_parse_dt_failed:
 	kfree(p3_dev);
 	err_exit:
@@ -1442,6 +1327,8 @@ static int p3_remove(struct spi_device *spi)
 #endif
 
 #ifdef FEATURE_ESE_WAKELOCK
+	if (wake_lock_active(&p3_dev->ese_lock))
+		wake_unlock(&p3_dev->ese_lock);
 	wake_lock_destroy(&p3_dev->ese_lock);
 #endif
 	mutex_destroy(&p3_dev->buffer_mutex);

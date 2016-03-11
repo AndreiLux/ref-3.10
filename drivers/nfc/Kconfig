@@ -121,6 +121,17 @@ config ESE_FACTORY_ONLY
 	  This driver provides support for LSI NXP combined ESE products.
 	  You should select your NFC product and interface.
 
+config ESE_SECURE_ENABLE
+	bool "ese pin protection enable"
+	default n
+
+config ESE_SECURE_GPIO
+	string "gpio group for ese"
+
+config ESE_SECURE_SPI_PORT
+	int "ese spi port number"
+	default	99
+
 config NFC_PN547
 	bool "NXP PN547 NFC Controller Driver"
 	depends on I2C

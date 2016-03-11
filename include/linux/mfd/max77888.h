@@ -43,8 +43,6 @@ struct max77888_charger_platform_data {
 };
 #endif
 
-#ifdef CONFIG_VIBETONZ
-
 struct max77888_haptic_platform_data {
 	u16 max_timeout;
 	u16 duty;
@@ -56,7 +54,6 @@ struct max77888_haptic_platform_data {
 	void (*init_hw) (void);
 	void (*motor_en) (bool);
 };
-#endif
 
 struct max77888_regulator_data {
 	int id;
@@ -76,10 +73,8 @@ struct max77888_platform_data {
 	int num_regulators;
 	struct max77888_regulator_data *regulators;
 #if 0	//temp
-#ifdef CONFIG_VIBETONZ
 	/* haptic motor data */
 	struct max77888_haptic_platform_data *haptic_data;
-#endif
 #endif
 #if defined(CONFIG_CHARGER_MAX77888)
 	/* charger data */

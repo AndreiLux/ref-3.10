@@ -1605,19 +1605,18 @@ static int calc_ttf(struct max77843_fuelgauge_data *fuelgauge, union power_suppl
 	}
 	/* To prevent overflow if charge current is 30 under, change value*/
 	if (charge_current <= 30) {
-#if 1
 		charge_current = val->intval;
-#else
-		pr_info("%s: current: %d, current_avg: %d \n", __func__, current_now, current_avg);
-		return -1;
-#endif
-
 	}
 	psy_do_property("max77843-charger", get, POWER_SUPPLY_PROP_CHARGE_NOW,
 			chg_val2);
 	if (!strcmp(chg_val2.strval, "CC Mode") || !strcmp(chg_val2.strval, "NONE")) { //CC mode || NONE
 		charge_current = val->intval;
+	} else if ((!strcmp(chg_val2.strval, "CV Mode") || !strcmp(chg_val2.strval, "EOC")) &&
+		   (current_now > 0) && (current_now > current_avg)) {
+		charge_current = current_now;
+		pr_info("%s : charge current(%d)\n", __func__, charge_current);
 	}
+
 	for (i = 0; i < fuelgauge->cv_data_lenth ;i++) {
 		if (charge_current >= cv_data[i].fg_current)
 			break;

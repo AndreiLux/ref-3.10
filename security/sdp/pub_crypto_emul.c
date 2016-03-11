@@ -1,3 +1,22 @@
+/*
+ * Copyright (c) 2015 Samsung Electronics Co., Ltd.
+ *
+ * Sensitive Data Protection
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
 #include <crypto/internal/hash.h>
 #include <crypto/scatterwalk.h>
 #include <linux/init.h>
@@ -46,7 +65,7 @@ static void request_wait_answer(pub_crypto_control_t *con,
 static pub_crypto_request_t *request_find(pub_crypto_control_t *con,
 		u32 request_id);
 static pub_crypto_request_t *request_alloc(u32 opcode);
-static void request_free(pub_crypto_request_t *req);
+static void request_free(pub_crypto_control_t *con, pub_crypto_request_t *req);
 static void req_dump(pub_crypto_request_t *req, const char *msg);
 static void dump(unsigned char *buf, int len, const char *msg);
 
@@ -59,6 +78,7 @@ static void dump(unsigned char *buf, int len, const char *msg);
 #define PUB_CRYPTO_LOGD(FMT, ...)
 #endif /* PUB_CRYPTO_DEBUG */
 #define PUB_CRYPTO_LOGE(FMT, ...) printk("SDP_PUB_CRYPTO[%d]  : %s " FMT , current->pid, __func__, ##__VA_ARGS__)
+#define PUB_CRYPTO_LOGI(FMT, ...) printk("SDP_PUB_CRYPTO[%d]  : %s " FMT , current->pid, __func__, ##__VA_ARGS__)
 
 //static char* process_crypto_request(u8 opcode, char* send_msg,
 //		int send_msg_size, int* result_len, int* ret) {
@@ -165,7 +185,7 @@ out:
 		kfree_skb(skb_out);
 	}
 	if(rc != 0)
-		req_dump(req, "request failed");
+		req_dump(req, "failed");
 
 	return rc;
 }
@@ -192,21 +212,9 @@ static int pub_crypto_recv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 			result_t *result = (result_t *)data;
 			pub_crypto_request_t *req = NULL;
 
-			spin_lock(&g_pub_crypto_control.lock);
 			req = request_find(&g_pub_crypto_control, result->request_id);
-			spin_unlock(&g_pub_crypto_control.lock);
 
-			if(req == NULL) {
-				PUB_CRYPTO_LOGE("crypto result :: error! can't find request %d\n",
-						result->request_id);
-#if 0
-				req->state = PUB_CRYPTO_REQ_FINISHED;
-				req->aborted = 1;
-				wake_up(&req->waitq);
-
-				memset(result, 0, sizeof(result_t));
-#endif
-			} else {
+			if(req) {
 				memcpy(&req->result, result, sizeof(result_t));
 				req->state = PUB_CRYPTO_REQ_FINISHED;
 				wake_up(&req->waitq);
@@ -254,7 +262,6 @@ static void dump(unsigned char *buf, int len, const char *msg) {
 int do_dek_crypt(int opcode, dek_t *in, dek_t *out, kek_t *key){
 	pub_crypto_request_t *req = request_alloc(opcode);
 	int ret = -1;
-	req_dump(req, "request allocated");
 
 	if(req) {
 		switch(req->opcode) {
@@ -275,9 +282,7 @@ int do_dek_crypt(int opcode, dek_t *in, dek_t *out, kek_t *key){
 			break;
 		}
 
-		req_dump(req, "do_dek_crypt start");
 		ret = __do_dek_crypt(req, (char *)out);
-		req_dump(req, "do_dek_crypt end");
 
 		if(ret != 0) {
 			PUB_CRYPTO_LOGE("opcode[%d] failed\n", opcode);
@@ -288,10 +293,10 @@ int do_dek_crypt(int opcode, dek_t *in, dek_t *out, kek_t *key){
 		return -ENOMEM;
 	}
 
-	request_free(req);
+	request_free(&g_pub_crypto_control, req);
 	return 0;
 error:
-	request_free(req);
+	request_free(&g_pub_crypto_control, req);
 	return -1;
 }
 
@@ -343,7 +348,6 @@ static int pub_crypto_request_get_msg(pub_crypto_request_t *req, char **msg)
 
 static u32 pub_crypto_get_unique_id(pub_crypto_control_t *control)
 {
-	PUB_CRYPTO_LOGD("locked\n");
 	spin_lock(&control->lock);
 
 	control->reqctr++;
@@ -352,25 +356,21 @@ static u32 pub_crypto_get_unique_id(pub_crypto_control_t *control)
 		control->reqctr = 1;
 
 	spin_unlock(&control->lock);
-	PUB_CRYPTO_LOGD("unlocked\n");
 
 	return control->reqctr;
 }
 static void req_dump(pub_crypto_request_t *req, const char *msg) {
-#if PUB_CRYPTO_DEBUG
-	PUB_CRYPTO_LOGD("DUMP REQUEST [%s] ID[%d] state[%d]\n", msg, req->id, req->state);
-#endif
+	PUB_CRYPTO_LOGI("req %s {id:%d op:%d state:%d}\n", msg, req->id, req->opcode, req->state);
 }
 
 static void request_send(pub_crypto_control_t *con,
 		pub_crypto_request_t *req) {
 	spin_lock(&con->lock);
-	PUB_CRYPTO_LOGD("entered, control lock\n");
 
 	list_add_tail(&req->list, &con->pending_list);
 	req->state = PUB_CRYPTO_REQ_PENDING;
+	req_dump(req, "added");
 
-	PUB_CRYPTO_LOGD("exit, control unlock\n");
 	spin_unlock(&con->lock);
 }
 
@@ -406,13 +406,22 @@ static pub_crypto_request_t *request_find(pub_crypto_control_t *con,
 		u32 request_id) {
 	struct list_head *entry;
 
+	spin_lock(&con->lock);
+
 	list_for_each(entry, &con->pending_list) {
 		 pub_crypto_request_t *req;
 		req = list_entry(entry, pub_crypto_request_t, list);
-		if (req->id == request_id)
+		if (req->id == request_id) {
+			req_dump(req, "found");
+
+			spin_unlock(&con->lock);
 			return req;
+		}
 	}
 
+	spin_unlock(&con->lock);
+
+	PUB_CRYPTO_LOGE("Can't find request %d\n", request_id);
 	return NULL;
 }
 
@@ -439,16 +448,16 @@ static pub_crypto_request_t *request_alloc(u32 opcode) {
 	return req;
 }
 
-static void request_free(pub_crypto_request_t *req)
-{
+static void request_free(pub_crypto_control_t *con, pub_crypto_request_t *req) {
 	if(req) {
-		req_dump(req, "request freed");
-		/*
-		 * TODO : lock needed here?
-		 */
+		req_dump(req, "freed");
+		spin_lock(&con->lock);
+
 		list_del(&req->list);
 		memset(req, 0, sizeof(pub_crypto_request_t));
 		kmem_cache_free(pub_crypto_req_cachep, req);
+
+		spin_unlock(&con->lock);
 	} else {
 		PUB_CRYPTO_LOGE("req is NULL, skip free\n");
 	}
@@ -506,5 +515,5 @@ module_init(pub_crypto_mod_init);
 module_exit(pub_crypto_mod_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("FIPS Crypto Algorithm");
+MODULE_DESCRIPTION("SDP pub crypto");
 

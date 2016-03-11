@@ -21,7 +21,9 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_custom_memprealloc.c 565790 2015-06-23 06:57:52Z $
+ * <<Broadcom-WL-IPTag/Open:>>
+ *
+ * $Id: dhd_custom_memprealloc.c 597512 2015-11-05 11:37:36Z $
  */
 
 #include <linux/device.h>
@@ -49,6 +51,7 @@
 #define WLAN_STATIC_DHD_MEMDUMP_RAM	11
 #define WLAN_STATIC_DHD_PKTID_MAP	13
 #define WLAN_STATIC_DHD_PKTID_IOCTL_MAP	14
+#define WLAN_STATIC_DHD_LOG_DUMP_BUF	15
 
 #define WLAN_SCAN_BUF_SIZE		(64 * 1024)
 
@@ -61,7 +64,7 @@
 #define WLAN_DHD_WLFC_BUF_SIZE		(16 * 1024)
 #define WLAN_DHD_IF_FLOW_LKUP_SIZE	(20 * 1024)
 #endif /* CONFIG_64BIT */
-#define WLAN_DHD_MEMDUMP_SIZE		(800 * 1024)
+#define WLAN_DHD_MEMDUMP_SIZE		(900 * 1024)
 
 #define PREALLOC_WLAN_SEC_NUM		4
 #define PREALLOC_WLAN_BUF_NUM		160
@@ -114,6 +117,8 @@
 #define WLAN_DHD_PKTID_IOCTL_MAP_SIZE		((WLAN_DHD_PKTID_IOCTL_MAP_HDR_SIZE) + \
 		((WLAN_MAX_PKTID_IOCTL_ITEMS+1) * WLAN_DHD_PKTID_IOCTL_MAP_ITEM_SIZE))
 
+#define DHD_LOG_DUMP_BUF_SIZE	(1024 * 1024)
+
 static struct sk_buff *wlan_static_skb[WLAN_SKB_BUF_NUM];
 
 struct wlan_mem_prealloc {
@@ -137,6 +142,7 @@ static void *wlan_static_dhd_memdump_buf = NULL;
 static void *wlan_static_dhd_memdump_ram = NULL;
 static void *wlan_static_dhd_pktid_map = NULL;
 static void *wlan_static_dhd_pktid_ioctl_map = NULL;
+static void *wlan_static_dhd_log_dump_buf = NULL;
 
 void
 *dhd_wlan_mem_prealloc(int section, unsigned long size)
@@ -224,6 +230,16 @@ void
 		return wlan_static_dhd_pktid_ioctl_map;
 	}
 
+	if (section == WLAN_STATIC_DHD_LOG_DUMP_BUF) {
+		if (size > DHD_LOG_DUMP_BUF_SIZE) {
+			pr_err("request DHD_LOG_DUMP_BUF size(%lu) is bigger then"
+				" static size(%d).\n",
+				size, DHD_LOG_DUMP_BUF_SIZE);
+			return NULL;
+		}
+		return wlan_static_dhd_log_dump_buf;
+	}
+
 	if ((section < 0) || (section > PREALLOC_WLAN_SEC_NUM)) {
 		return NULL;
 	}
@@ -283,6 +299,12 @@ dhd_init_wlan_mem(void)
 	wlan_static_scan_buf1 = kmalloc(WLAN_SCAN_BUF_SIZE, GFP_KERNEL);
 	if (!wlan_static_scan_buf1) {
 		pr_err("Failed to alloc wlan_static_scan_buf1\n");
+		goto err_mem_alloc;
+	}
+
+	wlan_static_dhd_log_dump_buf = kmalloc(DHD_LOG_DUMP_BUF_SIZE, GFP_KERNEL);
+	if (!wlan_static_dhd_log_dump_buf) {
+		pr_err("Failed to alloc wlan_static_dhd_log_dump_buf\n");
 		goto err_mem_alloc;
 	}
 
@@ -373,6 +395,10 @@ err_mem_alloc:
 #endif /* CONFIG_BCMDHD_PCIE */
 	if (wlan_static_dhd_info_buf) {
 		kfree(wlan_static_dhd_info_buf);
+	}
+
+	if (wlan_static_dhd_log_dump_buf) {
+		kfree(wlan_static_dhd_log_dump_buf);
 	}
 
 	if (wlan_static_scan_buf1) {

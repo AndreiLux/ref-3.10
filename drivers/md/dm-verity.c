@@ -22,6 +22,11 @@
 
 #include <linux/ctype.h>
 
+#if defined(CONFIG_TZ_ICCC)
+#include <linux/smc.h>
+#define SMC_CMD_DMV_WRITE_STATUS (0x83000014)
+#endif
+
 #define DM_MSG_PREFIX			"verity"
 
 #define DM_VERITY_IO_VEC_INLINE		16
@@ -439,6 +444,9 @@ test_block_hash:
 				kunmap_atomic(page);
 #endif
 				v->hash_failed = 1;
+#if defined(CONFIG_TZ_ICCC)
+				printk(KERN_ERR "ICCC smc ret = %d \n",exynos_smc(SMC_CMD_DMV_WRITE_STATUS, 1, 0, 0));
+#endif
 				return -EIO;
 			}
 		}

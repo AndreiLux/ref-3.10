@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Proprietary,Open:>>
  *
- * $Id: bcmsdh_sdmmc_linux.c 528293 2015-01-21 23:18:59Z $
+ * $Id: bcmsdh_sdmmc_linux.c 591173 2015-10-07 06:24:22Z $
  */
 
 #include <typedefs.h>
@@ -253,9 +253,6 @@ static int bcmsdh_sdmmc_suspend(struct device *pdev)
 		dhd_mmc_suspend = FALSE;
 		return err;
 	}
-#if defined(OOB_INTR_ONLY) && !defined(CUSTOMER_HW4)
-	bcmsdh_oob_intr_set(sdioh->bcmsdh, FALSE);
-#endif /* OOB_INTR_ONLY && !CUSTOMER_HW4 */
 	smp_mb();
 
 	return 0;
@@ -272,9 +269,6 @@ static int bcmsdh_sdmmc_resume(struct device *pdev)
 
 	sdioh = sdio_get_drvdata(func);
 	dhd_mmc_suspend = FALSE;
-#if defined(OOB_INTR_ONLY) && !defined(CUSTOMER_HW4)
-	bcmsdh_resume(sdioh->bcmsdh);
-#endif /* OOB_INTR_ONLY && !CUSTOMER_HW4 */
 
 	smp_mb();
 	return 0;

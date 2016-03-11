@@ -371,6 +371,17 @@ config SENSORS_SSP_VLTE
  	  To compile this driver as a module, choose M here: the
  	  module will be called ssp.
 
+config SENSORS_SSP_VLTE_W02
+	tristate "V Proejct"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get V project support for
+       	  factory test.
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ssp.
+
 config SENSORS_SSP_NOBLELTE
 	tristate "NOBLE Proejct"
 	default n
@@ -389,6 +400,17 @@ config SENSORS_SSP_ZENLTE
 	help
 	  Binary file for ssp driver.
           If you say yes here you get ZEN project support for
+       	  factory test.
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ssp.
+
+ config SENSORS_SSP_MARINELTE
+	tristate "MARINELTE Proejct"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get MARINELTE project support for
        	  factory test.
  	  To compile this driver as a module, choose M here: the
  	  module will be called ssp.

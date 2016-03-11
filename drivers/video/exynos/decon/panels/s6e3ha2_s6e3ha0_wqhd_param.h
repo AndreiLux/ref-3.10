@@ -323,20 +323,41 @@ static const unsigned char S6E3HA2_SEQ_ACL_OFF[] = {
 	0x55,
 	0x00
 };
-static const unsigned char S6E3HA2_SEQ_ACL_8[] = {
+static const unsigned char S6E3HA2_SEQ_ACL_ON[] = {
 	0x55,
 	0x02,
 };
 
+// parameter : 2nd : start 60% = 0x99, start 50% = 0x7F
+// parameter : 4nd : ACL 5%=0x06, 8%=0x09, 12%=0x0E, 15%=0x12
 static const unsigned char S6E3HA2_SEQ_ACL_OFF_OPR[] = {
 	0xB5,
-	0x40
+	0x40, 0x7F, 0x27, 0x0E
 };
 
-static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR[] = {
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_5[] = {
 	0xB5,
-	0x50
+	0x50, 0x7F, 0x27, 0x06
 };
+
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_8[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x09
+};
+
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_12[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x0E
+};
+
+static const unsigned char S6E3HA2_SEQ_ACL_ON_OPR_15[] = {
+	0xB5,
+	0x50, 0x7F, 0x27, 0x12
+};
+
+
+#define ACL_OPR_LEN		ARRAY_SIZE(S6E3HA2_SEQ_ACL_ON_OPR_12)
+#define ACL_CMD_LEN		ARRAY_SIZE(S6E3HA2_SEQ_ACL_ON)
 
 
 static const unsigned char S6E3HA2_SEQ_TSET[] = {
@@ -359,7 +380,7 @@ static const unsigned char VINT_TABLE[] = {
 #define UNDER_MINUS_20(temperature)	(temperature <= -20)
 #define UNDER_0(temperature)	(temperature <= 0)
 
-#define ACL_IS_ON(nit) 				(nit < 360)
+#define ACL_IS_ON(pb) 				(pb < 255)
 #define CAPS_IS_ON(level)	(level >= 41)
 
 #define NORMAL_TEMPERATURE			25	/* 25 degrees Celsius */
@@ -426,14 +447,15 @@ enum {
 };
 
 enum {
-	ACL_STATUS_0P,
-	ACL_STATUS_8P,
+	ACL_STATUS_OFF,
+	ACL_STATUS_ON,
 	ACL_STATUS_MAX
 };
 
 enum {
-	ACL_OPR_16_FRAME,
-	ACL_OPR_32_FRAME,
+	ACL_OPR_OFF,
+	ACL_OPR_8P,
+	ACL_OPR_15P,
 	ACL_OPR_MAX
 };
 

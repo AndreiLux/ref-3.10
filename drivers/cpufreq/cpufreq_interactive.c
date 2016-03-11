@@ -34,11 +34,6 @@
 #include <linux/kernel_stat.h>
 #include <linux/pm_qos.h>
 #include <asm/cputime.h>
-#ifdef CONFIG_ANDROID
-#include <asm/uaccess.h>
-#include <linux/syscalls.h>
-#include <linux/android_aid.h>
-#endif
 
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 #include <mach/cpufreq.h>
@@ -2078,41 +2073,6 @@ static struct attribute_group interactive_attr_group_gov_pol = {
 	.name = "interactive",
 };
 
-#ifdef CONFIG_ANDROID
-static const char *interactive_sysfs[] = {
-	"target_loads",
-	"above_hispeed_delay",
-	"hispeed_freq",
-	"go_hispeed_load",
-	"min_sample_time",
-	"timer_rate",
-	"timer_slack",
-	"boost",
-	"boostpulse",
-	"boostpulse_duration",
-	"io_is_busy",
-#ifdef CONFIG_MODE_AUTO_CHANGE
-	"mode",
-	"enforced_mode",
-	"param_index",
-	"multi_enter_load",
-	"multi_exit_load",
-	"single_enter_load",
-	"single_exit_load",
-	"multi_enter_time",
-	"multi_exit_time",
-	"single_enter_time",
-	"single_exit_time",
-	"single_cluster0_min_freq",
-	"multi_cluster0_min_freq",
-	"cpu_util",
-#endif
-#ifdef CONFIG_PMU_COREMEM_RATIO
-	"region_time_in_state",
-#endif
-};
-#endif
-
 static struct attribute_group *get_sysfs_attr(void)
 {
 	if (have_governor_per_policy())
@@ -2192,31 +2152,6 @@ static int __cpuinit exynos_pmu_cpu_notifier(struct notifier_block *nfb,
 static struct notifier_block __cpuinitdata exynos_pmu_cpu_notifier_block = {
 	.notifier_call = exynos_pmu_cpu_notifier,
 };
-#endif
-
-#ifdef CONFIG_ANDROID
-static void change_sysfs_owner(struct cpufreq_policy *policy)
-{
-	char buf[NAME_MAX];
-	mm_segment_t oldfs;
-	int i;
-	char *path = kobject_get_path(get_governor_parent_kobj(policy),
-			GFP_KERNEL);
-
-	oldfs = get_fs();
-	set_fs(get_ds());
-
-	for (i = 0; i < ARRAY_SIZE(interactive_sysfs); i++) {
-		snprintf(buf, sizeof(buf), "/sys%s/interactive/%s", path,
-				interactive_sysfs[i]);
-		sys_chown(buf, AID_SYSTEM, AID_SYSTEM);
-	}
-
-	set_fs(oldfs);
-	kfree(path);
-}
-#else
-static inline void change_sysfs_owner(struct cpufreq_policy *policy) { }
 #endif
 
 #ifdef CONFIG_MODE_AUTO_CHANGE
@@ -2335,8 +2270,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 				common_tunables = NULL;
 			return rc;
 		}
-
-		change_sysfs_owner(policy);
 
 		if (!policy->governor->initialized) {
 			idle_notifier_register(&cpufreq_interactive_idle_nb);

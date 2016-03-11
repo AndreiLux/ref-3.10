@@ -492,7 +492,7 @@ int mc_switch_core(uint32_t core_num)
 {
 	int ret;
 	mutex_lock(&ctx->core_switch_lock);
-	if (!(core_status & (0x1<<core_num))){
+	if (!(core_status & (0x1 << core_num))){
 		MCDRV_DBG(mcd, "Core status... core #%d is off line\n",core_num);
 		mutex_unlock(&ctx->core_switch_lock);
 		return 1;
@@ -505,7 +505,7 @@ int mc_switch_core(uint32_t core_num)
 void mc_cpu_offfline(int cpu)
 {
 	mutex_lock(&ctx->core_switch_lock);
-	core_status &= ~(0x1<<cpu);
+	core_status &= ~(0x1 << cpu);
 	if (active_cpu == cpu) {
 		int i;
 		/* Chose the first online CPU and switch! */
@@ -527,10 +527,14 @@ void mc_cpu_offfline(int cpu)
 	mutex_unlock(&ctx->core_switch_lock);
 }
 
+/* ExySp: for sos performance */
 void mc_cpu_online(int cpu)
 {
 	mutex_lock(&ctx->core_switch_lock);
-	core_status |= (0x1<<cpu);
+	core_status |= (0x1 << cpu);
+
+	if (cpu == NONBOOT_LITTLE_CORE)
+		__mc_switch_core(NONBOOT_LITTLE_CORE);
 	mutex_unlock(&ctx->core_switch_lock);
 }
 
@@ -540,9 +544,12 @@ static int mobicore_cpu_callback(struct notifier_block *nfb,
 	unsigned int cpu = (unsigned long)hcpu;
 
 	switch (action) {
+/* ExySp: for sos performance */
 	case CPU_ONLINE:
+	case CPU_ONLINE_FROZEN:
 		mc_cpu_online(cpu);
 		break;
+/* ExySp: end */
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 		mc_cpu_offfline(cpu);

@@ -32,7 +32,7 @@ int mag_open_hwoffset(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(MAG_HW_OFFSET_FILE_PATH, O_RDONLY, 0660);
+	cal_filp = filp_open(MAG_HW_OFFSET_FILE_PATH, O_RDONLY, 0);
 	if (IS_ERR(cal_filp)) {
 		pr_err("[SSP] %s: filp_open failed\n", __func__);
 		set_fs(old_fs);

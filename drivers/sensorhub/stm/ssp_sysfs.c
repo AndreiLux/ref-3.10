@@ -48,6 +48,7 @@ static void enable_sensor(struct ssp_data *data,
 	int64_t temp_delay = data->adDelayBuf[sensor];
 	s32 ms_delay = get_msdelay(delay);
 	int ret = 0;
+	u64 timestamp = 0;
 
 	data->adDelayBuf[sensor] = delay;
 	max_batch_report_latency = data->batchLatencyBuf[sensor];
@@ -106,6 +107,12 @@ static void enable_sensor(struct ssp_data *data,
 		uBuf[8] = batch_options;
 		send_instruction(data, CHANGE_DELAY, sensor, uBuf, 9);
 
+		timestamp = get_current_timestamp();
+		//pr_info("[SSP] compare c %lld l %lld\n", timestamp, data->lastTimestamp[sensor]);
+
+		if(data->lastTimestamp[sensor] < timestamp)
+			data->lastTimestamp[sensor] = timestamp;
+
 		break;
 	default:
 		data->aiCheckStatus[sensor] = ADD_SENSOR_STATE;
@@ -120,6 +127,7 @@ static void change_sensor_delay(struct ssp_data *data,
 	s8 batch_options = 0;
 	int64_t temp_delay = data->adDelayBuf[sensor];
 	s32 ms_delay = get_msdelay(delay);
+	u64 timestamp = 0;
 
 	// SUPPORT CAMERA SYNC ++++++
 	if (sensor == GYROSCOPE_SENSOR) {
@@ -150,6 +158,12 @@ static void change_sensor_delay(struct ssp_data *data,
 		memcpy(&uBuf[4], &max_batch_report_latency, 4);
 		uBuf[8] = batch_options;
 		send_instruction(data, CHANGE_DELAY, sensor, uBuf, 9);
+
+		timestamp = get_current_timestamp();
+		//pr_info("[SSP] compare c %lld l %lld\n", timestamp, data->lastTimestamp[sensor]);
+
+		if(data->lastTimestamp[sensor] < timestamp)
+			data->lastTimestamp[sensor] = timestamp;
 		break;
 
 	default:
@@ -258,8 +272,11 @@ static ssize_t set_sensors_enable(struct device *dev,
 	uint64_t new_enable = 0, changed_sensor = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (kstrtoll(buf, 10, &dTemp) < 0)
+	mutex_lock(&data->enable_mutex);
+	if (kstrtoll(buf, 10, &dTemp) < 0) {
+		mutex_unlock(&data->enable_mutex);
 		return -EINVAL;
+	}
 
 	new_enable = (uint64_t)dTemp;
 	ssp_infof("new_enable = %llu, old_enable = %llu",
@@ -271,11 +288,14 @@ static ssize_t set_sensors_enable(struct device *dev,
 		ssp_infof("%llu is not connected(sensor state: 0x%llx)",
 			new_enable - atomic64_read(&data->aSensorEnable),
 			data->uSensorState);
+		mutex_unlock(&data->enable_mutex);
 		return -EINVAL;
 	}
 
-	if (new_enable == atomic64_read(&data->aSensorEnable))
+	if (new_enable == atomic64_read(&data->aSensorEnable)) {
+		mutex_unlock(&data->enable_mutex);
 		return size;
+	}
 
 	for (changed_sensor = 0; changed_sensor < SENSOR_MAX; changed_sensor++) {
 		if ((atomic64_read(&data->aSensorEnable) & (1 << changed_sensor))
@@ -339,6 +359,7 @@ static ssize_t set_sensors_enable(struct device *dev,
 		}
 	}
 	atomic64_set(&data->aSensorEnable, new_enable);
+	mutex_unlock(&data->enable_mutex);
 
 	return size;
 }
@@ -806,6 +827,39 @@ static ssize_t set_sensor_axis(struct device *dev,
 	return size;
 }
 
+static ssize_t show_sensor_dot(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct ssp_data *data = dev_get_drvdata(dev);
+	return snprintf(buf, PAGE_SIZE, "%d\n", data->accel_dot);
+}
+
+static ssize_t set_sensor_dot(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct ssp_data *data = dev_get_drvdata(dev);
+	int64_t new_dot = 0;
+	int old_dot = data->accel_dot;
+	int ret = 0;
+
+	if (kstrtoll(buf, 10, &new_dot) < 0)
+		return -EINVAL;
+
+	if (new_dot < 0 || new_dot > 7)
+		return -EINVAL;
+
+	data->accel_dot = (int)new_dot;
+
+	ret = set_6axis_dot(data);
+	if (ret < 0) {
+		data->accel_dot = old_dot;
+		ssp_errf("set_6axis_dot failed");
+		return -EIO;
+	}
+
+	return size;
+}
+
 static ssize_t set_send_instruction(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -874,6 +928,13 @@ static ssize_t set_int_gyro_enable(struct device *dev,
 	return size;
 }
 
+static ssize_t show_sensor_state(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct ssp_data *data  = dev_get_drvdata(dev);
+	return sprintf(buf, "%s\n", data->sensor_state);
+}
+
 
 static DEVICE_ATTR(mcu_rev, S_IRUGO, mcu_revision_show, NULL);
 static DEVICE_ATTR(mcu_name, S_IRUGO, mcu_model_name_show, NULL);
@@ -937,10 +998,13 @@ static DEVICE_ATTR(debug_enable, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_debug_enable, set_debug_enable);
 static DEVICE_ATTR(sensor_axis, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_sensor_axis, set_sensor_axis);
+static DEVICE_ATTR(sensor_dot, S_IRUGO | S_IWUSR | S_IWGRP,
+	show_sensor_dot, set_sensor_dot);
 static DEVICE_ATTR(send_instruction, S_IWUSR | S_IWGRP,
 	NULL, set_send_instruction);
 static DEVICE_ATTR(int_gyro_enable, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_int_gyro_enable, set_int_gyro_enable);
+static DEVICE_ATTR(sensor_state, S_IRUGO, show_sensor_state, NULL);
 
 
 static struct device_attribute *mcu_attrs[] = {
@@ -978,8 +1042,10 @@ static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_ssp_flush,
 	&dev_attr_debug_enable,
 	&dev_attr_sensor_axis,
+	&dev_attr_sensor_dot,
 	&dev_attr_send_instruction,
 	&dev_attr_int_gyro_enable,
+	&dev_attr_sensor_state,
 	NULL,
 };
 

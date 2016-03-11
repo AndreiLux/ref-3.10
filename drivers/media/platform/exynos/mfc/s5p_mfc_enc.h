@@ -16,7 +16,7 @@
 #define MFC_ENC_AVG_FPS_MODE
 
 #define ENC_HIGH_FPS	(70000)
-#define ENC_MAX_FPS	(120000)
+#define ENC_MAX_FPS	(240000)
 #define ENC_AVG_FRAMES	(10)
 
 const struct v4l2_ioctl_ops *get_enc_v4l2_ioctl_ops(void);

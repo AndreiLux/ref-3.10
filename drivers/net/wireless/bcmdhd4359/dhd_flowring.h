@@ -1,4 +1,4 @@
-/**
+/*
  * @file Header file describing the flow rings DHD interfaces.
  *
  * Flow rings are transmit traffic (=propagating towards antenna) related entities.
@@ -29,7 +29,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_flowrings.h  jaganlv $
+ * $Id: dhd_flowring.h 591285 2015-10-07 11:56:29Z $
  */
 
 
@@ -60,6 +60,7 @@
 
 #define DHD_FLOW_PRIO_AC_MAP		0
 #define DHD_FLOW_PRIO_TID_MAP		1
+#define DHD_FLOW_PRIO_LLR_MAP		2
 
 /* Pkttag not compatible with PROP_TXSTATUS or WLFC */
 typedef struct dhd_pkttag_fr {

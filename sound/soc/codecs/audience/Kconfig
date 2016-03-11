@@ -106,7 +106,7 @@ config SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP
 
 config SND_SOC_ESXXX_RESTORE_STD_FW
 	tristate "Restore standard firmware"
-	default n
+	default y
 	---help---
 	Restore standard fw if earSmart chip did not respond.
 	sometimes, audience chip did not respond.

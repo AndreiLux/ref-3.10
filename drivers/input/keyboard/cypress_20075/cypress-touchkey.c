@@ -1281,6 +1281,8 @@ static void touchkey_input_close(struct input_dev *dev)
 #ifdef TK_USE_OPEN_DWORK
 	cancel_delayed_work(&data->open_work);
 #endif
+	cancel_delayed_work(&data->keyboard_cover_work);
+
 	touchkey_stop(data);
 
 	tk_debug_dbg(true, &data->client->dev, "%s\n", __func__);
@@ -1782,19 +1784,10 @@ static ssize_t keyboard_cover_mode_enable(struct device *dev,
 {
 	struct touchkey_i2c *tkey_i2c = dev_get_drvdata(dev);
 	int keyboard_mode_on;
-	u8 data[4] = { 0, };
-	int ret;
 	int mode;
-
+	int dwork_delay_time;
 	sscanf(buf, "%d\n", &keyboard_mode_on);
 	tk_debug_info(true, &tkey_i2c->client->dev, "%s %d\n", __func__, keyboard_mode_on);
-
-	if (!(strncmp(tkey_i2c->pdata->fw_path, "cypress/cypress_noble.fw", 24) == 0)) {
-		if(!tkey_is_enabled(tkey_i2c) || start_state) {
-		tk_debug_err(true, &tkey_i2c->client->dev, "%s skip\n", __func__);
-		return size;
-		}
-	}
 
 	if((strncmp(tkey_i2c->pdata->fw_path, "cypress/cypress_noble.fw", 24) == 0)){
 		mode = touchkey_mode_change(tkey_i2c, CMD_GET_LAST_MODE);
@@ -1806,17 +1799,40 @@ static ssize_t keyboard_cover_mode_enable(struct device *dev,
 		tkey_i2c->tsk_enable_glove_mode = keyboard_mode_on;
 		touchkey_mode_change(tkey_i2c, (keyboard_mode_on == 1) ? CMD_GLOVE_ON : CMD_GLOVE_OFF);
 	} else {
-		data[1] = 0x80;
-		data[2] = TK_BIT_WRITE_CONFIRM;
-
-		ret = i2c_touchkey_write(tkey_i2c->client, data, 3);
-		if (ret < 0) {
-			tk_debug_err(true, &tkey_i2c->client->dev, "%s, Failed to exit autocal command.\n", __func__);
-			tkey_i2c->status_update = false;
-		}
+		if (keyboard_mode_on)
+			dwork_delay_time = 2000;
+		else
+			dwork_delay_time = 10;
+		schedule_delayed_work(&tkey_i2c->keyboard_cover_work,
+					msecs_to_jiffies(dwork_delay_time));
 	}
 
 	return size;
+}
+static void touchkey_keyboard_work(struct work_struct *work)
+{
+	struct touchkey_i2c *tkey_i2c =
+			container_of(work, struct touchkey_i2c,
+			keyboard_cover_work.work);
+	u8 data[4] = { 0, };
+	int ret;
+
+	if(!tkey_is_enabled(tkey_i2c) || start_state) {
+		tk_debug_err(true, &tkey_i2c->client->dev, "%s skip\n", __func__);
+		return;
+	}
+
+	data[1] = 0x80;
+	data[2] = TK_BIT_WRITE_CONFIRM;
+
+	ret = i2c_touchkey_write(tkey_i2c->client, data, 3);
+	if (ret < 0) {
+		tk_debug_err(true, &tkey_i2c->client->dev, "%s, Failed to exit autocal command.\n", __func__);
+		tkey_i2c->status_update = false;
+	}
+	tk_debug_info(true, &tkey_i2c->client->dev, "%s calibration\n", __func__);
+	return;
+
 }
 
 static ssize_t touch_sensitivity_control(struct device *dev,
@@ -2506,6 +2522,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 #ifdef TK_USE_OPEN_DWORK
 	INIT_DELAYED_WORK(&tkey_i2c->open_work, touchkey_open_work);
 #endif
+	INIT_DELAYED_WORK(&tkey_i2c->keyboard_cover_work, touchkey_keyboard_work);
 	set_bit(EV_SYN, input_dev->evbit);
 	set_bit(EV_LED, input_dev->evbit);
 	set_bit(LED_MISC, input_dev->ledbit);
@@ -2677,7 +2694,11 @@ void touchkey_shutdown(struct i2c_client *client)
 	if (!touchkey_probe)
 		return;
 
+	if (tkey_i2c->enabled)
+		disable_irq(tkey_i2c->irq);
+
 	tkey_i2c->pdata->power_on(tkey_i2c, 0);
+	tkey_i2c->enabled = false;
 
 	tk_debug_err(true, &tkey_i2c->client->dev, "%s\n", __func__);
 }

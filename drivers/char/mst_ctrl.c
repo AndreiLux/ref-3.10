@@ -131,6 +131,7 @@ long mst_ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 const struct file_operations mst_ctrl_fops = {
 	.open	= mst_ctrl_open,
+	.release	= single_release,
 	.read	= seq_read,
 	.write	= mst_ctrl_write,
 	.unlocked_ioctl  = mst_ctrl_ioctl,

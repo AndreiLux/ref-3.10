@@ -477,7 +477,6 @@ void exynos_pcie_work(struct work_struct *work)
 
 	if (soc_is_exynos7420()) {
 		if (exynos_pcie->ch_num == 0) {
-			exynos_pcie_register_dump(0);
 			exynos_pcie_notify_callback(pp, EXYNOS_PCIE_EVENT_LINKDOWN);
 #ifdef CONFIG_ESOC
 			if(mdm_get_fatal_status()) {
@@ -1501,6 +1500,12 @@ void exynos_pcie_send_pme_turn_off(struct exynos_pcie *exynos_pcie)
 	int __maybe_unused count = 0, i;
 	u32 __maybe_unused val;
 	u32 save_regs[6], save_address[6] = {0x5C, 0x4A, 0x3F, 0x15, 0x4E, 0x4F};
+
+	val = readl(exynos_pcie->elbi_base + PCIE_ELBI_RDLH_LINKUP) & 0x1f;
+	if (!(val >= 0x0d && val <= 0x14)) {
+		dev_info(dev, "pcie link is not up\n");
+		return;
+	}
 
 	writel(0x0, exynos_pcie->elbi_base + 0xa8);
 

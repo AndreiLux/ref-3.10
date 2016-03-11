@@ -55,6 +55,10 @@ extern int			ip6_datagram_send_ctl(struct net *net,
  *	address family specific functions
  */
 extern const struct inet_connection_sock_af_ops ipv4_specific;
+#ifdef CONFIG_MPTCP
+extern const struct inet_connection_sock_af_ops ipv6_mapped;
+extern const struct inet_connection_sock_af_ops ipv6_specific;
+#endif
 
 extern void inet6_destroy_sock(struct sock *sk);
 

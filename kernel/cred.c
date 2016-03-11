@@ -31,6 +31,7 @@ static struct kmem_cache *cred_jar;
 
 #ifdef CONFIG_RKP_KDP
 static struct kmem_cache *cred_jar_ro;
+struct kmem_cache *tsec_jar;
 atomic_t init_cred_use_cnt = ATOMIC_INIT(4);
 
 unsigned  int rkp_get_usecount(struct cred *cred)
@@ -70,7 +71,7 @@ void put_cred(const struct cred *_cred)
 /*
  * The initial credentials for the initial task
  */
-CRED_RO_AREA struct cred init_cred = {
+RKP_RO_AREA struct cred init_cred = {
 	.usage			= ATOMIC_INIT(4),
 #ifdef CONFIG_DEBUG_CREDENTIALS
 	.subscribers		= ATOMIC_INIT(2),
@@ -402,7 +403,46 @@ struct cred *prepare_exec_creds(void)
 
 	return new;
 }
+#ifdef CONFIG_RKP_KDP
+int rkp_from_tsec_jar(unsigned long addr)
+{
+	static void *objp;
+	static struct kmem_cache *s;
+	static struct page *page;
+	
+	objp = (void *)addr;
 
+	if(!objp)
+		return 0;
+
+	page = virt_to_head_page(objp);
+	s = page->slab_cache;
+	if(s && s->name) {
+		if(!strcmp(s->name,"tsec_jar")) {
+			return 1;
+		}
+	}
+	return 0;
+}
+int chk_invalid_kern_ptr(u64 tsec) 
+{
+	return (((u64)tsec >> 36) != (u64)0xFFFFFFC);
+}
+void rkp_free_security(unsigned long tsec)
+{
+	if(!tsec || 
+		chk_invalid_kern_ptr(tsec))
+		return;
+
+	if(rkp_ro_page(tsec) && 
+		rkp_from_tsec_jar(tsec)){
+		kmem_cache_free(tsec_jar,(void *)tsec);
+	}
+	else { 
+		kfree((void *)tsec);
+	}
+}
+#endif /*CONFIG_RKP_KDP*/
 /*
  * Copy credentials for the new process created by fork()
  *
@@ -418,6 +458,7 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 #ifdef CONFIG_RKP_KDP
 	struct cred *new_ro;
 	void *use_cnt_ptr = NULL;
+	void *tsec = NULL;
 	int rkp_use_cnt = 0;
 #endif /*CONFIG_RKP_KDP*/
 	int ret;
@@ -485,6 +526,7 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 	atomic_inc(&new->user->processes);
 #ifdef CONFIG_RKP_KDP
 	if(rkp_cred_enable){
+		cred_param_t cred_param;
 		new_ro = kmem_cache_alloc(cred_jar_ro, GFP_KERNEL);
 		if (!new_ro)
 			panic("copy_creds(): kmem_cache_alloc() failed");
@@ -493,8 +535,13 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 		if(!use_cnt_ptr)
 			panic("copy_creds() : Unable to allocate usage pointer\n");
 
-		rkp_call(RKP_CMDID(0x47),(unsigned long long)new_ro, (unsigned long long)new,(unsigned long long)p,0,(unsigned long long)use_cnt_ptr);
-
+		tsec = kmem_cache_alloc(tsec_jar, GFP_KERNEL);
+		if(!tsec)
+			panic("copy_creds() : Unable to allocate security pointer\n");
+		
+		rkp_cred_fill_params(new,new_ro,use_cnt_ptr,tsec,RKP_CMD_COPY_CREDS,p);
+		rkp_call(RKP_CMDID(0x46),(unsigned long long)&cred_param,0,0,0,0);
+		
 		rkp_use_cnt = atomic_read(&new->usage);
 		rkp_use_cnt = rkp_use_cnt + 1;
 
@@ -502,6 +549,8 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 		p->cred = p->real_cred = new_ro;
 
 		validate_creds(new_ro);
+		
+		rkp_free_security((unsigned long)new->security);
 		kmem_cache_free(cred_jar, new);
 	}
 	else {
@@ -569,6 +618,7 @@ int commit_creds(struct cred *new)
 	struct cred *new_ro;
 	void *use_cnt_ptr = NULL;
 	unsigned int rkp_use_cnt = 0;
+	void *tsec = NULL;
 #endif
 
 	kdebug("commit_creds(%p{%d,%d})", new,
@@ -624,6 +674,7 @@ int commit_creds(struct cred *new)
 		atomic_inc(&new->user->processes);
 #ifdef CONFIG_RKP_KDP
 	if(rkp_cred_enable) {
+		cred_param_t cred_param;
 		new_ro = kmem_cache_alloc(cred_jar_ro, GFP_KERNEL);
 		if (!new_ro)
 			panic("commit_creds(): kmem_cache_alloc() failed");
@@ -631,9 +682,13 @@ int commit_creds(struct cred *new)
 		use_cnt_ptr = kmalloc(sizeof(atomic_t),GFP_KERNEL);
 		if(!use_cnt_ptr)
 			panic("commit_creds() : Unable to allocate usage pointer\n");
+		
+		tsec = kmem_cache_alloc(tsec_jar, GFP_KERNEL);
+		if(!tsec)
+			panic("commit_creds() : Unable to allocate security pointer\n");
 
-		rkp_call(RKP_CMDID(0x46),(unsigned long long)new_ro, (unsigned long long)new,0,0,(unsigned long long)use_cnt_ptr);
-
+		rkp_cred_fill_params(new,new_ro,use_cnt_ptr,tsec,RKP_CMD_CMMIT_CREDS,0);	
+		rkp_call(RKP_CMDID(0x46),(unsigned long long)&cred_param,0,0,0,0);
 		rcu_assign_pointer(task->real_cred, new_ro);
 		rcu_assign_pointer(task->cred, new_ro);
 
@@ -669,6 +724,7 @@ int commit_creds(struct cred *new)
 		rkp_use_cnt = atomic_read(&new->usage);
 		if(rkp_use_cnt == 1) {
 			atomic_set(&new->usage, 0);
+			rkp_free_security((unsigned long)new->security);
 			kmem_cache_free(cred_jar, new);
 		}
 	}
@@ -725,6 +781,7 @@ const struct cred *override_creds(const struct cred *new)
 	struct cred *new_ro;
 	volatile unsigned int rkp_use_count = rkp_get_usecount(new);
 	void *use_cnt_ptr = NULL;
+	void *tsec = NULL;
 #endif  /* CONFIG_RKP_KDP */
 
 	kdebug("override_creds(%p{%d,%d})", new,
@@ -735,6 +792,7 @@ const struct cred *override_creds(const struct cred *new)
 	validate_creds(new);
 #ifdef CONFIG_RKP_KDP
 	if(rkp_cred_enable) {
+		cred_param_t cred_param;
 		new_ro = kmem_cache_alloc(cred_jar_ro, GFP_KERNEL);
 		if (!new_ro)
 			panic("override_creds(): kmem_cache_alloc() failed");
@@ -743,13 +801,19 @@ const struct cred *override_creds(const struct cred *new)
 		if(!use_cnt_ptr)
 			panic("override_creds() : Unable to allocate usage pointer\n");
 
-		rkp_call(RKP_CMDID(0x46),(unsigned long long)new_ro, (unsigned long long)new,1,(unsigned long long)rkp_use_count,(unsigned long long)use_cnt_ptr);
+		tsec = kmem_cache_alloc(tsec_jar, GFP_KERNEL);
+		if(!tsec)
+			panic("override_creds() : Unable to allocate security pointer\n");
+
+		rkp_cred_fill_params(new,new_ro,use_cnt_ptr,tsec,RKP_CMD_OVRD_CREDS,rkp_use_count);	
+		rkp_call(RKP_CMDID(0x46),(unsigned long long)&cred_param,0,0,0,0);
 
 		rocred_uc_set(new_ro,2);
 		rcu_assign_pointer(current->cred, new_ro);
 
 		if(!rkp_ro_page((unsigned long)new)){
 			if(atomic_read(&new->usage) == 1) {
+				rkp_free_security((unsigned long)new->security);
 				kmem_cache_free(cred_jar, (void *)(*cnew));
 				*cnew = new_ro; 
 			}
@@ -827,6 +891,11 @@ void cred_ctor(void *data)
 {
 	/* Dummy constructor to make sure we have separate slabs caches. */
 }
+void sec_ctor(void *data)
+{
+	/* Dummy constructor to make sure we have separate slabs caches. */
+//	printk("\n initializing sec_ctor = %p \n",data);
+}
 #endif  /* CONFIG_RKP_KDP */
 
 /*
@@ -841,8 +910,17 @@ void __init cred_init(void)
 	if(rkp_cred_enable) {
 		cred_jar_ro = kmem_cache_create("cred_jar_ro", sizeof(struct cred),
 				0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, cred_ctor);
+		if(!cred_jar_ro) {
+			panic("Unable to create RO Cred cache\n");
+		}
 
-		rkp_call(RKP_CMDID(0x42),(unsigned long long )cred_jar_ro->size,0,0,0,0);
+		tsec_jar = kmem_cache_create("tsec_jar", rkp_get_task_sec_size(),
+				0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, sec_ctor);
+		if(!tsec_jar) {
+			panic("Unable to create RO security cache\n");
+		}
+
+		rkp_call(RKP_CMDID(0x42),(unsigned long long )cred_jar_ro->size,(unsigned long long)tsec_jar->size,0,0,0);
 	}
 #endif  /* CONFIG_RKP_KDP */
 }

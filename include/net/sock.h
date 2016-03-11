@@ -1,3 +1,4 @@
+/* Copyright (c) 2015 Samsung Electronics Co., Ltd. */
 /*
  * INET		An implementation of the TCP/IP protocol suite for the LINUX
  *		operating system.  INET is implemented using the  BSD Socket
@@ -37,6 +38,15 @@
  *		as published by the Free Software Foundation; either version
  *		2 of the License, or (at your option) any later version.
  */
+/*
+ *  Changes:
+ *  KwnagHyun Kim <kh0304.kim@samsung.com> 2015/07/08
+ *  Baesung Park  <baesung.park@samsung.com> 2015/07/08
+ *  Vignesh Saravanaperumal <vignesh1.s@samsung.com> 2015/07/08
+ *    Add codes to share UID/PID information
+ *
+ */
+
 #ifndef _SOCK_H
 #define _SOCK_H
 
@@ -191,6 +201,14 @@ struct sock_common {
 #ifdef CONFIG_NET_NS
 	struct net	 	*skc_net;
 #endif
+
+#ifdef CONFIG_MPTCP
+#if IS_ENABLED(CONFIG_IPV6)
+	struct in6_addr		skc_v6_daddr;
+	struct in6_addr		skc_v6_rcv_saddr;
+#endif
+#endif
+
 	/*
 	 * fields between dontcopy_begin/dontcopy_end
 	 * are not copied in sock_copy()
@@ -305,6 +323,11 @@ struct sock {
 #define sk_bind_node		__sk_common.skc_bind_node
 #define sk_prot			__sk_common.skc_prot
 #define sk_net			__sk_common.skc_net
+#ifdef CONFIG_MPTCP
+#define sk_v6_daddr		__sk_common.skc_v6_daddr
+#define sk_v6_rcv_saddr	__sk_common.skc_v6_rcv_saddr
+#endif
+
 	socket_lock_t		sk_lock;
 	struct sk_buff_head	sk_receive_queue;
 	/*
@@ -352,11 +375,14 @@ struct sock {
 				sk_no_check  : 2,
 				sk_userlocks : 4,
 				sk_protocol  : 8,
+#define SK_PROTOCOL_MAX U8_MAX
 				sk_type      : 16;
 	kmemcheck_bitfield_end(flags);
 	int			sk_wmem_queued;
 	gfp_t			sk_allocation;
+#ifndef CONFIG_MPTCP
 	u32			sk_pacing_rate; /* bytes per second */
+#endif
 	netdev_features_t	sk_route_caps;
 	netdev_features_t	sk_route_nocaps;
 	int			sk_gso_type;
@@ -672,6 +698,9 @@ enum sock_flags {
 		     */
 	SOCK_FILTER_LOCKED, /* Filter cannot be changed anymore */
 	SOCK_SELECT_ERR_QUEUE, /* Wake select on error queue */
+#ifdef CONFIG_MPTCP
+	SOCK_MPTCP, /* MPTCP set on this socket */
+#endif
 };
 
 static inline void sock_copy_flags(struct sock *nsk, struct sock *osk)
@@ -864,6 +893,18 @@ extern void sk_clear_memalloc(struct sock *sk);
 
 extern int sk_wait_data(struct sock *sk, long *timeo);
 
+#ifdef CONFIG_MPTCP
+/* START - needed for MPTCP */
+struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority, int family);
+void sock_lock_init(struct sock *sk);
+
+extern struct lock_class_key af_callback_keys[AF_MAX];
+extern char *const af_family_clock_key_strings[AF_MAX+1];
+
+#define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
+/* END - needed for MPTCP */
+#endif
+
 struct request_sock_ops;
 struct timewait_sock_ops;
 struct inet_hashinfo;
@@ -934,6 +975,9 @@ struct proto {
 						struct sk_buff *skb);
 
 	void		(*release_cb)(struct sock *sk);
+#ifdef CONFIG_MPTCP
+	void		(*mtu_reduced)(struct sock *sk);
+#endif
 
 	/* Keeping track of sk's, looking them up, and port selection methods. */
 	void			(*hash)(struct sock *sk);

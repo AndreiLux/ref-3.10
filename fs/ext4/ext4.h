@@ -1325,6 +1325,10 @@ struct ext4_sb_info {
 	struct list_head s_es_lru;
 	struct percpu_counter s_extent_cache_cnt;
 	spinlock_t s_es_lru_lock ____cacheline_aligned_in_smp;
+
+	/* Debugging info. for backing device reset */
+	__u32 s_bd_reset_cnt;
+	__u8 s_bd_reset_time[16];
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)

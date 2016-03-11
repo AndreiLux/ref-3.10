@@ -217,7 +217,11 @@ static int fimg2d4x_blit_wait(struct fimg2d_control *ctrl,
 		if (!fimg2d4x_blit_done_status(ctrl))
 			fimg2d_err("blit not finished\n");
 
-		fimg2d_dump_command(cmd);
+		fimg2d_dump_command(cmd, true);
+		if (atomic_read(&ctrl->busy)) {
+			fimg2d_err("dumping g2d registers..\n");
+			ctrl->dump(ctrl);
+		}
 		fimg2d4x_reset(ctrl);
 
 		return -1;

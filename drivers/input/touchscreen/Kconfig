@@ -901,4 +901,6 @@ source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
 source "drivers/input/touchscreen/synaptics_dsx2/Kconfig"
 source "drivers/input/touchscreen/stm/Kconfig"
 source "drivers/input/touchscreen/stm/fts5ad56/Kconfig"
+source "drivers/input/touchscreen/sec_ts/Kconfig"
+source "drivers/input/touchscreen/melfas_mms400/Kconfig"
 endif

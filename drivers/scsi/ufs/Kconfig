@@ -85,16 +85,6 @@ config SCSI_UFS_EXYNOS
 
 	  If unsure, say N.
 
-config FIPS_FMP_UFS
-	tristate "EXYNOS FMP UFS Test for FIPS"
-	depends on SCSI_UFSHCD && SCSI_UFSHCD_PLATFORM && FIPS_FMP
-	---help---
-	  This selects EXYNOS FMP UFS Self-Test driver for FIPS.
-
-	  If you have a controller with this interface, say Y here.
-
-	  If unsure, say N.
-
 config UFS_BKOPS_NODE_UID
 	int "User ID of BKOPS sysfs node"
 	default 1000

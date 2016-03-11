@@ -126,6 +126,7 @@ source security/mst_ftmdrv/Kconfig
 source security/mstdrv/Kconfig
 
 source security/integrity/Kconfig
+source security/tz_iccc/Kconfig
 
 choice
 	prompt "Default security module"

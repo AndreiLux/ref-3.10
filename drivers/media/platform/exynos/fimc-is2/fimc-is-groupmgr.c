@@ -82,18 +82,6 @@ p_err:
 	return ret;
 }
 
-static void fimc_is_gframe_s_info(struct fimc_is_group_frame *gframe,
-	u32 slot, struct fimc_is_frame *frame)
-{
-	BUG_ON(!gframe);
-	BUG_ON(!frame);
-	BUG_ON(!frame->shot_ext);
-	BUG_ON(slot >= GROUP_SLOT_MAX);
-
-	memcpy(&gframe->group_cfg[slot], &frame->shot_ext->node_group,
-		sizeof(struct camera2_node_group));
-}
-
 static void fimc_is_gframe_free_head(struct fimc_is_group_framemgr *gframemgr,
 	struct fimc_is_group_frame **gframe)
 {
@@ -164,9 +152,22 @@ static void fimc_is_gframe_print_group(struct fimc_is_group *group)
 	}
 }
 
-static int fimc_is_gframe_check(struct fimc_is_group *gprev,
+static void fimc_is_gframe_s_info(struct fimc_is_group_frame *gframe,
+	u32 slot, struct fimc_is_frame *frame)
+{
+	BUG_ON(!gframe);
+	BUG_ON(!frame);
+	BUG_ON(!frame->shot_ext);
+	BUG_ON(slot >= GROUP_SLOT_MAX);
+
+	memcpy(&gframe->group_cfg[slot], &frame->shot_ext->node_group,
+		sizeof(struct camera2_node_group));
+}
+
+static int fimc_is_gframe_check(struct fimc_is_group_frame *gframe,
+	struct fimc_is_group *gprev,
 	struct fimc_is_group *group,
-	struct fimc_is_group_frame *gframe)
+	struct fimc_is_frame *frame)
 {
 	int ret = 0;
 	u32 capture_id;
@@ -193,6 +194,8 @@ static int fimc_is_gframe_check(struct fimc_is_group *gprev,
 			incrop->w, incrop->h, subdev->input.width, subdev->input.height);
 		incrop->w = subdev->input.width;
 		incrop->h = subdev->input.height;
+		frame->shot_ext->node_group.leader.input.cropRegion[2] = incrop->w;
+		frame->shot_ext->node_group.leader.input.cropRegion[3] = incrop->h;
 	}
 
 	for (capture_id = 0; capture_id < CAPTURE_NODE_MAX; ++capture_id) {
@@ -215,6 +218,8 @@ static int fimc_is_gframe_check(struct fimc_is_group *gprev,
 				otcrop->w, otcrop->h, subdev->output.width, subdev->output.height);
 			otcrop->w = subdev->output.width;
 			otcrop->h = subdev->output.height;
+			frame->shot_ext->node_group.capture[capture_id].output.cropRegion[2] = otcrop->w;
+			frame->shot_ext->node_group.capture[capture_id].output.cropRegion[3] = otcrop->h;
 		}
 
 		subdev->cid = capture_id;
@@ -249,6 +254,10 @@ static int fimc_is_gframe_check(struct fimc_is_group *gprev,
 			gprev->id, otcrop->x, otcrop->y, otcrop->w, otcrop->h,
 			group->id, incrop->x, incrop->y, incrop->w, incrop->h);
 		*incrop = *otcrop;
+		frame->shot_ext->node_group.leader.input.cropRegion[0] = incrop->x;
+		frame->shot_ext->node_group.leader.input.cropRegion[1] = incrop->y;
+		frame->shot_ext->node_group.leader.input.cropRegion[2] = incrop->w;
+		frame->shot_ext->node_group.leader.input.cropRegion[3] = incrop->h;
 	}
 
 p_err:
@@ -438,7 +447,7 @@ int fimc_is_gframe_flush(struct fimc_is_groupmgr *groupmgr,
 	return ret;
 }
 
-static void fimc_is_group_lock(struct fimc_is_group *group)
+static unsigned long fimc_is_group_lock(struct fimc_is_group *group)
 {
 	u32 entry;
 	unsigned long flags;
@@ -469,17 +478,18 @@ static void fimc_is_group_lock(struct fimc_is_group *group)
 			if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state))
 				continue;
 
-			framemgr_e_barrier_irqs(sub_framemgr, FMGR_IDX_19, flags);
+			framemgr_e_barrier_irq(sub_framemgr, FMGR_IDX_19);
 		}
 
 		group = group->child;
 	}
+
+	return flags;
 }
 
-static void fimc_is_group_unlock(struct fimc_is_group *group)
+static void fimc_is_group_unlock(struct fimc_is_group *group, unsigned long flags)
 {
 	u32 entry;
-	unsigned long flags;
 	struct fimc_is_subdev *subdev;
 	struct fimc_is_framemgr *ldr_framemgr, *sub_framemgr;
 
@@ -505,7 +515,7 @@ static void fimc_is_group_unlock(struct fimc_is_group *group)
 			if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state))
 				continue;
 
-			framemgr_x_barrier_irqr(sub_framemgr, FMGR_IDX_19, flags);
+			framemgr_x_barrier_irq(sub_framemgr, FMGR_IDX_19);
 		}
 
 		group = group->child;
@@ -567,6 +577,7 @@ static void fimc_is_group_cancel(struct fimc_is_group *group,
 	struct fimc_is_frame *ldr_frame)
 {
 	u32 wait_count = 300;
+	unsigned long flags;
 	struct fimc_is_video_ctx *ldr_vctx;
 	struct fimc_is_framemgr *ldr_framemgr;
 	struct fimc_is_frame *prev_frame, *next_frame;
@@ -582,13 +593,13 @@ static void fimc_is_group_cancel(struct fimc_is_group *group,
 	}
 
 p_retry:
-	fimc_is_group_lock(group);
+	flags = fimc_is_group_lock(group);
 
 	fimc_is_frame_free_tail(ldr_framemgr, &next_frame );
 	if (wait_count && next_frame && next_frame->out_flag) {
 		mginfo("next frame(F%d) is on process1(%lX %lX), waiting...\n", group, group,
 			next_frame->fcount, next_frame->bak_flag, next_frame->out_flag);
-		fimc_is_group_unlock(group);
+		fimc_is_group_unlock(group, flags);
 		usleep_range(1000, 1000);
 		wait_count--;
 		goto p_retry;
@@ -598,7 +609,7 @@ p_retry:
 	if (wait_count && next_frame && next_frame->out_flag) {
 		mginfo("next frame(F%d) is on process2(%lX %lX), waiting...\n", group, group,
 			next_frame->fcount, next_frame->bak_flag, next_frame->out_flag);
-		fimc_is_group_unlock(group);
+		fimc_is_group_unlock(group, flags);
 		usleep_range(1000, 1000);
 		wait_count--;
 		goto p_retry;
@@ -608,7 +619,7 @@ p_retry:
 	if (wait_count && prev_frame && prev_frame->bak_flag != prev_frame->out_flag) {
 		mginfo("prev frame(F%d) is on process(%lX %lX), waiting...\n", group, group,
 			prev_frame->fcount, prev_frame->bak_flag, prev_frame->out_flag);
-		fimc_is_group_unlock(group);
+		fimc_is_group_unlock(group, flags);
 		usleep_range(1000, 1000);
 		wait_count--;
 		goto p_retry;
@@ -621,7 +632,7 @@ p_retry:
 	mgrinfo("[ERR] CANCEL(%d)\n", group, group, ldr_frame, ldr_frame->index);
 	buffer_done(ldr_vctx, ldr_frame->index, VB2_BUF_STATE_ERROR);
 
-	fimc_is_group_unlock(group);
+	fimc_is_group_unlock(group, flags);
 }
 
 static void fimc_is_group_s_leader(struct fimc_is_group *group,
@@ -1563,16 +1574,23 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 		group->skip_shots = 0;
 		group->init_shots = 0;
 		group->sync_shots = 0;
+		smp_shot_init(group, group->asyn_shots + group->sync_shots);
 	} else {
 		if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state)) {
-
+			framerate = fimc_is_sensor_g_framerate(sensor);
 			if (resourcemgr->hal_version == IS_HAL_VER_3_2) {
-				group->asyn_shots = 0;
-				group->skip_shots = 1;
-				group->init_shots = 1;
-				group->sync_shots = 3;
+				if (framerate <= 30) {
+					group->asyn_shots = 0;
+					group->skip_shots = 1;
+					group->init_shots = 1;
+					group->sync_shots = 3;
+				} else {
+					group->asyn_shots = 0;
+					group->skip_shots = 3;
+					group->init_shots = 3;
+					group->sync_shots = 3;
+				}
 			} else {
-				framerate = fimc_is_sensor_g_framerate(sensor);
 				if (framerate <= 30)
 					group->asyn_shots = MIN_OF_ASYNC_SHOTS + 0;
 				else if (framerate <= 60)
@@ -1588,10 +1606,6 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 				group->sync_shots = MIN_OF_SYNC_SHOTS;
 			}
 
-			/* shot resource */
-			sema_init(&groupmgr->group_smp_res[group->slot],
-				(group->asyn_shots + group->sync_shots));
-
 			/* frame count */
 			sensor_fcount = fimc_is_sensor_g_fcount(sensor) + 1;
 			atomic_set(&group->sensor_fcount, sensor_fcount);
@@ -1599,6 +1613,11 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 			group->fcount = sensor_fcount - 1;
 
 			memset(&group->intent_ctl, 0, sizeof(struct camera2_aa_ctl));
+
+			/* shot resource */
+			sema_init(&groupmgr->group_smp_res[group->slot],
+				(group->init_shots + group->sync_shots));
+			smp_shot_init(group, group->init_shots + group->sync_shots);
 		} else {
 			if (fimc_is_sensor_g_framerate(sensor) > 120)
 				group->asyn_shots = 3;
@@ -1607,10 +1626,10 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 			group->skip_shots = 0;
 			group->init_shots = 0;
 			group->sync_shots = 0;
+			smp_shot_init(group, group->asyn_shots + group->sync_shots);
 		}
 	}
 
-	smp_shot_init(group, (group->asyn_shots + group->sync_shots));
 	atomic_set(&group->scount, 0);
 	atomic_set(&group->rcount, 0);
 	sema_init(&group->smp_trigger, 0);
@@ -1630,11 +1649,13 @@ int fimc_is_group_stop(struct fimc_is_groupmgr *groupmgr,
 	int ret = 0;
 	int errcnt = 0;
 	int retry;
-	u32 rcount, pcount;
+	u32 rcount, pcount, entry;
 	unsigned long flags;
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_device_sensor *sensor;
+	struct fimc_is_group *child;
+	struct fimc_is_subdev *subdev;
 
 	BUG_ON(!groupmgr);
 	BUG_ON(!group);
@@ -1646,6 +1667,10 @@ int fimc_is_group_stop(struct fimc_is_groupmgr *groupmgr,
 	device = group->device;
 	sensor = device->sensor;
 	framemgr = GET_SUBDEV_FRAMEMGR(&group->leader);
+	if (!framemgr) {
+		mgerr("framemgr is NULL", group, group);
+		goto p_err;
+	}
 
 	if (!test_bit(FIMC_IS_GROUP_START, &group->state)) {
 		mwarn("already group stop", group);
@@ -1741,6 +1766,32 @@ int fimc_is_group_stop(struct fimc_is_groupmgr *groupmgr,
 	if (!retry) {
 		mgerr(" waiting(until thread stop) is fail", device, group);
 		errcnt++;
+	}
+
+	child = group;
+	while(child) {
+		for (entry = ENTRY_3AA; entry < ENTRY_END; ++entry) {
+			subdev = child->subdev[entry];
+			if (subdev && subdev->vctx && test_bit(FIMC_IS_SUBDEV_START, &subdev->state)) {
+				framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+				if (!framemgr) {
+					mgerr("framemgr is NULL", group, group);
+					goto p_err;
+				}
+
+				retry = 150;
+				while (--retry && framemgr->frame_pro_cnt) {
+					mgwarn(" subdev stop waiting...", device, group);
+					msleep(20);
+				}
+
+				if (!retry) {
+					mgerr(" waiting(subdev stop) is fail", device, group);
+					errcnt++;
+				}
+			}
+		}
+		child = child->child;
 	}
 
 	fimc_is_gframe_flush(groupmgr, group);
@@ -1968,7 +2019,7 @@ static int fimc_is_group_check_pre(struct fimc_is_groupmgr *groupmgr,
 		}
 
 		fimc_is_gframe_s_info(gframe, group->slot, frame);
-		fimc_is_gframe_check(gprev, group, gframe);
+		fimc_is_gframe_check(gframe, gprev, group, frame);
 	} else if (!gprev && gnext) {
 		/* leader */
 		group->fcount++;
@@ -2003,7 +2054,7 @@ static int fimc_is_group_check_pre(struct fimc_is_groupmgr *groupmgr,
 
 		gframe->fcount = frame->fcount;
 		fimc_is_gframe_s_info(gframe, group->slot, frame);
-		fimc_is_gframe_check(gprev, group, gframe);
+		fimc_is_gframe_check(gframe, gprev, group, frame);
 	} else if (gprev && gnext) {
 		/* middler */
 		fimc_is_gframe_group_head(group, &gframe);
@@ -2029,7 +2080,7 @@ static int fimc_is_group_check_pre(struct fimc_is_groupmgr *groupmgr,
 		}
 
 		fimc_is_gframe_s_info(gframe, group->slot, frame);
-		fimc_is_gframe_check(gprev, group, gframe);
+		fimc_is_gframe_check(gframe, gprev, group, frame);
 	} else {
 		/* single */
 		group->fcount++;
@@ -2062,7 +2113,7 @@ static int fimc_is_group_check_pre(struct fimc_is_groupmgr *groupmgr,
 		}
 
 		fimc_is_gframe_s_info(gframe, group->slot, frame);
-		fimc_is_gframe_check(gprev, group, gframe);
+		fimc_is_gframe_check(gframe, gprev, group, frame);
 	}
 
 	*result = gframe;
@@ -2090,6 +2141,7 @@ static int fimc_is_group_check_post(struct fimc_is_groupmgr *groupmgr,
 	BUG_ON(!group);
 	BUG_ON(!frame);
 	BUG_ON(!gframe);
+	BUG_ON(group->slot >= GROUP_SLOT_MAX);
 
 	gframemgr = &groupmgr->gframemgr[group->instance];
 
@@ -2104,17 +2156,38 @@ static int fimc_is_group_check_post(struct fimc_is_groupmgr *groupmgr,
 		}
 	} else if (!gprev && gnext) {
 		/* leader */
-		ret = fimc_is_gframe_trans_fre_to_grp(gframemgr, gframe, group, gnext);
-		if (ret) {
-			mgerr("fimc_is_gframe_trans_fre_to_grp is fail(%d)", device, group, ret);
+		if (!group->junction) {
+			mgerr("junction is NULL", device, group);
 			BUG();
+		}
+
+		if (gframe->group_cfg[group->slot].capture[group->junction->cid].request) {
+			ret = fimc_is_gframe_trans_fre_to_grp(gframemgr, gframe, group, gnext);
+			if (ret) {
+				mgerr("fimc_is_gframe_trans_fre_to_grp is fail(%d)", device, group, ret);
+				BUG();
+			}
 		}
 	} else if (gprev && gnext) {
 		/* middler */
-		ret = fimc_is_gframe_trans_grp_to_grp(gframemgr, gframe, group, gnext);
-		if (ret) {
-			mgerr("fimc_is_gframe_trans_grp_to_grp is fail(%d)", device, group, ret);
+		if (!group->junction) {
+			mgerr("junction is NULL", device, group);
 			BUG();
+		}
+
+		/* gframe should be destroyed if the request of junction is zero, so need to check first */
+		if (gframe->group_cfg[group->slot].capture[group->junction->cid].request) {
+			ret = fimc_is_gframe_trans_grp_to_grp(gframemgr, gframe, group, gnext);
+			if (ret) {
+				mgerr("fimc_is_gframe_trans_grp_to_grp is fail(%d)", device, group, ret);
+				BUG();
+			}
+		} else {
+			ret = fimc_is_gframe_trans_grp_to_fre(gframemgr, gframe, group);
+			if (ret) {
+				mgerr("fimc_is_gframe_trans_grp_to_fre is fail(%d)", device, group, ret);
+				BUG();
+			}
 		}
 	} else {
 		/* single */

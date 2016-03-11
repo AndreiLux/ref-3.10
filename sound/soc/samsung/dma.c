@@ -117,7 +117,7 @@ static void dma_enqueue(struct snd_pcm_substream *substream)
 	unsigned int limit;
 	struct samsung_dma_prep dma_info;
 
-	pr_debug("Entered %s\n", __func__);
+	pr_info("Entered %s\n", __func__);
 
 	limit = (prtd->dma_end - prtd->dma_start) / prtd->dma_period;
 
@@ -316,7 +316,7 @@ static int dma_prepare(struct snd_pcm_substream *substream)
 	struct runtime_data *prtd = substream->runtime->private_data;
 	int ret = 0;
 
-	pr_debug("Entered %s\n", __func__);
+	pr_info("Entered %s\n", __func__);
 
 	/* return if this is a bufferless transfer e.g.
 	 * codec <--> BT codec or GSM modem -- lg FIXME */

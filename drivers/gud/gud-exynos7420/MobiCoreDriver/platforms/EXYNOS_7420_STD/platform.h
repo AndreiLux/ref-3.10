@@ -42,6 +42,7 @@
 
 /* Set Parameters for Secure OS Boosting */
 #define DEFAULT_LITTLE_CORE		0
+#define NONBOOT_LITTLE_CORE		1
 #define DEFAULT_BIG_CORE		4
 
 #define MC_INTR_LOCAL_TIMER		(IRQ_SPI(116) + DEFAULT_BIG_CORE)

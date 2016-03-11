@@ -31,7 +31,7 @@ enum exynos7420_clks {
 	mout_aud_pll, mout_top0_mfc_pll, mout_top0_cci_pll, mout_top0_bus1_pll,
 	mout_top0_bus0_pll, dout_sclk_isp_mpwm, dout_sclk_isp_pwm,
 
-	isp_pll = 35, cam_pll, bus0_pll, bus1_pll, cci_pll, mfc_pll, aud_pll, mif_pll,
+	isp_pll = 35, cam_pll, bus0_pll, bus1_pll, cci_pll, mfc_pll, aud_pll, mif_pll, dphy_pll,
 
 	clkout = 45,
 	bus_pll_g3d = 50,
@@ -737,6 +737,13 @@ struct samsung_pll_rate_table table_hsic[] = {
 	{0,		0, 0, 0, 0},
 };
 
+struct samsung_pll_rate_table table_dphy[] = {
+	{110000000U,	3, 275, 1, 0},
+	{102600000U,	2, 171, 1, 0},
+	{0,		0, 0, 0, 0},
+};
+
+
 /*
  * parent names are defined as array like below.
  * it is for mux clocks.
@@ -872,6 +879,10 @@ static struct samsung_composite_pll exynos7420_pll_clks[] __refdata = {
 			EXYNOS7420_MUX_SEL_FSYS00, 28, \
 			EXYNOS7420_MUX_STAT_FSYS00, 28, \
 			table_hsic, 0, CLK_IGNORE_UNUSED, NULL),
+	PLL(dphy_pll, "dphy_pll", pll_1450x, DPHY_LOCK, DPHY_CON, DPHY_CON, 31, \
+			DPHY_CON, 31, \
+			DPHY_CON, 29, \
+			table_dphy, 0, CLK_IGNORE_UNUSED, "dphy_pll"),
 };
 
 static struct samsung_fixed_rate exynos7420_fixed_rate_clks[] __initdata = {
@@ -2393,7 +2404,7 @@ static struct samsung_gate exynos7420_gate_clks[] __initdata = {
 	GATE(pclk_spi2, "pclk_spi2", "usermux_aclk_peric1_66", \
 			EXYNOS7420_ENABLE_PCLK_PERIC1, 14, 0, NULL),
 	GATE(pclk_spi3, "pclk_spi3", "usermux_aclk_peric1_66", \
-			EXYNOS7420_ENABLE_PCLK_PERIC1, 15, 0, NULL),
+			EXYNOS7420_ENABLE_PCLK_PERIC1, 15, 0, "spi3-pclk"),
 	GATE(pclk_spi4, "pclk_spi4", "usermux_aclk_peric1_66", \
 			EXYNOS7420_ENABLE_PCLK_PERIC1, 16, 0, "fp-spi-pclk"),
 	GATE(pclk_spi5, "pclk_spi5", "usermux_aclk_peric1_66", \
@@ -2415,7 +2426,7 @@ static struct samsung_gate exynos7420_gate_clks[] __initdata = {
 	GATE(sclk_spi2, "sclk_spi2", "usermux_sclk_spi2", \
 			EXYNOS7420_ENABLE_SCLK_PERIC10, 14, CLK_SET_RATE_PARENT, NULL),
 	GATE(sclk_spi3, "sclk_spi3", "usermux_sclk_spi3", \
-			EXYNOS7420_ENABLE_SCLK_PERIC10, 15, CLK_SET_RATE_PARENT, NULL),
+			EXYNOS7420_ENABLE_SCLK_PERIC10, 15, CLK_SET_RATE_PARENT, "spi3-sclk"),
 	GATE(sclk_spi4, "sclk_spi4", "usermux_sclk_spi4", \
 			EXYNOS7420_ENABLE_SCLK_PERIC10, 16, CLK_SET_RATE_PARENT, "fp-spi-sclk"),
 	GATE(sclk_spi5, "sclk_spi5", "usermux_sclk_spi5", \

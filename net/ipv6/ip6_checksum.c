@@ -82,6 +82,9 @@ int udp6_csum_init(struct sk_buff *skb, struct udphdr *uh, int proto)
 		LIMIT_NETDEBUG(KERN_INFO "IPv6: udp checksum is 0\n");
 		return 1;
 	}
+#ifdef CONFIG_MPTCP
+	return skb_checksum_init(skb, IPPROTO_UDP, ip6_compute_pseudo);
+#else
 	if (skb->ip_summed == CHECKSUM_COMPLETE &&
 	    !csum_ipv6_magic(&ipv6_hdr(skb)->saddr, &ipv6_hdr(skb)->daddr,
 			     skb->len, proto, skb->csum))
@@ -93,5 +96,6 @@ int udp6_csum_init(struct sk_buff *skb, struct udphdr *uh, int proto)
 							 skb->len, proto, 0));
 
 	return 0;
+#endif
 }
 EXPORT_SYMBOL(udp6_csum_init);

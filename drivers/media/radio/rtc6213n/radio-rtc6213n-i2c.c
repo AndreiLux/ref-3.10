@@ -583,10 +583,7 @@ static int rtc6213n_i2c_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct rtc6213n_device *radio = i2c_get_clientdata(client);
 
-	/* power down */
-	radio->registers[POWERCFG] |= POWERCFG_CSR0_DISABLE;
-	if (rtc6213n_set_register(radio, POWERCFG) < 0)
-		return -EIO;
+	dev_info(&radio->videodev->dev, "rtc6213n_i2c_suspend\n");
 
 	return 0;
 }
@@ -600,11 +597,7 @@ static int rtc6213n_i2c_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct rtc6213n_device *radio = i2c_get_clientdata(client);
 
-	/* power up : need 110ms */
-	radio->registers[POWERCFG] |= POWERCFG_CSR0_ENABLE;
-	if (rtc6213n_set_register(radio, POWERCFG) < 0)
-		return -EIO;
-	msleep(110);
+	dev_info(&radio->videodev->dev, "rtc6213n_i2c_resume\n");
 
 	return 0;
 }

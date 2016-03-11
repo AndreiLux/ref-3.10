@@ -72,11 +72,16 @@ static int usb_start_wait_urb(struct urb *urb, int timeout, int *actual_length)
 			urb->actual_length,
 			urb->transfer_buffer_length);
 #if defined(CONFIG_MDM_HSIC_PM)
-		ep0_timeout_cnt++;
-		set_ap2mdm_errfatal();
+		if (!strcmp(dev_name(&urb->dev->dev), "1-2") && ep0_timeout_cnt++)
+			set_ap2mdm_errfatal();
 #endif
-	} else
+	} else {
 		retval = ctx.status;
+#if defined(CONFIG_MDM_HSIC_PM)
+		if (!strcmp(dev_name(&urb->dev->dev), "1-2"))
+			ep0_timeout_cnt = 0;
+#endif
+	}
 out:
 	if (actual_length)
 		*actual_length = urb->actual_length;

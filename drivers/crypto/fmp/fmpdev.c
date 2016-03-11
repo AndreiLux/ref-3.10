@@ -47,19 +47,24 @@ static const struct of_device_id exynos_fips_fmp_match[];
 
 struct platform_device *pdev;
 
-#define FMP_FIPS_ERR   1
-#define FMP_FIPS_NO_ERR        0
-static int IN_FMP_FIPS_ERROR = FMP_FIPS_NO_ERR;
+#define FMP_FIPS_INIT_STATE	0
+#define FMP_FIPS_SELFTEST_STATE	1
+#define FMP_FIPS_ERR_STATE	2
+#define FMP_FIPS_SUCCESS_STATE	3
+
+static int fmp_fips_state = FMP_FIPS_INIT_STATE;
 
 bool in_fmp_fips_err(void)
 {
-	return (IN_FMP_FIPS_ERROR == FMP_FIPS_ERR);
+	if (fmp_fips_state == FMP_FIPS_INIT_STATE || fmp_fips_state == FMP_FIPS_ERR_STATE)
+		return true;
+	return false;
 }
 EXPORT_SYMBOL_GPL(in_fmp_fips_err);
 
-static void set_in_fmp_fips_err(void)
+static void set_fmp_fips_state(uint32_t val)
 {
-      IN_FMP_FIPS_ERROR = FMP_FIPS_ERR;
+	fmp_fips_state = val;
 }
 
 #define AES_XTS_ENC_TEST_VECTORS 5
@@ -89,7 +94,11 @@ static unsigned int IDX[8] = { IDX1, IDX2, IDX3, IDX4, IDX5, IDX6, IDX7, IDX8 };
 static struct cipher_testvec aes_xts_enc_tv_template[] = {
 	/* http://grouper.ieee.org/groups/1619/email/pdf00086.pdf */
 	{ /* XTS-AES 1 */
+#if FIPS_FMP_FUNC_TEST == 1
+		.key	= "\x01\x00\x00\x00\x00\x00\x00\x00"
+#else
 		.key    = "\x00\x00\x00\x00\x00\x00\x00\x00"
+#endif
 			  "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00"
 			  "\x00\x00\x00\x00\x00\x00\x00\x00",
@@ -427,7 +436,11 @@ static struct cipher_testvec aes_xts_enc_tv_template[] = {
 
 static struct cipher_testvec aes_cbc_enc_tv_template[] = {
 	{ /* From RFC 3602 */
+#if FIPS_FMP_FUNC_TEST == 2
+		.key    = "\x07\xa9\x21\x40\x36\xb8\xa1\x5b"
+#else
 		.key    = "\x06\xa9\x21\x40\x36\xb8\xa1\x5b"
+#endif
 			  "\x51\x2e\x03\xd5\x34\x12\x00\x06",
 		.klen   = 16,
 		.iv	= "\x3d\xaf\xba\x42\x9d\x9e\xb4\x30"
@@ -625,7 +638,11 @@ static struct hash_testvec sha256_tv_template[] = {
 	{
 		.plaintext = "abc",
 		.psize  = 3,
+#if FIPS_FMP_FUNC_TEST == 3
+		.digest = "\xbc\x78\x16\xbf\x8f\x01\xcf\xea"
+#else
 		.digest = "\xba\x78\x16\xbf\x8f\x01\xcf\xea"
+#endif
 			  "\x41\x41\x40\xde\x5d\xae\x22\x23"
 			  "\xb0\x03\x61\xa3\x96\x17\x7a\x9c"
 			  "\xb4\x10\xff\x61\xf2\x00\x15\xad",
@@ -649,7 +666,11 @@ static struct hash_testvec sha256_tv_template[] = {
 
 static struct hash_testvec hmac_sha256_tv_template[] = {
 	{
+#if FIPS_FMP_FUNC_TEST == 4
+		.key	= "\x02\x02\x03\x04\x05\x06\x07\x08"
+#else
 		.key	= "\x01\x02\x03\x04\x05\x06\x07\x08"
+#endif
 			  "\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10"
 			  "\x11\x12\x13\x14\x15\x16\x17\x18"
 			  "\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20",
@@ -1117,12 +1138,31 @@ static int test_cipher(struct device *dev, int mode, struct cipher_testvec *temp
 		memset(outdata, 0, FMP_BLK_SIZE);
 		ret = fmp_aes_run(dev, &template[idx], idx, outdata, template[idx].ilen, BYPASS_MODE, READ_MODE);
 		if (ret) {
-			dev_err(dev, "Fail to set aes bypass run. ret = %d\n", ret);
+			dev_err(dev, "Fail to set aes bypass read mode. ret = %d\n", ret);
 			goto err_aes_run;
 		}
 
 		if (memcmp(outdata, template[idx].result, template[idx].rlen)) {
 			dev_err(dev, "Fail to compare encrypted result.\n");
+			hexdump(outdata, template[idx].rlen);
+			goto err_cmp;
+		}
+
+		ret = fmp_aes_run(dev, &template[idx], idx, outdata, template[idx].ilen, BYPASS_MODE, WRITE_MODE);
+		if (ret) {
+			dev_err(dev, "Fail to set aes bypass write mode. ret = %d\n", ret);
+			goto err_aes_run;
+		}
+
+		memset(indata, 0, FMP_BLK_SIZE);
+		ret = fmp_aes_run(dev, &template[idx], idx, indata, template[idx].ilen, mode, READ_MODE);
+		if (ret) {
+			dev_err(dev, "Fail to set aes decrypt read mode. ret = %d\n", ret);
+			goto err_aes_run;
+		}
+
+		if (memcmp(indata, template[idx].input, template[idx].rlen)) {
+			dev_err(dev, "Fail to compare decrypted result.\n");
 			hexdump(outdata, template[idx].rlen);
 			goto err_cmp;
 		}
@@ -2230,7 +2270,7 @@ static int fmpdev_release(struct inode *inode, struct file *file)
 	int items_freed = 0;
 
 	if (!info) {
-		dev_err(dev, "fmp info is already free.\n");
+		printk(KERN_ERR "fmp info is already free.\n");
 		return -ENOMEM;
 	}
 
@@ -2304,6 +2344,8 @@ static int exynos_fips_fmp_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	set_fmp_fips_state(FMP_FIPS_SELFTEST_STATE);
+
 	ret = fips_fmp_init(dev);
 	if (ret) {
 		dev_err(dev, "Fail to initialize fmp driver for selftest. ret = %d\n", ret);
@@ -2326,13 +2368,14 @@ static int exynos_fips_fmp_probe(struct platform_device *pdev)
 		printk(KERN_INFO "FIPS: integrity check for UFSFMP passed\n");
 	}
 
+	set_fmp_fips_state(FMP_FIPS_SUCCESS_STATE);
 	fips_fmp_result = 1;
 
 	return 0;
 
 err:
 #if defined(CONFIG_NODE_FOR_SELFTEST_FAIL)
-	set_in_fmp_fips_err();
+	set_fmp_fips_state(FMP_FIPS_ERR_STATE);
 	fips_fmp_result = 0;
 	return 0;
 #else

@@ -9,6 +9,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+int update_fmp_hmac(const char *, const char *, unsigned long);
+int collect_fmp_bytes(const char *, const char *, unsigned long,
+                      unsigned long, const char *);
 
 int main(int argc, char **argv)
 {
@@ -215,4 +220,3 @@ int update_fmp_hmac(const char *vmlinux_path, const char *hmac_path, unsigned lo
 
 	return 0;
 }
-

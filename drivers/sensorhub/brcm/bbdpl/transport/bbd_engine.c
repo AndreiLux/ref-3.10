@@ -32,6 +32,39 @@
 
 #include <linux/workqueue.h>
 
+//BBD statistics
+volatile u64 bbd_stat[STAT_MAX];
+extern u64 min_rx_lat, max_rx_lat, min_rx_dur, max_rx_dur;
+#if 0
+enum {
+	STAT_TX_LHD = 0,
+	STAT_TX_SSP,
+	STAT_TX_RPC,
+	STAT_TX_TL,
+	STAT_TX_SSI,
+
+	STAT_RX_SSI,
+	STAT_RX_TL,
+	STAT_RX_RPC,
+	STAT_RX_SSP,
+	STAT_RX_LHD,
+
+	STAT_MAX
+};
+#endif
+const char *bbd_stat_name[STAT_MAX] = {
+		"tx@lhd",
+		"tx@ssp",
+		"tx@rpc",
+		"tx@tl",
+		"tx@ssi",
+		"rx@ssi",
+		"rx@tl",
+		"rx@rpc",
+		"rx@ssp",
+		"rx@lhd" 
+};
+
 void BbdEngine_callback(struct sITransportLayerCb *p, struct BbdEngine *eng);
 void BbdEngine_SetUp(struct BbdEngine *p);
 
@@ -69,11 +102,91 @@ bool BbdEngine_GetStats(void* p, struct stTransportLayerStats *rStats)
 static struct workqueue_struct *workq; /*  = 0; ** Linux code standard: must assume static is cleared to zero */
 static struct delayed_work      bbd_tick_work;
 
+extern void exynos_show_eint_mask_registers(void);
+extern void bcm4773_debug_info(void);
+
 static void BbdEngine_Tick(struct work_struct *work)
 {
     printk(KERN_INFO"%s()\n", __func__);
     gpbbd_dev->bbd_engine.tickWorking = false;
+
+    bcm4773_debug_info();
+    exynos_show_eint_mask_registers();
+	
     bbd_on_read(BBD_MINOR_CONTROL, BBD_CTRL_TICK, sizeof(BBD_CTRL_TICK));
+}
+
+struct timer_list bbd_stat_timer;
+static struct work_struct     bbd_stat_work;
+
+void bbd_update_stat(int idx, unsigned int count)
+{
+	bbd_stat[idx] += count;
+}
+
+
+
+static void bbd_stat_timer_func(unsigned long p)
+{
+//    printk("%s ++\n", __func__);
+    if (workq) queue_work(workq, &bbd_stat_work);
+    mod_timer(&bbd_stat_timer, jiffies + HZ);
+//    printk("%s --\n", __func__);
+}
+
+static void bbd_report_stat(struct work_struct *work)
+{
+	char buf[512];
+	char *p = buf;
+	int i;
+
+//	printk("%s ++\n", __func__);
+	p += sprintf(p, "BBD:");
+	for (i=0; i< STAT_MAX; i++) {
+		p += sprintf(p, " %s=%llu",bbd_stat_name[i], bbd_stat[i]);
+	}
+
+	p += sprintf(p, " rxlat_min=%llu rxlat_max=%llu", min_rx_lat, max_rx_lat);
+	p += sprintf(p, " rxdur_min=%llu rxdur_max=%llu", min_rx_dur, max_rx_dur);
+
+	//report only in case we had SSI traffic
+	if (bbd_stat[STAT_TX_SSI] || bbd_stat[STAT_RX_SSI]) {
+//		printk("%s\n", buf);
+		bbd_on_read(BBD_MINOR_CONTROL, buf, strlen(buf)+1);
+	}
+
+	for (i=0; i< STAT_MAX; i++) {
+		bbd_stat[i] = 0;
+	}
+	min_rx_lat = min_rx_dur = 0xFFFFFFFFFFFFFFFFULL;
+	max_rx_lat = max_rx_dur = 0;
+//	printk("%s --\n", __func__);
+}
+
+bool stat_enabled;
+
+void enable_stat(void)
+{
+	if (stat_enabled) {
+		printk("%s() 1HZ stat already enabled. skipping...\n", __func__);
+		return;
+	}
+    INIT_WORK(&bbd_stat_work, bbd_report_stat);
+    setup_timer(&bbd_stat_timer, bbd_stat_timer_func, 0);
+    mod_timer(&bbd_stat_timer, jiffies + HZ);
+	stat_enabled = true;
+}
+
+void disable_stat(void)
+{
+	if (!stat_enabled) {
+		printk("%s() 1HZ stat already disabled. skipping...\n", __func__);
+		return;
+	}
+		
+    del_timer_sync(&bbd_stat_timer);
+    cancel_work_sync(&bbd_stat_work);
+	stat_enabled = false;	
 }
 
 static void BbdEngine_StartWork(struct BbdEngine* p)
@@ -83,6 +196,8 @@ static void BbdEngine_StartWork(struct BbdEngine* p)
         p->tickWorking = false;
         workq = create_singlethread_workqueue("BbdTick");
         INIT_DELAYED_WORK(&bbd_tick_work, BbdEngine_Tick);
+
+	enable_stat();
     }
 }
 
@@ -96,6 +211,8 @@ static void BbdEngine_StopWork(struct BbdEngine* p)
 //                                   (canceled_work) ? "previously canceled" : "uncertain");
 
     cancel_delayed_work(&bbd_tick_work);
+
+    disable_stat();
 
     if (workq) {
         flush_workqueue(workq);

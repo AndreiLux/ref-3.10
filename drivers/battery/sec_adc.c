@@ -78,6 +78,13 @@ static int sec_bat_adc_ap_read(int channel)
 		else
 			pr_debug("WPC TEMP(%d)\n", data);
 		break;
+	case SEC_BAT_ADC_CHANNEL_CAMERA_TEMP:
+		ret = iio_read_channel_raw(&temp_adc[5], &data);
+		if (ret < 0)
+			pr_info("read channel error[%d]\n", ret);
+		else
+			pr_debug("CAMERA THM(%d)\n", data);
+		break;
 	default:
 		break;
 	}

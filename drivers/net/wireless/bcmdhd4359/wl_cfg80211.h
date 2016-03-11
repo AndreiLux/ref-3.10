@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfg80211.h 568879 2015-07-06 09:36:56Z $
+ * $Id: wl_cfg80211.h 603268 2015-12-01 14:32:19Z $
  */
 
 /**
@@ -43,6 +43,7 @@
 #include <linux/rfkill.h>
 
 #include <wl_cfgp2p.h>
+#include <linux/time.h>
 
 struct wl_conf;
 struct wl_iface;
@@ -67,16 +68,33 @@ struct wl_ibss;
 #define WL_DBG_INFO	(1 << 1)
 #define WL_DBG_ERR	(1 << 0)
 
+#ifdef DHD_LOG_DUMP
+extern void dhd_log_dump_print(const char *fmt, ...);
+extern char *dhd_log_dump_get_timestamp(void);
+struct bcm_cfg80211 *wl_get_bcm_cfg80211_ptr(void);
+#endif /* DHD_LOG_DUMP */
+
 /* 0 invalidates all debug messages.  default is 1 */
 #define WL_DBG_LEVEL 0xFF
 
-#ifdef CUSTOMER_HW4
+#ifdef CUSTOMER_HW4_DEBUG
 #define CFG80211_ERROR_TEXT		"CFG80211-INFO2) "
 #else
 #define CFG80211_ERROR_TEXT		"CFG80211-ERROR) "
-#endif
+#endif /* CUSTOMER_HW4_DEBUG */
 
 #if defined(DHD_DEBUG)
+#ifdef DHD_LOG_DUMP
+#define	WL_ERR(args)	\
+do {	\
+	if (wl_dbg_level & WL_DBG_ERR) {	\
+		printk(KERN_INFO CFG80211_ERROR_TEXT "%s : ", __func__);	\
+		printk args;	\
+		dhd_log_dump_print("[%s] %s: ", dhd_log_dump_get_timestamp(), __func__);	\
+		dhd_log_dump_print args;	\
+	}	\
+} while (0)
+#else
 #define	WL_ERR(args)									\
 do {										\
 	if (wl_dbg_level & WL_DBG_ERR) {				\
@@ -84,6 +102,7 @@ do {										\
 			printk args;						\
 		}								\
 } while (0)
+#endif /* DHD_LOG_DUMP */
 #else /* defined(DHD_DEBUG) */
 #define	WL_ERR(args)									\
 do {										\
@@ -130,7 +149,7 @@ do {									\
 #ifdef WL_TRACE_HW4
 #undef WL_TRACE_HW4
 #endif
-#ifdef CUSTOMER_HW4
+#ifdef CUSTOMER_HW4_DEBUG
 #define	WL_TRACE_HW4(args)					\
 do {										\
 	if (wl_dbg_level & WL_DBG_ERR) {				\
@@ -140,7 +159,7 @@ do {										\
 } while (0)
 #else
 #define	WL_TRACE_HW4			WL_TRACE
-#endif /* CUSTOMER_HW4 */
+#endif /* CUSTOMER_HW4_DEBUG */
 #if (WL_DBG_LEVEL > 0)
 #define	WL_DBG(args)								\
 do {									\
@@ -191,7 +210,19 @@ do {									\
 #endif
 /* Bring down SCB Timeout to 20secs from 60secs default */
 #ifndef WL_SCB_TIMEOUT
-#define WL_SCB_TIMEOUT 20
+#define WL_SCB_TIMEOUT	20
+#endif
+
+#ifndef WL_SCB_ACTIVITY_TIME
+#define WL_SCB_ACTIVITY_TIME	5
+#endif
+
+#ifndef WL_SCB_MAX_PROBE
+#define WL_SCB_MAX_PROBE	3
+#endif
+
+#ifndef WL_MIN_PSPRETEND_THRESHOLD
+#define WL_MIN_PSPRETEND_THRESHOLD	2
 #endif
 
 /* SCAN_SUPPRESS timer values in ms */
@@ -207,6 +238,11 @@ do {									\
 #define WL_WOWLAN_PKT_FILTER_ID_FIRST	201
 #define WL_WOWLAN_PKT_FILTER_ID_LAST	(WL_WOWLAN_PKT_FILTER_ID_FIRST + \
 									WL_WOWLAN_MAX_PATTERNS - 1)
+
+#ifdef WLTDLS
+#define TDLS_TUNNELED_PRB_REQ	"\x7f\x50\x6f\x9a\04"
+#define TDLS_TUNNELED_PRB_RESP	"\x7f\x50\x6f\x9a\05"
+#endif /* WLTDLS */
 
 #ifdef WLAIBSS
 /* Custom AIBSS beacon parameters */
@@ -278,8 +314,8 @@ enum wl_prof_list {
 
 /* donlge escan state */
 enum wl_escan_state {
-    WL_ESCAN_STATE_IDLE,
-    WL_ESCAN_STATE_SCANING
+	WL_ESCAN_STATE_IDLE,
+	WL_ESCAN_STATE_SCANING
 };
 /* fw downloading status */
 enum wl_fw_status {
@@ -293,11 +329,10 @@ enum wl_management_type {
 	WL_ASSOC_RESP = 0x4
 };
 
-enum wl_handler_del_type {
-	WL_HANDLER_NOTUSE,
-	WL_HANDLER_DEL,
-	WL_HANDLER_MAINTAIN,
-	WL_HANDLER_PEND
+enum wl_pm_workq_act_type {
+	WL_PM_WORKQ_SHORT,
+	WL_PM_WORKQ_LONG,
+	WL_PM_WORKQ_DEL
 };
 
 /* beacon / probe_response */
@@ -386,7 +421,7 @@ typedef struct wl_cfgbss {
 	u8 *rsn_ie;
 	u8 *wps_ie;
 	bool security_mode;
-    struct wl_bss_vndr_ies ies;	/* Common for STA, P2P GC, GO, AP, P2P Disc Interface */
+	struct wl_bss_vndr_ies ies;	/* Common for STA, P2P GC, GO, AP, P2P Disc Interface */
 } wl_cfgbss_t;
 
 /* cfg driver profile */
@@ -463,22 +498,22 @@ struct escan_info {
 #ifndef CONFIG_DHD_USE_STATIC_BUF
 #error STATIC_WL_PRIV_STRUCT should be used with CONFIG_DHD_USE_STATIC_BUF
 #endif /* CONFIG_DHD_USE_STATIC_BUF */
-#if defined(CUSTOMER_HW4) && defined(DUAL_ESCAN_RESULT_BUFFER)
+#ifdef DUAL_ESCAN_RESULT_BUFFER
 	u8 *escan_buf[2];
 #else
 	u8 *escan_buf;
-#endif /* CUSTOMER_HW4 && DUAL_ESCAN_RESULT_BUFFER */
+#endif /* DUAL_ESCAN_RESULT_BUFFER */
 #else
-#if defined(CUSTOMER_HW4) && defined(DUAL_ESCAN_RESULT_BUFFER)
+#ifdef DUAL_ESCAN_RESULT_BUFFER
 	u8 escan_buf[2][ESCAN_BUF_SIZE];
 #else
 	u8 escan_buf[ESCAN_BUF_SIZE];
-#endif /* CUSTOMER_HW4 && DUAL_ESCAN_RESULT_BUFFER */
+#endif /* DUAL_ESCAN_RESULT_BUFFER */
 #endif /* STATIC_WL_PRIV_STRUCT */
-#if defined(CUSTOMER_HW4) && defined(DUAL_ESCAN_RESULT_BUFFER)
+#ifdef DUAL_ESCAN_RESULT_BUFFER
 	u8 cur_sync_id;
 	u8 escan_type[2];
-#endif /* CUSTOMER_HW4 && DUAL_ESCAN_RESULT_BUFFER */
+#endif /* DUAL_ESCAN_RESULT_BUFFER */
 	struct wiphy *wiphy;
 	struct net_device *ndev;
 };
@@ -517,6 +552,15 @@ struct parsed_ies {
 };
 
 
+#ifdef P2P_LISTEN_OFFLOADING
+typedef struct {
+	uint16	period;                 /* listen offload period */
+	uint16	interval;               /* listen offload interval */
+	uint16	count;			/* listen offload count */
+	uint16	pad;                    /* pad for 32bit align */
+} wl_p2plo_listen_t;
+#endif /* P2P_LISTEN_OFFLOADING */
+
 #ifdef WL11U
 /* Max length of Interworking element */
 #define IW_IES_MAX_BUF_LEN 		9
@@ -526,8 +570,8 @@ struct parsed_ies {
 #endif
 #define MAX_EVENT_BUF_NUM 16
 typedef struct wl_eventmsg_buf {
-    u16 num;
-    struct {
+	u16 num;
+	struct {
 		u16 type;
 		bool set;
 	} event [MAX_EVENT_BUF_NUM];
@@ -540,6 +584,10 @@ typedef struct wl_if_event_info {
 	uint8 mac[ETHER_ADDR_LEN];
 	char name[IFNAMSIZ+1];
 } wl_if_event_info;
+
+#if defined(DHD_ENABLE_BIGDATA_LOGGING)
+#define GET_BSS_INFO_LEN 90
+#endif /* DHD_ENABLE_BIGDATA_LOGGING */
 
 /* private data of cfg80211 interface */
 struct bcm_cfg80211 {
@@ -654,8 +702,9 @@ struct bcm_cfg80211 {
 	struct work_struct wlan_work;
 	struct mutex event_sync;	/* maily for up/down synchronization */
 	bool disable_roam_event;
-	bool pm_enable_work_on;
 	struct delayed_work pm_enable_work;
+	struct mutex pm_sync;	/* mainly for pm work synchronization */
+
 	vndr_ie_setbuf_t *ibss_vsie;	/* keep the VSIE for IBSS */
 	int ibss_vsie_len;
 #ifdef WLAIBSS
@@ -699,6 +748,15 @@ struct bcm_cfg80211 {
 #ifdef DHD_LOSSLESS_ROAMING
 	struct timer_list roam_timeout;   /* Timer for catch roam timeout */
 #endif
+	bool rcc_enabled;	/* flag for Roam channel cache feature */
+#if defined(DHD_ENABLE_BIGDATA_LOGGING)
+	char bss_info[GET_BSS_INFO_LEN];
+	wl_event_msg_t event_auth_assoc;
+	u32 assoc_reject_status;
+	u32 roam_count;
+#endif /* DHD_ENABLE_BIGDATA_LOGGING */
+	u16 ap_oper_channel;
+	bool revert_ndo_disable;
 };
 
 #if defined(STRICT_GCC_WARNINGS) && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == \
@@ -1258,7 +1316,7 @@ extern struct net_device* wl_cfg80211_allocate_if(struct bcm_cfg80211 *cfg, int 
 extern int wl_cfg80211_register_if(struct bcm_cfg80211 *cfg, int ifidx, struct net_device* ndev);
 extern int wl_cfg80211_remove_if(struct bcm_cfg80211 *cfg, int ifidx, struct net_device* ndev);
 extern int wl_cfg80211_scan_stop(bcm_struct_cfgdev *cfgdev);
-extern bool wl_cfg80211_is_vsdb_mode(void);
+extern bool wl_cfg80211_is_concurrent_mode(void);
 extern void* wl_cfg80211_get_dhdp(void);
 extern bool wl_cfg80211_is_p2p_active(void);
 extern bool wl_cfg80211_is_roam_offload(void);
@@ -1270,6 +1328,7 @@ extern s32 wl_cfg80211_get_p2p_noa(struct net_device *net, char* buf, int len);
 extern s32 wl_cfg80211_set_wps_p2p_ie(struct net_device *net, char *buf, int len,
 	enum wl_management_type type);
 extern s32 wl_cfg80211_set_p2p_ps(struct net_device *net, char* buf, int len);
+extern s32 wl_cfg80211_set_p2p_ecsa(struct net_device *net, char* buf, int len);
 #ifdef WL11ULB
 extern s32 wl_cfg80211_set_ulb_mode(struct net_device *dev, int mode);
 extern s32 wl_cfg80211_set_ulb_bw(struct net_device *dev,
@@ -1320,11 +1379,16 @@ extern void get_primary_mac(struct bcm_cfg80211 *cfg, struct ether_addr *mac);
 extern void wl_cfg80211_update_power_mode(struct net_device *dev);
 extern void wl_cfg80211_set_passive_scan(struct net_device *dev, char *command);
 extern void wl_terminate_event_handler(void);
+#if defined(DHD_ENABLE_BIGDATA_LOGGING)
+extern s32 wl_cfg80211_get_bss_info(struct net_device *dev, char* cmd, int total_len);
+extern s32 wl_cfg80211_get_connect_failed_status(struct net_device *dev, char* cmd, int total_len);
+#endif /* DHD_ENABLE_BIGDATA_LOGGING */
+
 #define SCAN_BUF_CNT	2
 #define SCAN_BUF_NEXT	1
 #define WL_SCANTYPE_LEGACY	0x1
 #define WL_SCANTYPE_P2P		0x2
-#if defined(DUAL_ESCAN_RESULT_BUFFER)
+#ifdef DUAL_ESCAN_RESULT_BUFFER
 #define wl_escan_set_sync_id(a, b) ((a) = (b)->escan_info.cur_sync_id)
 #define wl_escan_set_type(a, b) ((a)->escan_info.escan_type\
 		[((a)->escan_info.cur_sync_id)%SCAN_BUF_CNT] = (b))
@@ -1410,6 +1474,14 @@ extern int wl_cfg80211_get_ioctl_version(void);
 extern int wl_cfg80211_enable_roam_offload(struct net_device *dev, int enable);
 extern s32 wl_cfg80211_dfs_ap_move(struct net_device *ndev, char *data,
 		char *command, int total_len);
+extern s32 wl_cfg80211_wbtext_config(struct net_device *ndev, char *data,
+		char *command, int total_len);
+extern int wl_cfg80211_wbtext_weight_config(struct net_device *ndev, char *data,
+		char *command, int total_len);
+extern int wl_cfg80211_wbtext_table_config(struct net_device *ndev, char *data,
+		char *command, int total_len);
+extern s32 wl_cfg80211_wbtext_delta_config(struct net_device *ndev, char *data,
+		char *command, int total_len);
 extern s32 wl_cfg80211_get_chanspecs_2g(struct net_device *ndev,
 		void *buf, s32 buflen);
 extern s32 wl_cfg80211_get_chanspecs_5g(struct net_device *ndev,
@@ -1430,8 +1502,13 @@ extern void wl_cfg80211_del_p2p_wdev(void);
 
 #if defined(WL_SUPPORT_AUTO_CHANNEL)
 extern int wl_cfg80211_set_spect(struct net_device *dev, int spect);
-extern int wl_cfg80211_get_sta_channel(struct net_device *dev);
+extern int wl_cfg80211_get_sta_channel(void);
 #endif /* WL_SUPPORT_AUTO_CHANNEL */
+
+#ifdef P2P_LISTEN_OFFLOADING
+extern s32 wl_cfg80211_p2plo_listen_start(struct net_device *dev, u8 *buf, int len);
+extern s32 wl_cfg80211_p2plo_listen_stop(struct net_device *dev);
+#endif /* P2P_LISTEN_OFFLOADING */
 
 #define RETURN_EIO_IF_NOT_UP(wlpriv)                        \
 do {                                    \
@@ -1446,4 +1523,10 @@ do {                                    \
 extern uint8 *wl_get_up_table(void);
 #endif /* QOS_MAP_SET */
 
+#define P2PO_COOKIE     65535
+u64 wl_cfg80211_get_new_roc_id(struct bcm_cfg80211 *cfg);
+#if defined(SUPPORT_RANDOM_MAC_SCAN)
+int wl_cfg80211_random_mac_enable(struct net_device *dev);
+int wl_cfg80211_random_mac_disable(struct net_device *dev);
+#endif /* SUPPORT_RANDOM_MAC_SCAN */
 #endif /* _wl_cfg80211_h_ */

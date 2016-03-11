@@ -26,7 +26,7 @@
  *
  * $Id: dhd_custom_sec.c 334946 2012-05-24 20:38:00Z $
  */
-#ifdef CUSTOMER_HW4
+#if defined(CUSTOMER_HW4) || defined(CUSTOMER_HW40)
 #include <typedefs.h>
 #include <linuxver.h>
 #include <osl.h>
@@ -229,7 +229,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"IN", "IN", 3},
 	{"ID", "ID", 1},
 	{"IE", "IE", 5},
-	{"IL", "IL", 7},
+	{"IL", "IL", 14},
 	{"IT", "IT", 4},
 	{"JP", "JP", 45},
 	{"JO", "JO", 3},
@@ -314,14 +314,11 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"LY", "LI", 4},
 	{"BO", "NG", 0},
 	{"UM", "PR", 38},
-#if defined(BCM4359_CHIP)
 	/* Support FCC 15.407 (Part 15E) Changes, effective June 2 2014 */
+	/* US/988, Q2/993 country codes with higher power on UNII-1 5G band */
 	{"US", "US", 988},
+	{"CU", "US", 988},
 	{"CA", "Q2", 993},
-#else
-	{"CA", "US", 1},
-	{"US", "US", 1},
-#endif
 #endif /* default ccode/regrev */
 };
 
@@ -392,6 +389,14 @@ void get_customized_country_code(void *adapter, char *country_iso_code, wl_count
 #define CIS_TUPLE_TAG_MACADDR		0x19
 #define CIS_TUPLE_TAG_MACADDR_OFF	((TLV_BODY_OFF) + (1))
 #define CIS_TUPLE_TAG_BOARDTYPE	0x1b
+#define CIS_DUMP_END                    0xff
+#define CIS_TUPLE_NULL                  0X00
+
+#ifdef CONFIG_BCMDHD_PCIE
+#define OTP_OFFSET 128
+#else /* CONFIG_BCMDHD_PCIE */
+#define OTP_OFFSET 12 /* SDIO */
+#endif /* CONFIG_BCMDHD_PCIE */
 
 #ifdef READ_MACADDR
 int dhd_read_macaddr(struct dhd_info *dhd, struct ether_addr *mac)
@@ -613,6 +618,27 @@ vid_info_t vid_info[] = {
 };
 #elif defined(BCM4359_CHIP)
 vid_info_t vid_info[] = {
+#if defined(SUPPORT_BCM4359_MIXED_MODULES)
+	{ 3, { 0x34, 0x33, }, { "semco_b90b" } },
+	{ 3, { 0x40, 0x33, }, { "semco_b90b" } },
+	{ 3, { 0x41, 0x33, }, { "semco_b90b" } },
+	{ 3, { 0x11, 0x33, }, { "semco_b90b" } },
+	{ 3, { 0x33, 0x66, }, { "semco_b90b" } },
+	{ 3, { 0x23, 0x22, }, { "murata_b90b" } },
+	{ 3, { 0x40, 0x22, }, { "murata_b90b" } },
+	{ 3, { 0x10, 0x90, }, { "wisol_b90b" } },
+	{ 3, { 0x33, 0x33, }, { "semco_b90s_b1" } },
+	{ 3, { 0x66, 0x33, }, { "semco_b90s_c0" } },
+	{ 3, { 0x60, 0x22, }, { "murata_b90s_b1" } },
+	{ 3, { 0x61, 0x22, }, { "murata_b90s_b1" } },
+	{ 3, { 0x62, 0x22, }, { "murata_b90s_b1" } },
+	{ 3, { 0x63, 0x22, }, { "murata_b90s_b1" } },
+	{ 3, { 0x70, 0x22, }, { "murata_b90s_c0" } },
+	{ 3, { 0x71, 0x22, }, { "murata_b90s_c0" } },
+	{ 3, { 0x72, 0x22, }, { "murata_b90s_c0" } },
+	{ 3, { 0x73, 0x22, }, { "murata_b90s_c0" } },
+	{ 0, { 0x00, }, { "samsung" } }           /* Default: Not specified yet */
+#else /* SUPPORT_BCM4359_MIXED_MODULES */
 	{ 3, { 0x34, 0x33, }, { "semco" } },
 	{ 3, { 0x40, 0x33, }, { "semco" } },
 	{ 3, { 0x41, 0x33, }, { "semco" } },
@@ -624,12 +650,42 @@ vid_info_t vid_info[] = {
 	{ 3, { 0x52, 0x22, }, { "murata" } },
 	{ 3, { 0x10, 0x90, }, { "wisol" } },
 	{ 0, { 0x00, }, { "samsung" } }           /* Default: Not specified yet */
+#endif /* SUPPORT_BCM4359_MIXED_MODULES */
 };
 #else
 vid_info_t vid_info[] = {
 	{ 0, { 0x00, }, { "samsung" } }			/* Default: Not specified yet */
 };
 #endif /* BCM_CHIP_ID */
+
+int find_tuple_from_otp(unsigned char* cis_buf, int buffsize, int req_tup,
+	unsigned char* req_tup_len)
+{
+	int idx = OTP_OFFSET;
+	int tup, tup_len = 0;
+
+	do {
+		tup = cis_buf[idx++];
+		if (tup == CIS_TUPLE_NULL || tup == CIS_DUMP_END) {
+			tup_len = 0;
+		} else {
+			tup_len = cis_buf[idx++];
+			if (idx + tup_len > buffsize) {
+				return -1;
+			}
+
+			if (tup == CIS_TUPLE_TAG_START && tup_len != CIS_TUPLE_NULL &&
+				cis_buf[idx] == req_tup) {
+				*req_tup_len = tup_len;
+				idx++;
+				return idx;
+			}
+		}
+		idx += tup_len;
+	} while (tup != CIS_DUMP_END && idx < buffsize);
+
+	return -1;
+}
 
 int dhd_check_module_cid(dhd_pub_t *dhd)
 {
@@ -639,8 +695,8 @@ int dhd_check_module_cid(dhd_pub_t *dhd)
 	cis_rw_t *cish = (cis_rw_t *)&cis_buf[8];
 	int idx, max;
 	vid_info_t *cur_info;
-	unsigned char *vid_start;
-	unsigned char vid_length;
+	unsigned char *vid_start = NULL;
+	unsigned char vid_length = 0;
 #ifdef SUPPORT_MULTIPLE_BOARDTYPE
 	board_info_t *cur_b_info = NULL;
 	board_info_t *vendor_b_info = NULL;
@@ -648,7 +704,7 @@ int dhd_check_module_cid(dhd_pub_t *dhd)
 	unsigned char boardtype_len = 0;
 #endif /* SUPPORT_MULTIPLE_BOARDTYPE */
 	unsigned char cid_info[MAX_VNAME_LEN + MAX_BNAME_LEN];
-	bool found = false;
+	bool found = FALSE;
 #if defined(BCM4334_CHIP) || defined(BCM4335_CHIP)
 	const char *revfilepath = REVINFO;
 #ifdef BCM4334_CHIP
@@ -677,20 +733,11 @@ int dhd_check_module_cid(dhd_pub_t *dhd)
 #ifdef DUMP_CIS
 	dhd_dump_cis(cis_buf, 48);
 #endif
-	/* 4 byte : [TAG_START] [VID_LENGTH] [TAG_VENDOR] [VID_START] */
-	max = sizeof(cis_buf) - 4;
-	for (idx = 0; idx < max; idx++) {
-		if (cis_buf[idx] == CIS_TUPLE_TAG_START && cis_buf[idx + 2]
-			 == CIS_TUPLE_TAG_VENDOR) {
-			vid_length = cis_buf[idx + 1];
-			vid_start = &cis_buf[idx + 3];
-			/* Check buffer overflow */
-			if (&cis_buf[idx + 1] + vid_length <= &cis_buf[CIS_BUF_SIZE - 1]) {
-				/* found CIS tuple */
-				found = true;
-				break;
-			}
-		}
+	max = sizeof(cis_buf);
+	idx = find_tuple_from_otp(cis_buf, max, CIS_TUPLE_TAG_VENDOR, &vid_length);
+	if (idx > 0) {
+		found = TRUE;
+		vid_start = &cis_buf[idx];
 	}
 
 	if (found) {
@@ -1035,7 +1082,7 @@ startwrite:
 }
 #endif /* WRITE_MACADDR */
 
-#ifdef CONFIG_CONTROL_PM
+#ifdef DHD_PM_CONTROL_FROM_FILE
 extern bool g_pm_control;
 void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 {
@@ -1043,8 +1090,8 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 	char *filepath = PSMINFO;
 	char power_val = 0;
 	char iovbuf[WL_EVENTING_MASK_LEN + 12];
-#ifdef DHD_ENABLE_LPC
 	int ret = 0;
+#ifdef DHD_ENABLE_LPC
 	uint32 lpc = 0;
 #endif /* DHD_ENABLE_LPC */
 
@@ -1067,6 +1114,9 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 #ifdef ROAM_ENABLE
 			uint roamvar = 1;
 #endif
+			uint32 ocl_enable = 0;
+			uint32 wl_updown = 1;
+
 			*power_mode = PM_OFF;
 			/* Disable PowerSave Mode */
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)power_mode,
@@ -1093,6 +1143,27 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 				__FUNCTION__, ret));
 			}
 #endif /* DHD_ENABLE_LPC */
+			/* Disable ocl */
+			if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_UP, (char *)&wl_updown,
+					sizeof(wl_updown), TRUE, 0)) < 0) {
+				DHD_ERROR(("[WIFI_SEC] %s: WLC_UP faield %d\n", __FUNCTION__, ret));
+			}
+
+			bcm_mkiovar("ocl_enable", (char *)&ocl_enable, 4, iovbuf, sizeof(iovbuf));
+			if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
+					sizeof(iovbuf), TRUE, 0)) < 0) {
+				DHD_ERROR(("[WIFI_SEC] %s: Set ocl_enable %d failed %d\n",
+						__FUNCTION__, ocl_enable, ret));
+			} else {
+				DHD_ERROR(("[WIFI_SEC] %s: Set ocl_enable %d succeeded %d\n",
+						__FUNCTION__, ocl_enable, ret));
+			}
+
+			if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_DOWN, (char *)&wl_updown,
+					sizeof(wl_updown), TRUE, 0)) < 0) {
+				DHD_ERROR(("[WIFI_SEC] %s: WLC_DOWN faield %d\n",
+						__FUNCTION__, ret));
+			}
 		} else {
 			dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)power_mode,
 				sizeof(uint), TRUE, 0);
@@ -1102,7 +1173,7 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 	if (fp)
 		filp_close(fp, NULL);
 }
-#endif /* CONFIG_CONTROL_PM */
+#endif /* DHD_PM_CONTROL_FROM_FILE */
 
 #ifdef MIMO_ANT_SETTING
 int dhd_sel_ant_from_file(dhd_pub_t *dhd)
@@ -1123,7 +1194,8 @@ int dhd_sel_ant_from_file(dhd_pub_t *dhd)
 		chip_id != BCM4356_CHIP_ID &&
 		chip_id != BCM43569_CHIP_ID &&
 		chip_id != BCM4358_CHIP_ID &&
-		chip_id != BCM4359_CHIP_ID) {
+		chip_id != BCM4359_CHIP_ID &&
+		chip_id != BCM4355_CHIP_ID) {
 		DHD_ERROR(("[WIFI_SEC] %s: This chipset does not support MIMO\n",
 			__FUNCTION__));
 		return ret;
@@ -1551,5 +1623,92 @@ int dhd_check_module_b85a(dhd_pub_t *dhd)
 
 	return ret;
 }
+
+int
+dhd_check_module_b90(dhd_pub_t *dhd)
+{
+	int ret = BCME_ERROR;
+	struct file *fp = NULL;
+	char vname[MAX_VNAME_LEN] = {0, };
+	char *vname_b90b = "_b90b";
+	char *vname_b90s = "_b90s";
+	const char *cidfilepath = CIDINFO;
+	const char *s = NULL;
+
+	fp = filp_open(cidfilepath, O_RDONLY, 0);
+
+	if (IS_ERR(fp) || (fp == NULL)) {
+		DHD_ERROR(("[WIFI_SEC] %s: %s File open failed.\n", __FUNCTION__, cidfilepath));
+		ret = BCME_ERROR;
+	} else {
+		ret = kernel_read(fp, fp->f_pos, vname, sizeof(vname));
+		if (ret < 0) {
+			DHD_ERROR(("[WIFI_SEC] %s: File read error, ret=%d \n", __FUNCTION__, ret));
+			filp_close(fp, NULL);
+			return ret;
+		}
+
+		DHD_ERROR(("[WIFI_SEC] %s: This module is %s \n", __FUNCTION__, vname));
+		filp_close(fp, NULL);
+
+		s = strstr(vname, vname_b90b);
+		if (s != NULL) {
+			DHD_INFO(("[WIFI_SEC] %s: It's a b90b module \n", __FUNCTION__));
+			ret = BCM4359_MODULE_TYPE_B90B;
+			return ret;
+		}
+
+		s = strstr(vname, vname_b90s);
+		if (s != NULL) {
+			DHD_INFO(("[WIFI_SEC] %s: It's a b90s module \n", __FUNCTION__));
+			ret = BCM4359_MODULE_TYPE_B90S;
+		} else {
+			DHD_ERROR(("[WIFI_SEC] %s: It's neither b90b nor b90s \n",
+				__FUNCTION__));
+			ret = BCME_ERROR;
+		}
+	}
+
+	return ret;
+}
 #endif /* defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK) */
-#endif /* CUSTOMER_HW4 */
+#endif /* CUSTOMER_HW4 || CUSTOMER_HW40 */
+
+#if defined(FORCE_DISABLE_SINGLECORE_SCAN)
+void
+dhd_force_disable_singlcore_scan(dhd_pub_t *dhd)
+{
+	int ret = 0;
+	struct file *fp = NULL;
+	char *filepath = "/data/.cid.info";
+	s8 iovbuf[WL_EVENTING_MASK_LEN + 12];
+	char vender[10] = {0, };
+	uint32 pm_bcnrx = 0;
+	uint32 scan_ps = 0;
+
+	if (BCM4354_CHIP_ID != dhd_bus_chip_id(dhd))
+		return;
+
+	fp = filp_open(filepath, O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+		DHD_ERROR(("/data/.cid.info file open error\n"));
+	} else {
+		ret = kernel_read(fp, 0, (char *)vender, 5);
+
+		if (ret > 0 && NULL != strstr(vender, "wisol")) {
+			DHD_ERROR(("wisol module : set pm_bcnrx=0, set scan_ps=0\n"));
+
+			bcm_mkiovar("pm_bcnrx", (char *)&pm_bcnrx, 4, iovbuf, sizeof(iovbuf));
+			ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+			if (ret < 0)
+				DHD_ERROR(("Set pm_bcnrx error (%d)\n", ret));
+
+			bcm_mkiovar("scan_ps", (char *)&scan_ps, 4, iovbuf, sizeof(iovbuf));
+			ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0);
+			if (ret < 0)
+				DHD_ERROR(("Set scan_ps error (%d)\n", ret));
+		}
+		filp_close(fp, NULL);
+	}
+}
+#endif /* FORCE_DISABLE_SINGLECORE_SCAN */

@@ -17,6 +17,13 @@
 #include "panel_info.h"
 #include "dsim_backlight.h"
 
+enum weakness_hbm_state {
+	W_HBM_OFF = 0,
+	W_HBM_INTERPOLATION = 1,
+	W_HBM_GALLERY = 2
+};
+#define W_HBM_STEP	(5)
+
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_EXYNOS_DECON_LCD_MCD)
 #ifdef CONFIG_PANEL_S6E3HF3_DYNAMIC			// only edge panel
 
@@ -107,6 +114,7 @@ static ssize_t mcd_mode_store(struct device *dev,
 
 	return size;
 }
+
 static DEVICE_ATTR(mcd_mode, 0664, mcd_mode_show, mcd_mode_store);
 
 #endif
@@ -344,6 +352,7 @@ int alpm_set_mode(struct dsim_device *dsim, int enable)
 	dsim_write_hl_data(dsim, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
 	dsim_write_hl_data(dsim, SEQ_GAMMA_UPDATE_L, ARRAY_SIZE(SEQ_GAMMA_UPDATE_L));
 	dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+	dsim_write_hl_data(dsim, SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON)); /* (workaround) DDI 0x0A register : DISP_ON bit not upset */
 	usleep_range(17000, 17000);
 	dsim_write_hl_data(dsim, SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON));
 
@@ -418,7 +427,6 @@ static ssize_t alpm_store(struct device *dev,
 			prev_brightness = priv->bd->props.brightness;
 			priv->bd->props.brightness = UI_MIN_BRIGHTNESS;
 			dsim_panel_set_brightness(dsim, 1);
-			msleep(700);
 			alpm_set_mode(dsim, ALPM_ON);
 		}
 	} else {
@@ -435,6 +443,10 @@ static ssize_t alpm_store(struct device *dev,
 	} else {
 		if ((priv->state == PANEL_STATE_RESUMED)&& priv->current_alpm)
 			alpm_set_mode(dsim, ALPM_OFF);
+#if defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+		usleep_range(17000, 17000);
+		dsim_panel_set_brightness(dsim, 1);
+#endif
 	}
 #endif
 	priv->alpm = value;
@@ -445,6 +457,7 @@ static ssize_t alpm_store(struct device *dev,
 
 	return size;
 }
+
 static DEVICE_ATTR(alpm, 0664, alpm_show, alpm_store);
 #endif
 
@@ -640,6 +653,12 @@ static ssize_t read_mtp_store(struct device *dev,
 	dsim = container_of(priv, struct dsim_device, priv);
 
 	sscanf(buf, "%x %d %d", &reg, &pos, &length);
+
+	if (!reg || !length || pos < 0 || reg > 0xff || length > 255 || pos > 255)
+		return -EINVAL;
+	if (priv->state != PANEL_STATE_RESUMED)
+		return -EINVAL;
+
 	writebuf[1] = pos;
 	if (dsim_write_hl_data(dsim, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0)) < 0)
 		dsim_err("fail to write F0 on command.\n");
@@ -665,6 +684,46 @@ static ssize_t read_mtp_store(struct device *dev,
 
 	return size;
 }
+
+#ifdef CONFIG_LCD_BURNIN_CORRECTION
+static ssize_t ldu_correction_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return strlen(buf);
+}
+
+static ssize_t ldu_correction_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct dsim_device *dsim;
+	struct panel_private *priv = dev_get_drvdata(dev);
+	int rc;
+	int value;
+
+	dsim = container_of(priv, struct dsim_device, priv);
+	rc = kstrtouint(buf, (unsigned int)0, &value);
+	if (rc < 0)
+		return rc;
+	else {
+		if((value < 0) || (value > 7)) {
+			pr_info("%s out of range %d\n", __func__, value);
+			return -EINVAL;
+		}
+		if(priv->ldu_tbl[0] == NULL) {
+			pr_info("%s do not support ldu correction %d\n", __func__, value);
+			return -EINVAL;
+		}
+
+		priv->ldu_correction_state = value;
+		priv->br_tbl = priv->ldu_tbl[priv->ldu_correction_state];
+		dev_info(dev, "%s: %d\n", __func__, priv->ldu_correction_state);
+		dsim_panel_set_brightness(dsim, 1);
+	}
+	return size;
+}
+static DEVICE_ATTR(ldu_correction, 0664, ldu_correction_show, ldu_correction_store);
+
+#endif
 
 #ifdef CONFIG_PANEL_AID_DIMMING
 static void show_aid_log(struct dsim_device *dsim)
@@ -800,20 +859,25 @@ static int find_hbm_table(struct dsim_device *dsim, int nit, int mode)
 	int i;
 	int current_gap;
 	int minVal = 20000;
-	for(i = 0; i < 256; i++) {
-		if(mode == 1)				// setting
+
+	for (i = 0; i < 256; i++) {
+		if (mode == W_HBM_INTERPOLATION)	// setting
 			current_gap = nit - dsim->priv.hbm_inter_br_tbl[i];
-		else						// gallery
+		else if (mode == W_HBM_GALLERY)	// gallery
 			current_gap = nit - dsim->priv.gallery_br_tbl[i];
-		if(current_gap < 0)
+		else
+			current_gap = nit - dsim->priv.gallery_br_tbl[i];
+
+		if (current_gap < 0)
 			current_gap *= -1;
-		if(minVal > current_gap) {
+		if (minVal > current_gap) {
 			minVal = current_gap;
 			retVal = i;
 		}
 	}
 	return retVal;
 }
+
 static ssize_t weakness_hbm_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -896,13 +960,14 @@ static ssize_t weakness_hbm_store(struct device *dev,
 }
 
 #else
-static ssize_t weakness_hbm_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
+static ssize_t weakness_hbm_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
 {
 	int rc;
 	int value, i;
 	int hbm_nit, origin_nit, p_br, gap_nit;
-	int index_array[6];
+	int index_array[W_HBM_STEP];
+	int update_br;
+	int final_br;
 	int nFlagForInter = 0;
 	struct dsim_device *dsim;
 	struct panel_private *priv = dev_get_drvdata(dev);
@@ -912,46 +977,66 @@ static ssize_t weakness_hbm_store(struct device *dev,
 	rc = kstrtouint(buf, (unsigned int)0, &value);
 	if (rc < 0)
 		return rc;
-	else {
-		if (priv->weakness_hbm_comp != value){
-			if((priv->weakness_hbm_comp == 1) && (value == 2)) {
-				pr_info("%s don't support color blind -> gallery\n", __func__);
-				return size;
-			}
-			p_br = priv->bd->props.brightness;
-			if((priv->weakness_hbm_comp == 1) || (value == 1)) {
-				hbm_nit = priv->hbm_inter_br_tbl[p_br];
-				nFlagForInter = 1;
-			}
-			else if((priv->weakness_hbm_comp == 2) || (value == 2)) {
-				hbm_nit = priv->gallery_br_tbl[p_br];
-				nFlagForInter = 2;
-			}
-			origin_nit = priv->br_tbl[p_br];
-			gap_nit = (hbm_nit - origin_nit) / 5;
-			index_array[5] = priv->bd->props.brightness;
-			for(i = 0; i < 5; i++) {
-				index_array[i] = find_hbm_table(dsim, origin_nit, nFlagForInter);
-				origin_nit += gap_nit;
-			}
-			if(value)
-				priv->weakness_hbm_comp = value;
-			for(i = 1; i < 5; i++) {
-				if(value)
-					priv->bd->props.brightness = index_array[i];
-				else
-					priv->bd->props.brightness = index_array[5 - i];
-				dsim_panel_set_brightness(dsim, 0);
-				msleep(20);
-			}
-			if(!value)
-				priv->weakness_hbm_comp = value;
-			priv->bd->props.brightness = index_array[5];
+
+	if (priv->weakness_hbm_comp != value) {
+		if ((priv->weakness_hbm_comp == W_HBM_INTERPOLATION) && (value == W_HBM_GALLERY)) {
+			/* Interpolation->Gallery */
+			pr_info("%s don't support color blind -> gallery\n", __func__);
+			return size;
+		}
+
+		p_br = priv->bd->props.brightness;
+		final_br = priv->bd->props.brightness;
+
+		if ((priv->weakness_hbm_comp == W_HBM_INTERPOLATION) || (value == W_HBM_INTERPOLATION)) {
+			/* Gallery->Interpolation or OFF->Interpolation or Interpolation->OFF */
+			hbm_nit = priv->hbm_inter_br_tbl[p_br];
+			nFlagForInter = W_HBM_INTERPOLATION;
+		} else if ((priv->weakness_hbm_comp == W_HBM_GALLERY) || (value == W_HBM_GALLERY)) {
+			/* OFF->Gallery or Gallery->OFF */
+			hbm_nit = priv->gallery_br_tbl[p_br];
+			nFlagForInter = W_HBM_GALLERY;
+		}
+
+		// index_array[0](=normal_br) ~ index_array[high](=hbm_br) //
+		origin_nit = priv->br_tbl[p_br];
+		gap_nit = (hbm_nit - origin_nit) / W_HBM_STEP;
+		for (i = 0; i < W_HBM_STEP; i++) {
+			index_array[i] = find_hbm_table(dsim, origin_nit, nFlagForInter);
+			origin_nit += gap_nit;
+		}
+
+		if (value != W_HBM_OFF)
+			priv->weakness_hbm_comp = value;
+
+		priv->is_br_override = true;
+		for (i = 1; i < W_HBM_STEP; i++) {
+
+			if (value != W_HBM_OFF)
+				update_br = index_array[i];
+			else
+				update_br = index_array[W_HBM_STEP - i];
+
+			priv->override_br_value = update_br;
+			priv->bd->props.brightness = update_br;
 			dsim_panel_set_brightness(dsim, 0);
 
-			dev_info(dev, "%s: %d, %d\n", __func__, priv->weakness_hbm_comp, value);
+			msleep(20);
+
+			if (priv->bd->props.brightness != update_br)
+				final_br = priv->bd->props.brightness;
 		}
+		priv->is_br_override = false;
+
+		if (value == W_HBM_OFF)
+			priv->weakness_hbm_comp = value;
+
+		priv->bd->props.brightness = final_br;
+		dsim_panel_set_brightness(dsim, 0);
+
+		dev_info(dev, "%s: %d, %d\n", __func__, priv->weakness_hbm_comp, value);
 	}
+
 	return size;
 }
 #endif
@@ -1041,6 +1126,11 @@ void lcd_init_sysfs(struct dsim_device *dsim)
 	if (ret < 0)
 		dev_err(&dsim->lcd->dev, "failed to add sysfs entries, %d\n", __LINE__);
 
+#ifdef CONFIG_LCD_BURNIN_CORRECTION
+	ret = device_create_file(&dsim->lcd->dev, &dev_attr_ldu_correction);
+	if (ret < 0)
+		dev_err(&dsim->lcd->dev, "failed to add sysfs entries, %d\n", __LINE__);
+#endif
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_EXYNOS_DECON_LCD_MCD)
 	ret = device_create_file(&dsim->lcd->dev, &dev_attr_mcd_mode);
 	if (ret < 0)

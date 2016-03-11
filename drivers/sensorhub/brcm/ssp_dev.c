@@ -56,6 +56,26 @@ void ssp_enable(struct ssp_data *data, bool enable)
 		data->bSspShutdown = true;
 }
 
+u64 get_current_timestamp(void)
+{
+	u64 timestamp;
+	struct timespec ts;
+	ts = ktime_to_timespec(ktime_get_boottime());
+	timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+
+	return timestamp;
+}
+
+u64 get_kernel_timestamp(void)
+{
+	u64 timestamp;
+	struct timespec ts;
+	ktime_get_ts(&ts); /* get high res monotonic timestamp */
+	timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+
+	return timestamp;
+
+}
 /*************************************************************************/
 /* initialize sensor hub						 */
 /*************************************************************************/
@@ -64,12 +84,15 @@ static void initialize_variable(struct ssp_data *data)
 {
 	int iSensorIndex;
 
-	int data_len[SENSOR_MAX] = SENSOR_DATA_LEN;
-	int report_mode[SENSOR_MAX] = SENSOR_REPORT_MODE;
-	memcpy(&data->data_len, data_len, sizeof(data->data_len));
-	memcpy(&data->report_mode, report_mode, sizeof(data->report_mode));
+	int sensor_data_size[SENSOR_MAX] = SENSOR_DATA_SIZE;
+	int sensor_report_mode[SENSOR_MAX] = SENSOR_REPORT_MODE;
+	memcpy(&data->sensor_data_size, sensor_data_size, sizeof(data->sensor_data_size));
+	memcpy(&data->sensor_report_mode, sensor_report_mode, sizeof(data->sensor_report_mode));
 
 	data->cameraGyroSyncMode = false;
+	data->ts_stacked_cnt = 0;
+	data->ts_stacked_offset = 0;
+	data->ts_irq_last = 0ULL;
 
 	for (iSensorIndex = 0; iSensorIndex < SENSOR_MAX; iSensorIndex++) {
 		data->adDelayBuf[iSensorIndex] = DEFUALT_POLLING_DELAY;
@@ -147,6 +170,13 @@ static void initialize_variable(struct ssp_data *data)
 
 	data->step_count_total = 0;
 	data->sealevelpressure = 0;
+
+	data->gyro_lib_state = GYRO_CALIBRATION_STATE_NOT_YET;
+
+	// HIFI batching wakeup issue
+	data->resumeTimestamp = 0;
+	data->bIsResumed = false;
+	data->lastOffset = 0;
 	initialize_function_pointer(data);
 }
 
@@ -175,14 +205,31 @@ int initialize_mcu(struct ssp_data *data)
 		pr_err("[SSP]: %s - set_sensor_position failed\n", __func__);
 		goto out;
 	}
+
+#if defined (CONFIG_SENSORS_SSP_VLTE)
+	iRet = set_sensor_sub_position(data);
+	if (iRet < 0) {
+		pr_err("[SSP]: %s - set_sensor_sub_position failed\n", __func__);
+		goto out;
+	}
+#endif
 	    
 #ifdef CONFIG_SENSORS_MULTIPLE_GLASS_TYPE
     	iRet = set_glass_type(data);
 	if (iRet < 0) {
-		pr_err("[SSP]: %s - set_sensor_position failed\n", __func__);
+		pr_err("[SSP]: %s - set_glass_type failed\n", __func__);
 		goto out;
 	}
 #endif
+
+	/* Hall IC threshold */
+	if (data->hall_threshold[0]) {
+		iRet = set_hall_threshold(data);
+		if (iRet < 0) {
+			pr_err("[SSP]: %s - set_hall_threshold failed\n", __func__);
+			goto out;
+		}
+	}
 
 	data->uSensorState = get_sensor_scanning_info(data);
 	if (data->uSensorState == 0) {
@@ -237,6 +284,13 @@ static int ssp_parse_dt(struct device *dev,struct  ssp_data *data)
 
 	pr_info("[SSP] acc-posi[%d] mag-posi[%d]\n",
 		data->accel_position, data->mag_position);
+
+#if defined (CONFIG_SENSORS_SSP_VLTE)
+	if (of_property_read_u32(np, "ssp-acc-sub-position", &data->accel_sub_position))
+		data->accel_position = 0;
+
+	pr_info("[SSP] acc-sub-posi[%d] \n", data->accel_sub_position);
+#endif
 
 	/* acc type */
 	if (of_property_read_u32(np, "ssp-acc-type", &data->acc_type))
@@ -293,6 +347,17 @@ static int ssp_parse_dt(struct device *dev,struct  ssp_data *data)
 		*(data->static_matrix+i) = (int)temp;
 	}
 #endif
+	/* Hall IC threshold */
+	if (of_property_read_u16_array(np, "ssp-hall-threshold",
+		data->hall_threshold, ARRAY_SIZE(data->hall_threshold))) {
+		pr_err("[SSP]: %s - no hall-threshold, set as 0\n", __func__);
+	} else {
+		pr_info("[SSP]: %s - hall thr: %d %d %d %d %d\n", __func__,
+			data->hall_threshold[0], data->hall_threshold[1],
+			data->hall_threshold[2], data->hall_threshold[3],
+			data->hall_threshold[4]);
+	}
+
 	return errorno;
 
 #if defined(CONFIG_SENSORS_SSP_YAS532) || defined(CONFIG_SENSORS_SSP_YAS537)
@@ -452,6 +517,16 @@ static int ssp_probe(struct spi_device *spi)
 	}
 #endif
 
+	/* HIFI Sensor + Batch Support */
+	mutex_init(&data->batch_events_lock);
+
+	data->batch_wq = create_singlethread_workqueue("ssp_batch_wq");
+	if (!data->batch_wq)
+	{
+		iRet = -1;
+		pr_err("[SSP]: %s - could not create batch workqueue\n", __func__);
+		goto err_create_batch_workqueue;
+	}
 	bbd_register(data, &ssp_bbd_callbacks);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -473,6 +548,9 @@ static int ssp_probe(struct spi_device *spi)
 
 	goto exit;
 
+err_create_batch_workqueue:
+	destroy_workqueue(data->batch_wq);
+	mutex_destroy(&data->batch_events_lock);
 err_symlink_create:
 	remove_sysfs(data);
 err_sysfs_create:
@@ -530,6 +608,8 @@ static void ssp_shutdown(struct spi_device *spi)
 	cancel_work_sync(&data->work_bbd_mcu_ready);
 	destroy_workqueue(data->bbd_mcu_ready_wq);
 //hoi
+	destroy_workqueue(data->batch_wq); /* HIFI */
+	mutex_destroy(&data->batch_events_lock);
 
 	remove_event_symlink(data);
 	remove_sysfs(data);
@@ -623,6 +703,9 @@ static int ssp_resume(struct device *dev)
 
 	func_dbg();
 	enable_debug_timer(data);
+
+	data->resumeTimestamp = get_kernel_timestamp();
+	data->bIsResumed = true;
 
 	if (SUCCESS != ssp_send_cmd(data, MSG2SSP_AP_STATUS_RESUME, 0))
 		pr_err("[SSP]: %s MSG2SSP_AP_STATUS_RESUME failed\n",

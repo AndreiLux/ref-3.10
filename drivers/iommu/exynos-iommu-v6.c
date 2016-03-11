@@ -709,9 +709,11 @@ irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 	unsigned long addr = -1;
 	int flags = 0;
 
-	WARN(!is_sysmmu_active(drvdata),
-		"Fault occurred while System MMU %s is not enabled!\n",
-		dev_name(drvdata->sysmmu));
+	if (!is_sysmmu_active(drvdata)) {
+		dev_err(drvdata->sysmmu,
+			"Fault is occurred with sysmmu disabled\n");
+		return IRQ_HANDLED;
+	}
 
 	itype =  __ffs(__raw_readl(drvdata->sfrbase + REG_INT_STATUS));
 	if (itype >= REG_INT_STATUS_WRITE_BIT) {
@@ -2381,6 +2383,18 @@ static sysmmu_pte_t *alloc_lv2entry_fast(struct exynos_iommu_domain *priv,
 	return page_entry(sent, iova);
 }
 
+static int mm_fault_translate(int fault)
+{
+	if (fault & VM_FAULT_OOM)
+		return -ENOMEM;
+	else if (fault & (VM_FAULT_SIGBUS))
+		return -EBUSY;
+	else if (fault & (VM_FAULT_HWPOISON | VM_FAULT_HWPOISON_LARGE))
+		return -EFAULT;
+
+	return -EFAULT;
+}
+
 int exynos_sysmmu_map_user_pages(struct device *dev,
 					struct mm_struct *mm,
 					unsigned long vaddr,
@@ -2435,8 +2449,18 @@ int exynos_sysmmu_map_user_pages(struct device *dev,
 	do {
 		unsigned long pmd_next;
 		pmd_t *pmd;
+		pud_t *pud;
 
-		if (pgd_none_or_clear_bad(pgd)) {
+		pud = pud_offset(pgd, start);
+		if (pud_none(*pud)) {
+			ret = handle_mm_fault(mm, vma, start,
+				write ? FAULT_FLAG_WRITE : 0);
+			if (ret & VM_FAULT_ERROR) {
+				ret = mm_fault_translate(ret);
+				goto out_unmap;
+			}
+		} else if (pud_bad(*pud)) {
+			pud_clear_bad(pud);
 			ret = -EBADR;
 			goto out_unmap;
 		}
@@ -2451,18 +2475,10 @@ int exynos_sysmmu_map_user_pages(struct device *dev,
 			spinlock_t *ptl;
 
 			if (pmd_none(*pmd)) {
-				pmd = pmd_alloc(mm, (pud_t *)pgd, start);
-				if (!pmd) {
-					pr_err("%s: failed to alloc pmd\n",
-								__func__);
-					ret = -ENOMEM;
-					goto out_unmap;
-				}
-
-				if (__pte_alloc(mm, vma, pmd, start)) {
-					pr_err("%s: failed to alloc pte\n",
-								__func__);
-					ret = -ENOMEM;
+				ret = handle_mm_fault(mm, vma, start,
+						write ? FAULT_FLAG_WRITE : 0);
+				if (ret & VM_FAULT_ERROR) {
+					ret = mm_fault_translate(ret);
 					goto out_unmap;
 				}
 			} else if (pmd_bad(*pmd)) {
@@ -2494,11 +2510,10 @@ int exynos_sysmmu_map_user_pages(struct device *dev,
 					(write && !pte_write(*pte))) {
 					if (pte_present(*pte) || pte_none(*pte)) {
 						spin_unlock(ptl);
-						ret = handle_pte_fault(mm,
-							vma, start, pte, pmd,
+						ret = handle_mm_fault(mm, vma, start,
 							write ? FAULT_FLAG_WRITE : 0);
-						if (IS_ERR_VALUE(ret)) {
-							ret = -EIO;
+						if (ret & VM_FAULT_ERROR) {
+							ret = mm_fault_translate(ret);
 							goto out_unmap;
 						}
 						spin_lock(ptl);
@@ -2507,7 +2522,7 @@ int exynos_sysmmu_map_user_pages(struct device *dev,
 
 				if (!pte_present(*pte) ||
 					(write && !pte_write(*pte))) {
-					ret = -EPERM;
+					ret = -EACCES;
 					spin_unlock(ptl);
 					goto out_unmap;
 				}

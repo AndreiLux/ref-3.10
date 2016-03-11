@@ -41,6 +41,9 @@
 #include <linux/spi/spi.h>
 #include "bbdpl/bbd.h"
 
+// memory scraps issue. HIFI batch
+#include <linux/vmalloc.h>
+
 #ifdef CONFIG_SENSORS_SSP_SENSORHUB
 #include "ssp_sensorhub.h"
 #endif
@@ -96,7 +99,8 @@
 #define DEFUALT_POLLING_DELAY	(200 * NSEC_PER_MSEC)
 #define PROX_AVG_READ_NUM	80
 #define DEFAULT_RETRIES		3
-#define DATA_PACKET_SIZE	960
+//#define DATA_PACKET_SIZE	960
+#define DATA_PACKET_SIZE	2000
 
 /* SSP Binary Type */
 enum {
@@ -191,6 +195,7 @@ enum {
 #define MSG2SSP_AP_SET_BIG_DATA		0xFA
 #define MSG2SSP_AP_START_BIG_DATA		0xFB
 #define MSG2SSP_AP_SET_MAGNETIC_STATIC_MATRIX	0xFD
+#define MSG2SSP_AP_SET_HALL_THRESHOLD		0xE9
 #define MSG2SSP_AP_SENSOR_TILT			0xEA
 #define MSG2SSP_AP_MCU_SET_TIME			0xFE
 #define MSG2SSP_AP_MCU_GET_TIME			0xFF
@@ -206,7 +211,15 @@ enum {
 #define MSG2SSP_AP_IRDATA_SEND_RESULT 0x39
 #define MSG2SSP_AP_PROX_GET_TRIM 		0x40
 
+#define SH_MSG2AP_GYRO_CALIBRATION_START   0x43
+#define SH_MSG2AP_GYRO_CALIBRATION_STOP    0x44
+#define SH_MSG2AP_GYRO_CALIBRATION_EVENT_OCCUR  0x45
+
 #define MSG2SSP_AP_FUSEROM			0X01
+
+#if defined (CONFIG_SENSORS_SSP_VLTE)
+#define MSG2SSP_AP_SUB_SENSOR_FORMATION  0x77
+#endif
 
 /* voice data */
 #define TYPE_WAKE_UP_VOICE_SERVICE			0x01
@@ -269,8 +282,21 @@ enum {
 
 #define MAX_COMP_BUFF 60
 
+/** HIFI Sensor **/
+#define SIZE_TIMESTAMP_BUFFER	1000
+#define SIZE_MOVING_AVG_BUFFER	20
+#define SKIP_CNT_MOVING_AVG_ADD	2
+#define SKIP_CNT_MOVING_AVG_CHANGE	3
+
+
 /* ak0911 magnetic pdc matrix size */
 #define PDC_SIZE                       27
+
+/* gyro calibration state*/
+#define GYRO_CALIBRATION_STATE_NOT_YET		0
+#define GYRO_CALIBRATION_STATE_REGISTERED 	1
+#define GYRO_CALIBRATION_STATE_EVENT_OCCUR  2
+#define GYRO_CALIBRATION_STATE_DONE 		3
 
 /* temphumidity sensor*/
 struct shtc1_buffer {
@@ -332,6 +358,7 @@ enum {
 	PICKUP_GESTURE,
 	MOTOR_TEST,
 	SENSOR_MAX,
+	META_SENSOR = 200,
 };
 
 #define SENSOR_REPORT_MODE { \
@@ -365,19 +392,24 @@ enum {
 	REPORT_MODE_ON_CHANGE, \
 	REPORT_MODE_CONTINUOUS, }
 
+/* Unit : Byte - No including timestamp */
 #if defined(CONFIG_SENSORS_SSP_TMG399x)
-/* byte unit - not including timestamp */
-#define SENSOR_DATA_LEN	{ \
-	6, 6, 12, 6, 7, 6, 20, 2, 5, 10, \
-	1, 9, 0, 1, 1, 12, 17, 17, 4, 0, \
-	0, 0, 0, 1, 12, 6, 1, 6, }
+#define SENSOR_DATA_SIZE { \
+	6, 6, 12, 6, 7, \
+	6, 20, 2, 5, 10, \
+	1, 9, 0, 1, 1, \
+	12, 17, 17, 4, 0, \
+	0, 0, 0, 1, 12, \
+	6, 1, 6, }
 
 #else
-#define SENSOR_DATA_LEN	{ \
-	6, 6, 12, 6, 7, 6, 20, 3, 5, 10, \
-	2, 9, 0, 1, 1, 12, 17, 17, 4, 0, \
-	0, 0, 0, 1, 12, 6, 1, 6, }
-
+#define SENSOR_DATA_SIZE { \
+	6, 6, 12, 6, 7, \
+	6, 20, 3, 5, 10, \
+	2, 9, 0, 1, 1, \
+	12, 17, 17, 4, 0, \
+	0, 0, 0, 1, 12,\
+	6, 1, 6, }
 #endif
 
 struct meta_data_event {
@@ -520,6 +552,9 @@ enum {
 enum {
 	BIG_TYPE_DUMP = 0,
 	BIG_TYPE_READ_LIB,
+	/** HiFi Sensor **/
+	BIG_TYPE_READ_HIFI_BATCH,
+	/** HiFi Sensor **/
 	/*+snamy.jeong 0706 for voice model download & pcm dump*/
 	BIG_TYPE_VOICE_NET,
 	BIG_TYPE_VOICE_GRAM,
@@ -534,12 +569,19 @@ enum {
 	BATCH_MODE_RUN,
 };
 
+
+// TODO: We replace this struct.
+/*
 struct ssp_time_diff {
 	u16 batch_count;
 	u16 batch_mode;
-	u64 time_diff;
 	u64 irq_diff;
 	u16 batch_count_fixed;
+};
+*/
+struct ssp_batch_event {
+	char *batch_data;
+	int batch_length;
 };
 
 struct ssp_data {
@@ -677,14 +719,39 @@ struct ssp_data {
 	atomic64_t aSensorEnable;
 	int64_t adDelayBuf[SENSOR_MAX];
 	u64 lastTimestamp[SENSOR_MAX];
-	u64 lastModTimestamp[SENSOR_MAX];
-	int data_len[SENSOR_MAX];
-	int report_mode[SENSOR_MAX];
+	int sensor_data_size[SENSOR_MAX];
+	int sensor_report_mode[SENSOR_MAX];
 	s32 batchLatencyBuf[SENSOR_MAX];
 	s8 batchOptBuf[SENSOR_MAX];
+
 	bool reportedData[SENSOR_MAX];
 	bool skipEventReport;
 	bool cameraGyroSyncMode;
+
+	/** HIFI Sensor **/
+	u64 ts_index_buffer[SIZE_TIMESTAMP_BUFFER];
+	unsigned int ts_stacked_cnt;
+	unsigned int ts_stacked_offset;
+	unsigned int ts_prev_index[SENSOR_MAX];
+	u64 ts_irq_last;
+	u64 ts_last_enable_cmd_time;
+
+	u64 lastDeltaTimeNs[SENSOR_MAX];
+
+	u64 ts_avg_buffer[SENSOR_MAX][SIZE_MOVING_AVG_BUFFER];
+	u8 ts_avg_buffer_cnt[SENSOR_MAX];
+	u8 ts_avg_buffer_idx[SENSOR_MAX];
+	u64 ts_avg_buffer_sum[SENSOR_MAX];
+	int ts_avg_skip_cnt[SENSOR_MAX];
+
+	struct workqueue_struct *batch_wq;
+	struct mutex batch_events_lock;
+	struct ssp_batch_event batch_event;
+	//hifi batching suspend-wakeup issue
+	u64 resumeTimestamp;
+	bool bIsResumed;
+	u64 lastOffset;
+	/** HIFI Sensor **/
 
 	int (*wakeup_mcu)(void);
 	int (*set_mcu_reset)(int);
@@ -706,6 +773,7 @@ struct ssp_data {
 	u8 mag_matrix_size;
 	u8 *mag_matrix;
 	unsigned char pdc_matrix[PDC_SIZE];
+	short hall_threshold[5];
 #ifdef CONFIG_SENSORS_SSP_SHTC1
 	struct miscdevice shtc1_device;
 	char *comp_engine_ver;
@@ -740,8 +808,13 @@ struct ssp_data {
 	u32 glass_type;
 #endif
 	int acc_type;
+	int gyro_lib_state;
 
+#if defined (CONFIG_SENSORS_SSP_VLTE)
+	int accel_sub_position;
+#endif		
 	atomic_t int_gyro_enable;
+	char sensor_state[SENSOR_MAX + 1];
 };
 
 struct ssp_big {
@@ -833,6 +906,9 @@ int save_gyro_caldata(struct ssp_data *, s16 *);
 int set_accel_cal(struct ssp_data *);
 int initialize_magnetic_sensor(struct ssp_data *data);
 int set_sensor_position(struct ssp_data *);
+#if defined (CONFIG_SENSORS_SSP_VLTE)
+int set_sensor_sub_position(struct ssp_data *);
+#endif
 #ifdef CONFIG_SENSORS_MULTIPLE_GLASS_TYPE
 int set_glass_type(struct ssp_data *);
 #endif
@@ -841,6 +917,8 @@ void sync_sensor_state(struct ssp_data *);
 void set_proximity_threshold(struct ssp_data *, unsigned int, unsigned int);
 void set_proximity_barcode_enable(struct ssp_data *, bool);
 void set_gesture_current(struct ssp_data *, unsigned char);
+int set_hall_threshold(struct ssp_data *data);
+void set_gyro_cal_lib_enable(struct ssp_data *, bool);
 int get_msdelay(int64_t);
 u64 get_sensor_scanning_info(struct ssp_data *);
 unsigned int get_firmware_rev(struct ssp_data *);
@@ -925,4 +1003,6 @@ void bbd_send_packet_work_func(struct work_struct *work);
 #endif	/* SSP_BBD_USE_SEND_WORK  */
 int set_time(struct ssp_data *);
 int get_time(struct ssp_data *);
+u64 get_current_timestamp(void);
+u64 get_kernel_timestamp(void);
 #endif

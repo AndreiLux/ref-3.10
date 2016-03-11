@@ -523,18 +523,37 @@ static void exynos_ufs_establish_connt(struct exynos_ufs *ufs)
 
 static void exynos_ufs_config_smu(struct exynos_ufs *ufs)
 {
-	u32 reg;
+#ifdef CONFIG_SOC_EXYNOS7420
+	int ret;
+
+#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, UFS_FMP, FMP_DESC_ON);
+#else
+	ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, UFS_FMP, FMP_DESC_OFF);
+#endif
+	if (ret)
+		dev_err(ufs->dev, "Fail to smc call for FMP SECURITY\n");
+
+#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	ret = exynos_smc(SMC_CMD_SMU, FMP_SMU_INIT, FMP_SMU_ON, 0);
+#else
+	ret = exynos_smc(SMC_CMD_SMU, FMP_SMU_INIT, FMP_SMU_OFF, 0);
+#endif
+	if (ret)
+		dev_err(ufs->dev, "Fail to smc call for FMP SMU initialization\n");
+#else
+	int reg;
 
 	reg = ufsp_readl(ufs, UFSPRSECURITY);
 	ufsp_writel(ufs, reg | NSSMU, UFSPRSECURITY);
 #if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 	ufsp_writel(ufs, reg | PROTBYTZPC | DESCTYPE(3), UFSPRSECURITY);
 #endif
-
 	ufsp_writel(ufs, 0x0, UFSPSBEGIN0);
 	ufsp_writel(ufs, 0xffffffff, UFSPSEND0);
 	ufsp_writel(ufs, 0xff, UFSPSLUN0);
 	ufsp_writel(ufs, 0xf1, UFSPSCTRL0);
+#endif
 }
 
 static bool exynos_ufs_wait_pll_lock(struct exynos_ufs *ufs)
@@ -923,6 +942,7 @@ static int exynos_ufs_line_rest_ctrl(struct exynos_ufs *ufs)
 	u32 val;
 	int i;
 
+	ufshcd_dme_set(hba, UIC_ARG_MIB(PA_DBG_AUTOMODE_THLD), 0x0);
 	ufshcd_dme_set(hba, UIC_ARG_MIB(0x9565), 0xf);
 	ufshcd_dme_set(hba, UIC_ARG_MIB(0x9565), 0xf);
 	for_each_ufs_lane(ufs, i)
@@ -1028,6 +1048,7 @@ static int exynos_ufs_post_link(struct ufs_hba *hba)
 
 	if (soc)
 		exynos_ufs_config_phy(ufs, soc->tbl_post_phy_init, NULL);
+	udelay(1);
 
 	return 0;
 }
@@ -1190,21 +1211,27 @@ static int __exynos_ufs_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 
 static int __exynos_ufs_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
-	struct exynos_ufs *ufs = to_exynos_ufs(hba);
-#if defined(CONFIG_UFS_FMP_DM_CRYPT)
+#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 	int ret = 0;
 #endif
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 
 	exynos_ufs_ctrl_phy_pwr(ufs, true);
 
 	exynos_ufs_ctrl_hci_core_clk(ufs, false);
 	exynos_ufs_config_smu(ufs);
-#if defined(CONFIG_UFS_FMP_DM_CRYPT)
+
+#if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+#ifdef CONFIG_SOC_EXYNOS7420
+	ret = exynos_smc(SMC_CMD_RESUME, 0, UFS_FMP, FMP_DESC_ON);
+	if (ret)
+		dev_warn(ufs->dev, "failed to smc call for FMP: %x\n", ret);
+#else
 	ret = exynos_smc(SMC_CMD_FMP, FMP_KEY_RESUME, UFS_FMP, 0);
 	if (ret)
 		dev_warn(ufs->dev, "failed to smc call for FMP: %x\n", ret);
 #endif
-
+#endif
 	return 0;
 }
 
@@ -1664,6 +1691,9 @@ static const struct ufs_phy_cfg post_init_cfg[] = {
 	{0x29a, 0x7, PMD_ALL, PHY_PCS_RXTX},
 	{0x277, (200000 / 10) >> 10, PMD_ALL, PHY_PCS_RXTX},
 	{PA_DBG_OV_TM, false, PMD_ALL, PHY_PCS_COMN},
+	{PA_DBG_AUTOMODE_THLD, 0x222e, PMD_ALL, UNIPRO_DBG_MIB},
+	{PA_DBG_BURST_END_REQ, 0x1 << 5, PMD_ALL, UNIPRO_DBG_MIB},
+	{PA_DBG_BURST_END_REQ, 0x1 << 5, PMD_ALL, UNIPRO_DBG_MIB},
 	{},
 };
 

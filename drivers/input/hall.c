@@ -22,6 +22,8 @@
 #include <linux/spinlock.h>
 #include <linux/wakelock.h>
 #include <linux/hall.h>
+#include <linux/notifier.h>
+
 
 struct device *sec_device_create(void *drvdata, const char *fmt);
 
@@ -32,9 +34,92 @@ struct hall_drvdata {
 	struct work_struct work;
 	struct delayed_work flip_cover_dwork;
 	struct wake_lock flip_wake_lock;
+/* WorkAround for Hall IRQ Noise problem in connect to GSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	struct mutex irq_lock;
+	bool gsm_area;
+	bool irq_state;
+	bool cover_state;
+#endif
+#ifdef	CONFIG_SENSORS_HALL_FOLDER
+	bool folder_type;
+#endif
 };
 
 static bool flip_cover = 1;
+
+/* WorkAround for Hall IRQ Noise problem in connect to GSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+struct hall_drvdata *g_drvdata;
+
+#define enable_hall_irq() \
+	do { \
+		if (g_drvdata->irq_state == false) { \
+			g_drvdata->irq_state = true; \
+			enable_irq(g_drvdata->irq_flip_cover); \
+			pr_info("%s():irq is enabled\n", __func__);\
+		} else { \
+			pr_info("%s():irq is already enabled\n",\
+					__func__);\
+		}\
+	} while (0)
+
+#define disable_hall_irq() \
+	do { \
+		if (g_drvdata->irq_state == true) { \
+			g_drvdata->irq_state = false; \
+			disable_irq(g_drvdata->irq_flip_cover); \
+			pr_info("%s():irq is disabled\n", __func__);\
+		} else { \
+			pr_info("%s():irq is already disabled\n",\
+					__func__);\
+		}\
+	} while (0)
+
+void hall_irq_set(int state, bool auth_changed)
+{
+	if (auth_changed)
+		g_drvdata->cover_state = state;
+
+	pr_info("%s: gsm: %d, cover: %d, irq: %d, state: %d, auth: %d\n",
+			__func__, g_drvdata->gsm_area, g_drvdata->cover_state,
+			g_drvdata->irq_state, state, auth_changed);
+
+	if (g_drvdata->gsm_area) {
+		mutex_lock(&g_drvdata->irq_lock);
+
+		if (state)
+			enable_hall_irq();
+		else
+			disable_hall_irq();
+
+		mutex_unlock(&g_drvdata->irq_lock);
+	}
+}
+
+static ssize_t hall_irq_ctrl_store(struct device *dev,
+		struct device_attribute *attr, const char *buf,
+		size_t count)
+{
+	pr_info("%s: %s\n", __func__, buf);
+
+	if (!strncasecmp(buf, "ON", 2)) {
+		g_drvdata->gsm_area = true;
+		if (!g_drvdata->cover_state)
+			hall_irq_set(disable, false);
+	} else if (!strncasecmp(buf, "OFF", 3)) {
+		hall_irq_set(enable, false);
+		g_drvdata->gsm_area = false;
+	} else {
+		pr_info("%s: Wrong command, current state %s\n",
+			__func__, g_drvdata->gsm_area?"ON":"OFF");
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(hall_irq_ctrl, 0664, NULL, hall_irq_ctrl_store);
+#endif
 
 static ssize_t hall_detect_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -49,14 +134,50 @@ static ssize_t hall_detect_show(struct device *dev,
 }
 static DEVICE_ATTR(hall_detect, 0664, hall_detect_show, NULL);
 
+#if defined(CONFIG_SENSORS_HALL_FOLDER)
+static ssize_t sysfs_flip_status_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	if (!flip_cover)
+		snprintf(buf, 3, "0\n");
+	else
+		snprintf(buf, 3, "1\n");
+
+	return strlen(buf);
+}
+
+static DEVICE_ATTR(flipStatus, 0444, sysfs_flip_status_show, NULL);
+#endif
+
 static struct attribute *hall_attrs[] = {
 	&dev_attr_hall_detect.attr,
+/* WorkAround for Hall IRQ Noise problem in connect to GSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	&dev_attr_hall_irq_ctrl.attr,
+#endif
 	NULL,
 };
 
 static struct attribute_group hall_attr_group = {
 	.attrs = hall_attrs,
 };
+
+#ifdef CONFIG_SENSORS_HALL_FOLDER
+static BLOCKING_NOTIFIER_HEAD(hall_ic_notifier_list);
+
+void hall_ic_register_notify(struct notifier_block *nb) {
+	int ret;
+
+	ret = blocking_notifier_chain_register(&hall_ic_notifier_list, nb);//need return
+	printk("[notifier hall]hall ic %s,%p,%p  : %d*** \n",
+		__func__,&nb,&nb->notifier_call, ret);
+}
+EXPORT_SYMBOL(hall_ic_register_notify);
+#endif
+
+#ifdef CONFIG_FOLDER_DUAL_PANEL
+extern void decon_display_switch_by_hall(int hall_ic_state);
+#endif
 
 #ifdef CONFIG_SEC_FACTORY
 static void flip_cover_work(struct work_struct *work)
@@ -78,7 +199,28 @@ static void flip_cover_work(struct work_struct *work)
 
 	if(first == second) {
 		flip_cover = first;
+
+#ifdef CONFIG_FOLDER_DUAL_PANEL
+		/* For display switching */
+		if (ddata->folder_type)
+			decon_display_switch_by_hall(!flip_cover);
+		else
+			decon_display_switch_by_hall(flip_cover);
+#endif
+
+#ifdef CONFIG_SENSORS_HALL_FOLDER
+		if (ddata->folder_type) {
+			/* foder open : 0, close : 1 */
+			blocking_notifier_call_chain(&hall_ic_notifier_list, !flip_cover, NULL);
+			input_report_switch(ddata->input, SW_LID, !flip_cover);
+		} else {  /* flip open : 1, close : 0 */
+			blocking_notifier_call_chain(&hall_ic_notifier_list, flip_cover, NULL);
+			input_report_switch(ddata->input, SW_FLIP, flip_cover);
+		}
+#else
 		input_report_switch(ddata->input, SW_FLIP, flip_cover);
+#endif
+
 		input_sync(ddata->input);
 	}
 }
@@ -112,8 +254,26 @@ static void flip_cover_work(struct work_struct *work)
 	printk("[keys] hall ic reported value: %d (%s)\n",
 		flip_cover, flip_cover?"open":"close");
 
-	input_report_switch(ddata->input,
-		SW_FLIP, flip_cover);
+#ifdef CONFIG_FOLDER_DUAL_PANEL
+	/* For display switching */
+	if (ddata->folder_type)
+		decon_display_switch_by_hall(!flip_cover);
+	else
+		decon_display_switch_by_hall(flip_cover);
+#endif
+
+#ifdef CONFIG_SENSORS_HALL_FOLDER
+	if (ddata->folder_type) {
+		/* foder open : 0, close : 1 */
+		blocking_notifier_call_chain(&hall_ic_notifier_list, !flip_cover, NULL);
+		input_report_switch(ddata->input, SW_LID, !flip_cover);
+	} else {  /* flip open : 1, close : 0 */
+		blocking_notifier_call_chain(&hall_ic_notifier_list, flip_cover, NULL);
+		input_report_switch(ddata->input, SW_FLIP, flip_cover);
+	}
+#else
+	input_report_switch(ddata->input, SW_FLIP, flip_cover);
+#endif
 	input_sync(ddata->input);
 out:
 	hall_close(ddata->input);
@@ -122,6 +282,10 @@ out:
 static void flip_cover_work(struct work_struct *work)
 {
 	bool first;
+/* WorkAround for Hall IRQ Noise problem in connect to GGSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	bool second;
+#endif
 	struct hall_drvdata *ddata =
 		container_of(work, struct hall_drvdata,
 				flip_cover_dwork.work);
@@ -129,6 +293,19 @@ static void flip_cover_work(struct work_struct *work)
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
 	printk("[keys] %s flip_status : %d (%s)\n", __func__, first, first?"open":"close");
+
+/* WorkAround for Hall IRQ Noise problem in connect to GGSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	if (g_drvdata->gsm_area) {
+		pr_info("%s: NDT\n", __func__);
+		mdelay(10);
+		second = gpio_get_value(ddata->gpio_flip_cover);
+		if (first != second) {
+			pr_info("%s: NDT, not stable value\n", __func__);
+			return;
+		}
+	}
+#endif
 
 	flip_cover = first;
 	input_report_switch(ddata->input,
@@ -208,7 +385,15 @@ static void init_hall_ic_irq(struct input_dev *input)
 		"keys: failed to request flip cover irq %d gpio %d\n",
 		irq, ddata->gpio_flip_cover);
 	} else {
+#ifdef CONFIG_FOLDER_DUAL_PANEL
+		/* update the current status when use double panel*/
+		schedule_delayed_work(&ddata->flip_cover_dwork, HZ / 2);
+#endif
 		pr_info("%s : success\n", __func__);
+/* WorkAround for Hall IRQ Noise problem in connect to GSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+		g_drvdata->irq_state = true;
+#endif
 	}
 }
 
@@ -239,6 +424,11 @@ static int of_hall_data_parsing_dt(struct hall_drvdata *ddata)
 	}
 	ddata->irq_flip_cover = gpio;
 
+#ifdef CONFIG_SENSORS_HALL_FOLDER
+	ddata->folder_type = of_property_read_bool(np_haptic, "hall,folder_type");
+	pr_info("[keys] phone type : (%s)\n", ddata->folder_type ? "Folder" : "Bar");
+#endif
+
 	return 0;
 }
 #endif
@@ -250,6 +440,10 @@ static int hall_probe(struct platform_device *pdev)
 	struct input_dev *input;
 	int error;
 	int wakeup = 0;
+
+#if defined(CONFIG_SENSORS_HALL_FOLDER)
+	struct device *sec_flip;
+#endif
 
 	ddata = kzalloc(sizeof(struct hall_drvdata), GFP_KERNEL);
 	if (!ddata) {
@@ -287,13 +481,29 @@ static int hall_probe(struct platform_device *pdev)
 	input->dev.parent = &pdev->dev;
 
 	input->evbit[0] |= BIT_MASK(EV_SW);
+#ifdef CONFIG_SENSORS_HALL_FOLDER
+	if (ddata->folder_type)
+		input_set_capability(input, EV_SW, SW_LID);
+	else
+		input_set_capability(input, EV_SW, SW_FLIP);
+#else
 	input_set_capability(input, EV_SW, SW_FLIP);
+#endif
 
 	input->open = hall_open;
 	input->close = hall_close;
 
 	/* Enable auto repeat feature of Linux input subsystem */
 	__set_bit(EV_REP, input->evbit);
+
+/* WorkAround for Hall IRQ Noise problem in connect to GSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	mutex_init(&ddata->irq_lock);
+
+	ddata->gsm_area = false;
+	ddata->cover_state = false;
+	g_drvdata = ddata;
+#endif
 
 	init_hall_ic_irq(input);
 
@@ -303,6 +513,13 @@ static int hall_probe(struct platform_device *pdev)
 			error);
 		goto fail2;
 	}
+
+#if defined(CONFIG_SENSORS_HALL_FOLDER)
+	sec_flip = sec_device_create(pdev, "sec_flip");
+
+	if (device_create_file(sec_flip, &dev_attr_flipStatus) < 0)
+		pr_err("Failed to create device file(%s) !\n", dev_attr_flipStatus.attr.name);
+#endif
 
 	error = input_register_device(input);
 	if (error) {
@@ -367,7 +584,17 @@ static int hall_suspend(struct device *dev)
 
 /* need to be change */
 /* Without below one line, it is not able to get the irq during freezing */
+
+/* WorkAround for Hall IRQ Noise problem in connect to GGSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	/* gsm_area can be controlled only in hall_irq_set */
+	if (!g_drvdata->cover_state && g_drvdata->gsm_area)
+		disable_irq_wake(ddata->irq_flip_cover);
+	else
+		enable_irq_wake(ddata->irq_flip_cover);
+#else
 	enable_irq_wake(ddata->irq_flip_cover);
+#endif
 
 	if (device_may_wakeup(dev)) {
 		enable_irq_wake(ddata->irq_flip_cover);
@@ -391,6 +618,12 @@ static int hall_resume(struct device *dev)
 	status = gpio_get_value(ddata->gpio_flip_cover);
 	printk("[keys] %s flip_status : %d (%s)\n", __func__, status, status?"open":"close");
 	input_sync(input);
+/* WorkAround for Hall IRQ Noise problem in connect to GGSM band */
+#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
+	/* gsm_area can be controlled only in hall_irq_set */
+	if (g_drvdata->cover_state && g_drvdata->gsm_area)
+		hall_irq_set(enable, false);
+#endif
 
 	return 0;
 }

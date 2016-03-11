@@ -357,11 +357,13 @@ static bool rt6_check_expired(const struct rt6_info *rt)
 	return false;
 }
 
+#ifndef CONFIG_MPTCP
 static bool rt6_need_strict(const struct in6_addr *daddr)
 {
 	return ipv6_addr_type(daddr) &
 		(IPV6_ADDR_MULTICAST | IPV6_ADDR_LINKLOCAL | IPV6_ADDR_LOOPBACK);
 }
+#endif
 
 /* Multipath route selection:
  *   Hash based function using packet header and flowlabel.

@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: linux_osl.h 552134 2015-04-24 23:49:11Z $
+ * $Id: linux_osl.h 601764 2015-11-24 03:47:41Z $
  */
 
 #ifndef _linux_osl_h_
@@ -174,17 +174,20 @@ extern void osl_dma_free_consistent(osl_t *osh, void *va, uint size, dmaaddr_t p
 	osl_dma_unmap((osh), (pa), (size), (direction))
 extern dmaaddr_t osl_dma_map(osl_t *osh, void *va, uint size, int direction, void *p,
 	hnddma_seg_map_t *txp_dmah);
-extern void osl_dma_unmap(osl_t *osh, uint pa, uint size, int direction);
+extern void osl_dma_unmap(osl_t *osh, dmaaddr_t pa, uint size, int direction);
 
 /* API for DMA addressing capability */
 #define OSL_DMADDRWIDTH(osh, addrwidth) ({BCM_REFERENCE(osh); BCM_REFERENCE(addrwidth);})
+
+#define OSL_SMP_WMB()	smp_wmb()
 
 /* API for CPU relax */
 extern void osl_cpu_relax(void);
 #define OSL_CPU_RELAX() osl_cpu_relax()
 
 #if (!defined(DHD_USE_COHERENT_MEM_FOR_RING) && defined(__ARM_ARCH_7A__)) || \
-	(defined(STBLINUX) && defined(__ARM_ARCH_7A__))
+	(defined(STBLINUX) && defined(__ARM_ARCH_7A__)) || (defined(CONFIG_ARCH_MSM8996) || \
+	defined(CONFIG_SOC_EXYNOS8890))
 	extern void osl_cache_flush(void *va, uint size);
 	extern void osl_cache_inv(void *va, uint size);
 	extern void osl_prefetch(const void *ptr);

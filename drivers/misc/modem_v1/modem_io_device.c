@@ -377,7 +377,6 @@ static int rx_demux(struct link_device *ld, struct sk_buff *skb)
 	if (atomic_read(&iod->opened) <= 0) {
 		mif_err_limited("%s: ERR! %s is not opened\n",
 				ld->name, iod->name);
-		modemctl_notify_event(MDM_EVENT_CP_ABNORMAL_RX);
 		return -ENODEV;
 	}
 
@@ -914,7 +913,6 @@ static int io_dev_recv_net_skb_from_link_dev(struct io_device *iod,
 		struct modem_ctl *mc = iod->mc;
 		mif_err_limited("%s: %s<-%s: ERR! %s is not opened\n",
 				ld->name, iod->name, mc->name, iod->name);
-		modemctl_notify_event(MDM_EVENT_CP_ABNORMAL_RX);
 		return -ENODEV;
 	}
 
@@ -990,7 +988,7 @@ static int misc_open(struct inode *inode, struct file *filp)
 		if (IS_CONNECTED(iod, ld) && ld->init_comm) {
 			ret = ld->init_comm(ld, iod);
 			if (ret < 0) {
-				mif_err("%s<->%s: ERR! init_comm fail(%d)\n",
+				mif_debug("%s<->%s: ERR! init_comm fail(%d)\n",
 					iod->name, ld->name, ret);
 				atomic_dec(&iod->opened);
 				return ret;
@@ -1198,7 +1196,8 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				iod->name);
 			iod->msd->is_crash_by_ril = true;
 
-			return mc->ops.modem_force_crash_exit(mc);
+			modemctl_notify_event(MDM_EVENT_CP_FORCE_CRASH);
+			return 0;
 		}
 		mif_err("%s: !mc->ops.modem_force_crash_exit\n", iod->name);
 		return -EINVAL;
@@ -1248,22 +1247,35 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	case IOCTL_MODEM_CP_UPLOAD:
 	{
-		char *buff = iod->msd->cp_crash_info+
-			     strlen(CP_CRASH_TAG)+
-			     (iod->msd->is_crash_by_ril ?
-				strlen(CP_CRASH_BY_RIL) : 0);
+		char *buff;
+		unsigned int log_len = 0;
 		void __user *user_buff = (void __user *)arg;
 
 		mif_err("%s: ERR! IOCTL_MODEM_CP_UPLOAD\n", iod->name);
-		strcpy(iod->msd->cp_crash_info, CP_CRASH_TAG);
 
-		if (iod->msd->is_crash_by_ril)
-			strcat(iod->msd->cp_crash_info, CP_CRASH_BY_RIL);
+		strcpy(iod->msd->cp_crash_info, CP_CRASH_TAG);
+		log_len = strlen(CP_CRASH_TAG);
+
+		if (iod->msd->is_crash_by_ril) {
+			strncat(iod->msd->cp_crash_info,
+				CP_CRASH_BY_RIL,
+				strlen(CP_CRASH_BY_RIL));
+				log_len += strlen(CP_CRASH_BY_RIL);
+		}
+
+		if (mc->ops.modem_cp_upload) {
+			log_len += mc->ops.modem_cp_upload(mc,
+						iod->msd->cp_crash_info +
+							  log_len);
+		}
+
+		buff = iod->msd->cp_crash_info + log_len;
 
 		if (arg) {
 			if (copy_from_user(buff, user_buff, CP_CRASH_INFO_SIZE))
 				return -EFAULT;
 		}
+
 		panic(iod->msd->cp_crash_info);
 		return 0;
 	}
@@ -1844,7 +1856,6 @@ int sipc5_init_io_device(struct io_device *iod)
 
 		iod->miscdev.minor = MISC_DYNAMIC_MINOR;
 		iod->miscdev.name = iod->name;
-		iod->miscdev.fops = &misc_io_fops;
 
 		ret = misc_register(&iod->miscdev);
 		if (ret)

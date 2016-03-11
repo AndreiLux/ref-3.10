@@ -26,7 +26,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: pcie_core.c 444841 2013-12-21 04:32:29Z $
+ * $Id: pcie_core.c 591285 2015-10-07 11:56:29Z $
  */
 
 #include <bcm_cfg.h>

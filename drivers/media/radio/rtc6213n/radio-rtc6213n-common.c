@@ -32,7 +32,7 @@
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include "radio-rtc6213n.h"
-
+#define new_volumecontrol
 /**************************************************************************
  * Module Parameters
  **************************************************************************/
@@ -70,6 +70,9 @@ static unsigned int seek_timeout = 8000;
 module_param(seek_timeout, uint, 0644);
 MODULE_PARM_DESC(seek_timeout, "Seek timeout: *8000*");
 
+#ifdef new_volumecontrol
+unsigned short global_volume;
+#endif
 /**************************************************************************
  * Generic Functions
  **************************************************************************/
@@ -665,7 +668,11 @@ static int rtc6213n_vidioc_g_ctrl(struct file *file, void *priv,
 
 	switch (ctrl->id) {
 	case V4L2_CID_AUDIO_VOLUME:
+	#ifdef new_volumecontrol
+		ctrl->value = global_volume;
+	#else
 		ctrl->value = radio->registers[MPXCFG] & MPXCFG_CSR0_VOLUME;
+	#endif
 		break;
 	case V4L2_CID_AUDIO_MUTE:
 		ctrl->value = ((radio->registers[MPXCFG] &
@@ -736,13 +743,31 @@ static int rtc6213n_vidioc_s_ctrl(struct file *file, void *priv,
 	case V4L2_CID_AUDIO_VOLUME:
 		dev_info(&radio->videodev->dev, "V4L2_CID_AUDIO_VOLUME : MPXCFG=0x%4.4hx POWERCFG=0x%4.4hx\n",
 			radio->registers[MPXCFG], radio->registers[POWERCFG]);
+	#ifdef new_volumecontrol
+		global_volume = ctrl->value;
+
 		radio->registers[MPXCFG] &= ~MPXCFG_CSR0_VOLUME;
 		radio->registers[MPXCFG] |=
-			(ctrl->value > 15) ? 8 : ctrl->value;
+			(ctrl->value < 9) ?
+			((ctrl->value == 0) ? 0 : (2*ctrl->value - 1)) :
+			ctrl->value;
+		radio->registers[POWERCFG] =
+			(ctrl->value < 9) ?
+			(radio->registers[POWERCFG] | 0x0008) :
+			(radio->registers[POWERCFG] & 0xFFF7);
 
 		dev_info(&radio->videodev->dev, "V4L2_CID_AUDIO_VOLUME : MPXCFG=0x%4.4hx POWERCFG=0x%4.4hx\n",
 			radio->registers[MPXCFG], radio->registers[POWERCFG]);
+		retval = rtc6213n_set_register(radio, POWERCFG);
+
+	#else
+		radio->registers[MPXCFG] &= ~MPXCFG_CSR0_VOLUME;
+		radio->registers[MPXCFG] |=
+			(ctrl->value > 15) ? 8 : ctrl->value;
+		dev_info(&radio->videodev->dev, "V4L2_CID_AUDIO_VOLUME : MPXCFG=0x%4.4hx POWERCFG=0x%4.4hx\n",
+			radio->registers[MPXCFG], radio->registers[POWERCFG]);
 		retval = rtc6213n_set_register(radio, MPXCFG);
+	#endif
 		break;
 	case V4L2_CID_AUDIO_MUTE:
 		if (ctrl->value == 1)

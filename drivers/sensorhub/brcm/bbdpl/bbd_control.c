@@ -32,7 +32,8 @@ void bcm4773_mcu_resp_float(bool do_float);
 void BbdEngine_SetUp(struct BbdEngine *p);
 struct ssp_data;
 extern void reset_mcu(struct ssp_data *data);
-
+extern int bcm477x_init_xfer(void);
+extern int bcm477x_flush_xfer(void);
 extern bool ssp_dbg;
 extern bool ssp_pkt_dbg;
 extern bool ssi_dbg;
@@ -240,6 +241,10 @@ ssize_t bbd_ESW_control(char *buf, ssize_t len)
 	} else if (strstr(buf, BBD_CTRL_SHMD_OFF)) {
                 gpbbd_dev->shmd = false;
 		bSetup = true;
+	} else if (strstr(buf, BBD_CTRL_SSI_PATCH_BEGIN)) {
+		bcm477x_init_xfer();
+	} else if (strstr(buf, BBD_CTRL_SSI_PATCH_END)) {
+		bcm477x_flush_xfer();	
 	} else if (strstr(buf, BBD_CTRL_SPI)) {
                 bbd_tty_close();
                 gpbbd_dev->sio_type = BBD_SERIAL_SPI;

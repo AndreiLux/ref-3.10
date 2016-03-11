@@ -34,6 +34,20 @@
 #define P61_RW_SPI_DATA _IOWR(P61_MAGIC, 0x07, unsigned long)
 /* only nonTZ -----*/
 
+/*
+ * SPI Request NFCC to enable p61 power, only in param
+ * Only for SPI
+ * level 1 = Enable power
+ * level 0 = Disable power
+ */
+#define P61_SET_SPM_PWR    _IOW(P61_MAGIC, 0x08, unsigned int)
+
+/* SPI or DWP can call this ioctl to get the current
+ * power state of P61
+ *
+*/
+#define P61_GET_SPM_STATUS    _IOR(P61_MAGIC, 0x09, unsigned int)
+
 struct p61_ioctl_transfer {
 	unsigned char *rx_buffer;
 	unsigned char *tx_buffer;

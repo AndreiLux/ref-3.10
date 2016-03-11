@@ -29,8 +29,8 @@ unsigned int s6e3hf2_lcd_type = S6E3HF2_LCDTYPE_WQHD;
 
 #ifdef CONFIG_PANEL_AID_DIMMING
 static const unsigned char *HBM_TABLE[HBM_STATUS_MAX] = {SEQ_HBM_OFF, SEQ_HBM_ON};
-static const unsigned char *ACL_CUTOFF_TABLE[ACL_STATUS_MAX] = {SEQ_ACL_OFF, SEQ_ACL_8};
-static const unsigned char *ACL_OPR_TABLE[ACL_OPR_MAX] = {SEQ_ACL_OFF_OPR_AVR, SEQ_ACL_ON_OPR_AVR};
+static const unsigned char *ACL_CUTOFF_TABLE[ACL_STATUS_MAX] = {S6E3HF2_SEQ_ACL_OFF, S6E3HF2_SEQ_ACL_ON};
+static const unsigned char *ACL_OPR_TABLE[ACL_OPR_MAX] = {S6E3HF2_SEQ_ACL_OFF_OPR, S6E3HF2_SEQ_ACL_ON_OPR_8, S6E3HF2_SEQ_ACL_ON_OPR_15};
 
 static const unsigned int br_tbl [256] = {
 	2, 2, 2, 3,	4, 5, 6, 7,	8,	9,	10,	11,	12,	13,	14,	15,		// 16
@@ -54,7 +54,7 @@ static const unsigned int br_tbl [256] = {
 	282, 282, 282, 300, 300, 300, 300, 300,	300, 300, 300,
 	300, 300, 300, 300, 316, 316, 316, 316, 316, 316, 316,
 	316, 316, 316, 316, 316, 333, 333, 333, 333, 333, 333,
-	333, 333, 333, 333, 333, 333, 360							//7
+	333, 333, 333, 333, 333, 333, 333							//7
 };
 
 
@@ -348,82 +348,82 @@ struct SmtDimInfo daisy_dimming_info_RD[MAX_BR_INFO] = {				// add hbm array
 	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps17, .elv = delv17, .way = W4},
 };
 
-struct SmtDimInfo a3_daisy_dimming_info_RD[MAX_BR_INFO + 1] = {				// add hbm array
-	{.br = 2, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl2nit, .cTbl = RDdctbl2nit, .aid = aid9798, .elvCaps = delvCaps5, .elv = delv5, .way = W1},
-	{.br = 3, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl3nit, .cTbl = RDdctbl3nit, .aid = aid9720, .elvCaps = delvCaps4, .elv = delv4, .way = W1},
-	{.br = 4, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl4nit, .cTbl = RDdctbl4nit, .aid = aid9612, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
-	{.br = 5, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl5nit, .cTbl = RDdctbl5nit, .aid = aid9530, .elvCaps = delvCaps2, .elv = delv2, .way = W1},
-	{.br = 6, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl6nit, .cTbl = RDdctbl6nit, .aid = aid9449, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 7, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl7nit, .cTbl = RDdctbl7nit, .aid = aid9359, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 8, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl8nit, .cTbl = RDdctbl8nit, .aid = aid9282, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 9, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl9nit, .cTbl = RDdctbl9nit, .aid = aid9208, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 10, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl10nit, .cTbl = RDdctbl10nit, .aid = aid9115, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 11, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl11nit, .cTbl = RDdctbl11nit, .aid = aid8998, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 12, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl12nit, .cTbl = RDdctbl12nit, .aid = aid8960, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 13, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl13nit, .cTbl = RDdctbl13nit, .aid = aid8894, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 14, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl14nit, .cTbl = RDdctbl14nit, .aid = aid8832, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 15, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl15nit, .cTbl = RDdctbl15nit, .aid = aid8723, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 16, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl16nit, .cTbl = RDdctbl16nit, .aid = aid8653, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 17, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl17nit, .cTbl = RDdctbl17nit, .aid = aid8575, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 19, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl19nit, .cTbl = RDdctbl19nit, .aid = aid8381, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 20, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl20nit, .cTbl = RDdctbl20nit, .aid = aid8292, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 21, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl21nit, .cTbl = RDdctbl21nit, .aid = aid8218, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 22, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl22nit, .cTbl = RDdctbl22nit, .aid = aid8148, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 24, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl24nit, .cTbl = RDdctbl24nit, .aid = aid7966, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 25, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl25nit, .cTbl = RDdctbl25nit, .aid = aid7865, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 27, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl27nit, .cTbl = RDdctbl27nit, .aid = aid7710, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 29, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl29nit, .cTbl = RDdctbl29nit, .aid = aid7512, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 30, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl30nit, .cTbl = RDdctbl30nit, .aid = aid7384, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 32, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl32nit, .cTbl = RDdctbl32nit, .aid = aid7267, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 34, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl34nit, .cTbl = RDdctbl34nit, .aid = aid7089, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 37, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl37nit, .cTbl = RDdctbl37nit, .aid = aid6813, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 39, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl39nit, .cTbl = RDdctbl39nit, .aid = aid6658, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 41, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl41nit, .cTbl = RDdctbl41nit, .aid = aid6467, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 44, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl44nit, .cTbl = RDdctbl44nit, .aid = aid6188, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 47, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl47nit, .cTbl = RDdctbl47nit, .aid = aid5920, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 50, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl50nit, .cTbl = RDdctbl50nit, .aid = aid5637, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 53, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl53nit, .cTbl = RDdctbl53nit, .aid = aid5365, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 56, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl56nit, .cTbl = RDdctbl56nit, .aid = aid5085, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 60, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl60nit, .cTbl = RDdctbl60nit, .aid = aid4732, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 64, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl64nit, .cTbl = RDdctbl64nit, .aid = aid4344, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 68, .refBr = 113, .cGma = gma2p15, .rTbl = RDdrtbl68nit, .cTbl = RDdctbl68nit, .aid = aid3956, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 72, .refBr = 112, .cGma = gma2p15, .rTbl = RDdrtbl72nit, .cTbl = RDdctbl72nit, .aid = aid3637, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 77, .refBr = 120, .cGma = gma2p15, .rTbl = RDdrtbl77nit, .cTbl = RDdctbl77nit, .aid = aid3637_1, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 82, .refBr = 127, .cGma = gma2p15, .rTbl = RDdrtbl82nit, .cTbl = RDdctbl82nit, .aid = aid3637_2, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
-	{.br = 87, .refBr = 132, .cGma = gma2p15, .rTbl = RDdrtbl87nit, .cTbl = RDdctbl87nit, .aid = aid3637_3, .elvCaps = delvCaps2, .elv = delv2, .way = W1},
-	{.br = 93, .refBr = 142, .cGma = gma2p15, .rTbl = RDdrtbl93nit, .cTbl = RDdctbl93nit, .aid = aid3637_4, .elvCaps = delvCaps2, .elv = delv2, .way = W1},
-	{.br = 98, .refBr = 148, .cGma = gma2p15, .rTbl = RDdrtbl98nit, .cTbl = RDdctbl98nit, .aid = aid3637_5, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
-	{.br = 105, .refBr = 158, .cGma = gma2p15, .rTbl = RDdrtbl105nit, .cTbl = RDdctbl105nit, .aid = aid3637_6, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
-	{.br = 110, .refBr = 165, .cGma = gma2p15, .rTbl = RDdrtbl110nit, .cTbl = RDdctbl110nit, .aid = aid3637_7, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
-	{.br = 119, .refBr = 176, .cGma = gma2p15, .rTbl = RDdrtbl119nit, .cTbl = RDdctbl119nit, .aid = aid3637_8, .elvCaps = delvCaps4, .elv = delv4, .way = W1},
-	{.br = 126, .refBr = 186, .cGma = gma2p15, .rTbl = RDdrtbl126nit, .cTbl = RDdctbl126nit, .aid = aid3637_9, .elvCaps = delvCaps4, .elv = delv4, .way = W1},
-	{.br = 134, .refBr = 196, .cGma = gma2p15, .rTbl = RDdrtbl134nit, .cTbl = RDdctbl134nit, .aid = aid3637_10, .elvCaps = delvCaps5, .elv = delv5, .way = W1},
-	{.br = 143, .refBr = 205, .cGma = gma2p15, .rTbl = RDdrtbl143nit, .cTbl = RDdctbl143nit, .aid = aid3637_11, .elvCaps = delvCaps6, .elv = delv6, .way = W1},
-	{.br = 152, .refBr = 217, .cGma = gma2p15, .rTbl = RDdrtbl152nit, .cTbl = RDdctbl152nit, .aid = aid3637_12, .elvCaps = delvCaps6, .elv = delv6, .way = W1},
-	{.br = 162, .refBr = 228, .cGma = gma2p15, .rTbl = RDdrtbl162nit, .cTbl = RDdctbl162nit, .aid = aid3637_13, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
-	{.br = 172, .refBr = 243, .cGma = gma2p15, .rTbl = RDdrtbl172nit, .cTbl = RDdctbl172nit, .aid = aid3637_14, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
-	{.br = 183, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl183nit, .cTbl = RDdctbl183nit, .aid = aid3637_15, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
-	{.br = 195, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl195nit, .cTbl = RDdctbl195nit, .aid = aid3168, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
-	{.br = 207, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl207nit, .cTbl = RDdctbl207nit, .aid = aid2659, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
-	{.br = 220, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl220nit, .cTbl = RDdctbl220nit, .aid = aid2186, .elvCaps = delvCaps8, .elv = delv8, .way = W1},
-	{.br = 234, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl234nit, .cTbl = RDdctbl234nit, .aid = aid1580, .elvCaps = delvCaps8, .elv = delv8, .way = W1},
-	{.br = 249, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl249nit, .cTbl = RDdctbl249nit, .aid = aid1005, .elvCaps = delvCaps9, .elv = delv9, .way = W1},		// 249 ~ 360nit acl off
-	{.br = 265, .refBr = 274, .cGma = gma2p15, .rTbl = RDdrtbl265nit, .cTbl = RDdctbl265nit, .aid = aid1005_1, .elvCaps = delvCaps9, .elv = delv9, .way = W1},
-	{.br = 282, .refBr = 286, .cGma = gma2p15, .rTbl = RDdrtbl282nit, .cTbl = RDdctbl282nit, .aid = aid1005_2, .elvCaps = delvCaps10, .elv = delv10, .way = W1},
-	{.br = 300, .refBr = 307, .cGma = gma2p15, .rTbl = RDdrtbl300nit, .cTbl = RDdctbl300nit, .aid = aid1005_3, .elvCaps = delvCaps10, .elv = delv10, .way = W1},
-	{.br = 316, .refBr = 320, .cGma = gma2p15, .rTbl = RDdrtbl316nit, .cTbl = RDdctbl316nit, .aid = aid1005_4, .elvCaps = delvCaps11, .elv = delv11, .way = W1},
-	{.br = 333, .refBr = 339, .cGma = gma2p15, .rTbl = RDdrtbl333nit, .cTbl = RDdctbl333nit, .aid = aid1005_5, .elvCaps = delvCaps11, .elv = delv11, .way = W1},
-	{.br = 360, .refBr = 360, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_6, .elvCaps = delvCaps12, .elv = delv12, .way = W2},
+struct SmtDimInfo a3_daisy_dimming_info[MAX_BR_INFO + 1] = {				// add hbm array
+	{.br = 2, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl2nit, .cTbl = A3ctbl2nit, .aid = aid9821, .elvCaps = delvCaps5, .elv = delv5, .way = W1},
+	{.br = 3, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl3nit, .cTbl = A3ctbl3nit, .aid = aid9717, .elvCaps = delvCaps4, .elv = delv4, .way = W1},
+	{.br = 4, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl4nit, .cTbl = A3ctbl4nit, .aid = aid9639, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
+	{.br = 5, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl5nit, .cTbl = A3ctbl5nit, .aid = aid9526, .elvCaps = delvCaps2, .elv = delv2, .way = W1},
+	{.br = 6, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl6nit, .cTbl = A3ctbl6nit, .aid = aid9449, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 7, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl7nit, .cTbl = A3ctbl7nit, .aid = aid9344, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 8, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl8nit, .cTbl = A3ctbl8nit, .aid = aid9270, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 9, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl9nit, .cTbl = A3ctbl9nit, .aid = aid9200, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 10, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl10nit, .cTbl = A3ctbl10nit, .aid = aid9095, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 11, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl11nit, .cTbl = A3ctbl11nit, .aid = aid9026, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 12, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl12nit, .cTbl = A3ctbl12nit, .aid = aid8956, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 13, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl13nit, .cTbl = A3ctbl13nit, .aid = aid8886, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 14, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl14nit, .cTbl = A3ctbl14nit, .aid = aid8793, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 15, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl15nit, .cTbl = A3ctbl15nit, .aid = aid8715, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 16, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl16nit, .cTbl = A3ctbl16nit, .aid = aid8622, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 17, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl17nit, .cTbl = A3ctbl17nit, .aid = aid8536, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 19, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl19nit, .cTbl = A3ctbl19nit, .aid = aid8373, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 20, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl20nit, .cTbl = A3ctbl20nit, .aid = aid8280, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 21, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl21nit, .cTbl = A3ctbl21nit, .aid = aid8207, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 22, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl22nit, .cTbl = A3ctbl22nit, .aid = aid8102, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 24, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl24nit, .cTbl = A3ctbl24nit, .aid = aid7923, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 25, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl25nit, .cTbl = A3ctbl25nit, .aid = aid7842, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 27, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl27nit, .cTbl = A3ctbl27nit, .aid = aid7667, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 29, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl29nit, .cTbl = A3ctbl29nit, .aid = aid7488, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 30, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl30nit, .cTbl = A3ctbl30nit, .aid = aid7411, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 32, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl32nit, .cTbl = A3ctbl32nit, .aid = aid7224, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 34, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl34nit, .cTbl = A3ctbl34nit, .aid = aid7046, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 37, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl37nit, .cTbl = A3ctbl37nit, .aid = aid6786, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 39, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl39nit, .cTbl = A3ctbl39nit, .aid = aid6603, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 41, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl41nit, .cTbl = A3ctbl41nit, .aid = aid6413, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 44, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl44nit, .cTbl = A3ctbl44nit, .aid = aid6153, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 47, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl47nit, .cTbl = A3ctbl47nit, .aid = aid5862, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 50, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl50nit, .cTbl = A3ctbl50nit, .aid = aid5598, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 53, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl53nit, .cTbl = A3ctbl53nit, .aid = aid5303, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 56, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl56nit, .cTbl = A3ctbl56nit, .aid = aid5004, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 60, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl60nit, .cTbl = A3ctbl60nit, .aid = aid4655, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 64, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl64nit, .cTbl = A3ctbl64nit, .aid = aid4266, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 68, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl68nit, .cTbl = A3ctbl68nit, .aid = aid3874, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 72, .refBr = 112, .cGma = gma2p15, .rTbl = A3rtbl72nit, .cTbl = A3ctbl72nit, .aid = aid3587, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 77, .refBr = 121, .cGma = gma2p15, .rTbl = A3rtbl77nit, .cTbl = A3ctbl77nit, .aid = aid3587, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 82, .refBr = 129, .cGma = gma2p15, .rTbl = A3rtbl82nit, .cTbl = A3ctbl82nit, .aid = aid3587, .elvCaps = delvCaps1, .elv = delv1, .way = W1},
+	{.br = 87, .refBr = 134, .cGma = gma2p15, .rTbl = A3rtbl87nit, .cTbl = A3ctbl87nit, .aid = aid3587, .elvCaps = delvCaps2, .elv = delv2, .way = W1},
+	{.br = 93, .refBr = 144, .cGma = gma2p15, .rTbl = A3rtbl93nit, .cTbl = A3ctbl93nit, .aid = aid3587, .elvCaps = delvCaps2, .elv = delv2, .way = W1},
+	{.br = 98, .refBr = 150, .cGma = gma2p15, .rTbl = A3rtbl98nit, .cTbl = A3ctbl98nit, .aid = aid3587, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
+	{.br = 105, .refBr = 162, .cGma = gma2p15, .rTbl = A3rtbl105nit, .cTbl = A3ctbl105nit, .aid = aid3587, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
+	{.br = 110, .refBr = 169, .cGma = gma2p15, .rTbl = A3rtbl110nit, .cTbl = A3ctbl110nit, .aid = aid3587, .elvCaps = delvCaps3, .elv = delv3, .way = W1},
+	{.br = 119, .refBr = 178, .cGma = gma2p15, .rTbl = A3rtbl119nit, .cTbl = A3ctbl119nit, .aid = aid3587, .elvCaps = delvCaps4, .elv = delv4, .way = W1},
+	{.br = 126, .refBr = 188, .cGma = gma2p15, .rTbl = A3rtbl126nit, .cTbl = A3ctbl126nit, .aid = aid3587, .elvCaps = delvCaps4, .elv = delv4, .way = W1},
+	{.br = 134, .refBr = 198, .cGma = gma2p15, .rTbl = A3rtbl134nit, .cTbl = A3ctbl134nit, .aid = aid3587, .elvCaps = delvCaps5, .elv = delv5, .way = W1},
+	{.br = 143, .refBr = 209, .cGma = gma2p15, .rTbl = A3rtbl143nit, .cTbl = A3ctbl143nit, .aid = aid3587, .elvCaps = delvCaps6, .elv = delv6, .way = W1},
+	{.br = 152, .refBr = 220, .cGma = gma2p15, .rTbl = A3rtbl152nit, .cTbl = A3ctbl152nit, .aid = aid3587, .elvCaps = delvCaps6, .elv = delv6, .way = W1},
+	{.br = 162, .refBr = 232, .cGma = gma2p15, .rTbl = A3rtbl162nit, .cTbl = A3ctbl162nit, .aid = aid3587, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
+	{.br = 172, .refBr = 245, .cGma = gma2p15, .rTbl = A3rtbl172nit, .cTbl = A3ctbl172nit, .aid = aid3587, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
+	{.br = 183, .refBr = 259, .cGma = gma2p15, .rTbl = A3rtbl183nit, .cTbl = A3ctbl183nit, .aid = aid3587, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
+	{.br = 195, .refBr = 259, .cGma = gma2p15, .rTbl = A3rtbl195nit, .cTbl = A3ctbl195nit, .aid = aid3078, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
+	{.br = 207, .refBr = 259, .cGma = gma2p15, .rTbl = A3rtbl207nit, .cTbl = A3ctbl207nit, .aid = aid2613, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
+	{.br = 220, .refBr = 259, .cGma = gma2p15, .rTbl = A3rtbl220nit, .cTbl = A3ctbl220nit, .aid = aid2108, .elvCaps = delvCaps8, .elv = delv8, .way = W1},
+	{.br = 234, .refBr = 259, .cGma = gma2p15, .rTbl = A3rtbl234nit, .cTbl = A3ctbl234nit, .aid = aid1553, .elvCaps = delvCaps8, .elv = delv8, .way = W1},
+	{.br = 249, .refBr = 259, .cGma = gma2p15, .rTbl = A3rtbl249nit, .cTbl = A3ctbl249nit, .aid = aid1005, .elvCaps = delvCaps9, .elv = delv9, .way = W1},		// 249 ~ 360nit acl off
+	{.br = 265, .refBr = 275, .cGma = gma2p15, .rTbl = A3rtbl265nit, .cTbl = A3ctbl265nit, .aid = aid1005, .elvCaps = delvCaps9, .elv = delv9, .way = W1},
+	{.br = 282, .refBr = 289, .cGma = gma2p15, .rTbl = A3rtbl282nit, .cTbl = A3ctbl282nit, .aid = aid1005, .elvCaps = delvCaps10, .elv = delv10, .way = W1},
+	{.br = 300, .refBr = 308, .cGma = gma2p15, .rTbl = A3rtbl300nit, .cTbl = A3ctbl300nit, .aid = aid1005, .elvCaps = delvCaps10, .elv = delv10, .way = W1},
+	{.br = 316, .refBr = 321, .cGma = gma2p15, .rTbl = A3rtbl316nit, .cTbl = A3ctbl316nit, .aid = aid1005, .elvCaps = delvCaps11, .elv = delv11, .way = W1},
+	{.br = 333, .refBr = 338, .cGma = gma2p15, .rTbl = A3rtbl333nit, .cTbl = A3ctbl333nit, .aid = aid1005, .elvCaps = delvCaps11, .elv = delv11, .way = W1},
+	{.br = 360, .refBr = 360, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W2},
 /*hbm interpolation */
-	{.br = 382, .refBr = 382, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_7, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 407, .refBr = 407, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_8, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 433, .refBr = 433, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_9, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_10, .elvCaps = delvCaps13, .elv = delv13, .way = W3},  // hbm is acl on
-	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_11, .elvCaps = delvCaps14, .elv = delv14, .way = W3},  // hbm is acl on
-	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_12, .elvCaps = delvCaps15, .elv = delv15, .way = W3},  // hbm is acl on
-	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_13, .elvCaps = delvCaps16, .elv = delv16, .way = W3},  // hbm is acl on
+	{.br = 382, .refBr = 382, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
+	{.br = 407, .refBr = 407, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
+	{.br = 433, .refBr = 433, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
+	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps13, .elv = delv13, .way = W3},  // hbm is acl on
+	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps14, .elv = delv14, .way = W3},  // hbm is acl on
+	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps15, .elv = delv15, .way = W3},  // hbm is acl on
+	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps16, .elv = delv16, .way = W3},  // hbm is acl on
 /* hbm */
-	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_14, .elvCaps = delvCaps17, .elv = delv17, .way = W4},
+	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = A3rtbl360nit, .cTbl = A3ctbl360nit, .aid = aid1005, .elvCaps = delvCaps17, .elv = delv17, .way = W4},
 };
 
 static int set_gamma_to_center(struct SmtDimInfo *brInfo)
@@ -636,752 +636,6 @@ exit:
 	return ret;
 }
 
-/* support a3 line panel efs data start */
-
-#define OCTA_A3_DIM_FILE_NAME				"/efs/FactoryApp/a3_line.dat"
-
-#define MAX_FILE_SIZE						20 * 1024
-#define TEMP_BUF_SIZE						512
-
-#define REF_GAMMA2_2 						220
-#define REG_GAMMA2_15 						215
-
-#define AID_REG_CNT							3
-
-#define BASIC_PARAM_ELEMENT_CNT				7
-
-#define COLOR_SHIFT_CNT						30
-#define COLOR_PARAM_ELEMENT_CNT				31
-
-#define REF_SHIFT_CNT						10
-#define REG_PARAM_ELEMENT_CNT 				11
-
-#define ELVSS_TEMP_COMP_CNT 				5
-#define ELVSS_TEMP_ELEMENT_CNT 				6
-
-#define ELVSS_MAX_INDEX 					2
-
-#define HMT_AID_REG_CNT						4
-#define HMT_BASIC_PARAM_ELEMENT_CNT			8
-
-#define VINT_TBL_CNT 						10
-#define VINT_ELEMENT_CNT 					11
-
-#define PHASE_BASIC_STRING 					"basic data"
-#define PHASE_REFERENCE_STRING 				"reference shift data"
-#define PHASE_COLOR_STRING 					"color shift data"
-#define PHASE_ELVSS_LOW_TEMP				"elvss low temperature"
-#define PHASE_HMT_BASIC_STRING				"hmt basic data"
-#define PHASE_HMT_REFERENCE_STRING 			"hmt reference shift data"
-#define PHASE_HMT_COLOR_STRING 				"hmt color shift data"
-#define PHASE_VINT_STRING					"vint data"
-
-#define PHASE_BASIC_INFO					0
-#define PHASE_REFRENCE_SHIFT 				1
-#define PHASE_COLOR_SHIFT 					2
-#define PHASE_ELVSS_LOW_TEMP_COMP			3
-#define PHASE_HMT_BASIC_INFO				4
-#define PHASE_HMT_REFRENCE_SHIFT			5
-#define PHASE_HMT_COLOR_SHIFT				6
-#define PHASE_VINT							7
-
-//#define A3_LINE_DEBUG 1
-
-static int read_buf_to_finalchar(char *buf, char *result, unsigned int offset)
-{
-	int i = 0;
-	int exit = 1;
-	char *tbuf = &buf[offset];
-
-	while(exit) {
-		if (tbuf[i] == 0)
-			return i;
-		else if (tbuf[i] == '\n')
-			exit = 0;
-		else
-			result[i] = tbuf[i];
-
-		i++;
-
-		if (i > TEMP_BUF_SIZE-1)
-			exit = 0;
-		if (i + offset > MAX_FILE_SIZE - 1)
-			exit = 0;
-	}
-	return i;
-}
-
-
-
-/* basic data format
- index, realbr, refbr, reference gamma, aid_reg_value0(hex), aid_reg_value1(hex) ,aid_reg_value2(hex)
- 0, 2, 113, 220/215, aid[0], ... , aid[2]
-*/
-
-static int parse_basic_data(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index, realbr, refbr, gamma;
-	int aid[AID_REG_CNT];
-	char *aidtbl = NULL;
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->dim_info;
-
-	ret = sscanf(buf, "%d, %d, %d, %d, %x, %x, %x",
-			&index, &realbr, &refbr, &gamma,
-			&aid[0], &aid[1], &aid[2]);
-	if (ret != BASIC_PARAM_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > MAX_BR_INFO) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	dsim_info("index : %d, realbr : %d, refbr :%d, gamma : %d, aid[0] : %x, aid[1] : %x, aid[2] : %x\n",
-		index, realbr, refbr, gamma, aid[0], aid[1], aid[2]);
-#endif
-
-	diminfo[index].br = realbr;
-	diminfo[index].refBr= refbr;
-	if (gamma == REF_GAMMA2_2) {
-		diminfo[index].cGma = gma2p20;
-	} else {
-		diminfo[index].cGma = gma2p15;
-	}
-	aidtbl = (char *)diminfo[index].aid;
-	if (aidtbl) {
-		for (i = 0; i < AID_REG_CNT; i++)
-			aidtbl[i] = aid[i];
-	}
-
-parse_exit:
-	return ret;
-}
-
-/* color shift data format
- index, value[0], ...,  value[20]
- 0, 2, 113,
-*/
-
-
-static int parse_color_shift(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index;
-	int color[COLOR_SHIFT_CNT];
-	char *colortbl = NULL;
-#ifdef A3_LINE_DEBUG
-	int cnt = 0;
-	char strbuf[512]= {0, };
-#endif
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->dim_info;
-
-	ret = sscanf(buf, "%d, \
-			%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, \
-			%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, \
-			%d, %d, %d, %d, %d, %d, %d, %d, %d, %d", &index,
-			&color[0], &color[1], &color[2], &color[3], &color[4],
-			&color[5], &color[6], &color[7], &color[8], &color[9],
-			&color[10], &color[11], &color[12], &color[13], &color[14],
-			&color[15], &color[16], &color[17], &color[18], &color[19],
-			&color[20], &color[21], &color[22], &color[23], &color[24],
-			&color[25], &color[26], &color[27], &color[28], &color[29]);
-
-	if (ret != COLOR_PARAM_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > MAX_BR_INFO) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	cnt = sprintf(strbuf, "index : %d ", index);
-	for (i = 0; i < COLOR_SHIFT_CNT; i++) {
-		cnt += sprintf(strbuf+cnt, "%d ", color[i]);
-	}
-	dsim_info("%s\n",strbuf);
-#endif
-
-	colortbl = (char *)diminfo[index].cTbl;
-	if (colortbl) {
-		for (i = 0; i < COLOR_SHIFT_CNT; i++)
-			colortbl[i] = color[i];
-	}
-
-parse_exit:
-	return ret;
-}
-
-/* color shift data format
- index, value[0], ...,  value[20]
- 0, 2, 113,
-*/
-static int parse_ref_shift(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index;
-	int shift[REF_SHIFT_CNT];
-	char *shifttbl = NULL;
-#ifdef A3_LINE_DEBUG
-	int cnt = 0;
-	char strbuf[512]= {0, };
-#endif
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->dim_info;
-
-	ret = sscanf(buf, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
-			&index,
-			&shift[0], &shift[1], &shift[2], &shift[3], &shift[4],
-			&shift[5], &shift[6], &shift[7], &shift[8], &shift[9]);
-	if (ret != REG_PARAM_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > MAX_BR_INFO) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	cnt = sprintf(strbuf, "index : %d ", index);
-	for (i = 0; i < REF_SHIFT_CNT; i++) {
-		cnt += sprintf(strbuf+cnt, "%d ", shift[i]);
-	}
-	dsim_info("%s\n", strbuf);
-#endif
-
-	shifttbl = (char *)diminfo[index].rTbl;
-	if (shifttbl) {
-		for (i = 0; i < REF_SHIFT_CNT; i++)
-			shifttbl[i] = shift[i];
-	}
-
-parse_exit:
-	return ret;
-}
-
-/* elvss for low temp
- index, value[0], ...,  value[4]
- 0, 2, 113,
-*/
-
-
-static int parse_elvss_low_temp(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index;
-	int elvss[ELVSS_TEMP_COMP_CNT];
-#ifdef A3_LINE_DEBUG
-	int cnt = 0;
-	char strbuf[512]= {0, };
-#endif
-
-	ret = sscanf(buf, "%d, %d, %d, %d, %d, %d",
-			&index,
-			&elvss[0], &elvss[1], &elvss[2], &elvss[3], &elvss[4]);
-
-	if (ret != ELVSS_TEMP_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > ELVSS_MAX_INDEX) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	cnt = sprintf(strbuf, "index : %d ", index);
-	for (i = 0; i < ELVSS_TEMP_COMP_CNT; i++) {
-		cnt += sprintf(strbuf+cnt, "%d ", elvss[i]);
-	}
-	dsim_info("%s\n", strbuf);
-#endif
-	for (i = 0; i < ELVSS_TEMP_COMP_CNT; i++) 	{
-		if (index == 0)
-			panel->a3_elvss_temp_0[i] = elvss[i];
-		else if (index == 1)
-			panel->a3_elvss_temp_20[i] = elvss[i];
-	}
-	panel->a3_elvss_updated = 1;
-
-parse_exit:
-	return ret;
-}
-
-/* basic data format hmt
- index, realbr, refbr, reference gamma, aid_reg_value0(hex),... ,aid_reg_value3(hex),
- 0, 2, 113, 220/215, aid[0], ... , aid[3]
-*/
-
-static int parse_hmt_basic_data(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index, realbr, refbr, gamma;
-	int aid[HMT_AID_REG_CNT];
-	char *aidtbl = NULL;
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->hmt_dim_info;
-
-	ret = sscanf(buf, "%d, %d, %d, %d, %x, %x, %x, %x",
-			&index, &realbr, &refbr, &gamma,
-			&aid[0], &aid[1], &aid[2], &aid[3]);
-	if (ret != HMT_BASIC_PARAM_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > HMT_MAX_BR_INFO) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	dsim_info("index:%d, realbr:%d, refbr:%d, gamma:%d, aid[0]:%x, aid[1]:%x, aid[2]:%x, aid[3]:%x\n",
-		index, realbr, refbr, gamma, aid[0], aid[1], aid[2], aid[3]);
-#endif
-
-	diminfo[index].br = realbr;
-	diminfo[index].refBr= refbr;
-	if (gamma == REF_GAMMA2_2) {
-		diminfo[index].cGma = gma2p20;
-	} else {
-		diminfo[index].cGma = gma2p15;
-	}
-	aidtbl = (char *)diminfo[index].aid;
-	if (aidtbl) {
-		for (i = 0; i < HMT_AID_REG_CNT; i++)
-			aidtbl[i] = aid[i];
-	}
-parse_exit:
-	return ret;
-}
-
-
-/* color shift data format
- index, value[0], ...,  value[20]
- 0, 2, 113,
-*/
-static int parse_hmt_ref_shift(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index;
-	int shift[REF_SHIFT_CNT];
-	char *shifttbl = NULL;
-#ifdef A3_LINE_DEBUG
-	int cnt = 0;
-	char strbuf[512]= {0, };
-#endif
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->hmt_dim_info;
-
-	ret = sscanf(buf, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
-			&index,
-			&shift[0], &shift[1], &shift[2], &shift[3], &shift[4],
-			&shift[5], &shift[6], &shift[7], &shift[8], &shift[9]);
-	if (ret != REG_PARAM_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > MAX_BR_INFO) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	cnt = sprintf(strbuf, "index : %d ", index);
-	for (i = 0; i < REF_SHIFT_CNT; i++) {
-		cnt += sprintf(strbuf+cnt, "%d ", shift[i]);
-	}
-	dsim_info("%s\n", strbuf);
-#endif
-
-	shifttbl = (char *)diminfo[index].rTbl;
-	if (shifttbl) {
-		for (i = 0; i < REF_SHIFT_CNT; i++)
-			shifttbl[i] = shift[i];
-	}
-
-parse_exit:
-	return ret;
-}
-
-
-static int parse_hmt_color_shift(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index;
-	int color[COLOR_SHIFT_CNT];
-	char *colortbl = NULL;
-#ifdef A3_LINE_DEBUG
-	int cnt = 0;
-	char strbuf[512]= {0, };
-#endif
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->hmt_dim_info;
-
-	ret = sscanf(buf, "%d, \
-			%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, \
-			%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, \
-			%d, %d, %d, %d, %d, %d, %d, %d, %d, %d", &index,
-			&color[0], &color[1], &color[2], &color[3], &color[4],
-			&color[5], &color[6], &color[7], &color[8], &color[9],
-			&color[10], &color[11], &color[12], &color[13], &color[14],
-			&color[15], &color[16], &color[17], &color[18], &color[19],
-			&color[20], &color[21], &color[22], &color[23], &color[24],
-			&color[25], &color[26], &color[27], &color[28], &color[29]);
-
-	if (ret != COLOR_PARAM_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-	if (index > MAX_BR_INFO) {
-		dsim_err("%s : invalid index : %d\n", __func__, index);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	cnt = sprintf(strbuf, "index : %d ", index);
-	for (i = 0; i < COLOR_SHIFT_CNT; i++) {
-		cnt += sprintf(strbuf+cnt, "%d ", color[i]);
-	}
-	dsim_info("%s\n",strbuf);
-#endif
-
-	colortbl = (char *)diminfo[index].cTbl;
-	if (colortbl) {
-		for (i = 0; i < COLOR_SHIFT_CNT; i++)
-			colortbl[i] = color[i];
-	}
-
-parse_exit:
-	return ret;
-}
-
-
-static int parse_vint_tbl(struct panel_private *panel, char *buf)
-{
-	int i;
-	int ret = 0;
-	int index;
-	int vint[VINT_TBL_CNT];
-#ifdef A3_LINE_DEBUG
-	int cnt = 0;
-	char strbuf[512]= {0, };
-#endif
-
-	ret = sscanf(buf, "%d, %x, %x, %x, %x, %x, %x, %x, %x, %x, %x",
-			&index,
-			&vint[0], &vint[1], &vint[2], &vint[3], &vint[4],
-			&vint[5], &vint[6], &vint[7], &vint[8], &vint[9]);
-	if (ret != VINT_ELEMENT_CNT) {
-		dsim_err("%s : invalid arg\n", __func__);
-		ret = -EINVAL;
-		goto parse_exit;
-	}
-
-#ifdef A3_LINE_DEBUG
-	cnt = sprintf(strbuf, "index : %d ", index);
-	for (i = 0; i < REF_SHIFT_CNT; i++) {
-		cnt += sprintf(strbuf+cnt, "%d ", vint[i]);
-	}
-	dsim_info("%s\n", strbuf);
-#endif
-
-	for (i = 0; i < VINT_TBL_CNT; i++)
-		panel->a3_vint[i] = vint[i];
-
-parse_exit:
-	return ret;
-}
-
-static int octa_a3_read_dim_data(struct panel_private *panel)
-{
-	int i;
-	int ret;
-	int filesize;
-	int exit = 1;
-	int offset = 0;
-	int parsephase = 0;
-	struct file* filp = NULL;
-	mm_segment_t oldfs;
-	char *filebuf = NULL;
-	char tempbuf[TEMP_BUF_SIZE];
-	struct dim_data *dimming;
-	struct dim_data *hmt_dimming;
-
-#ifdef A3_LINE_DEBUG
-	int j;
-	int debugbufcnt;
-	char debugbuf[512] = {0, };
-#endif
-	struct SmtDimInfo *diminfo = (struct SmtDimInfo *)panel->dim_info;
-	struct SmtDimInfo *hmt_diminfo = (struct SmtDimInfo *)panel->hmt_dim_info;
-
-	int (*parse_fn[8])(struct panel_private*, char *) = {
-		parse_basic_data,
-		parse_ref_shift,
-		parse_color_shift,
-		parse_elvss_low_temp,
-		parse_hmt_basic_data,
-		parse_hmt_ref_shift,
-		parse_hmt_color_shift,
-		parse_vint_tbl,
-	};
-
-	dsim_info("%s was called\n", __func__);
-
-	oldfs = get_fs();
-	set_fs(get_ds());
-
-	filp = filp_open(OCTA_A3_DIM_FILE_NAME, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		ret = -EAGAIN;
-		dsim_info("%s : failed to file open for octa a3\n", __func__);
-		goto read_data_exit;
-	}
-	dsim_info("flip open success\n");
-
-
-	filebuf = kmalloc(MAX_FILE_SIZE, GFP_KERNEL);
-	if (!filebuf) {
-		dsim_err("%s : failed to kmalloc for file buffer\n", __func__);
-		ret = -ENOMEM;
-		goto exit_close;
-	}
-
-	memset(filebuf, 0, MAX_FILE_SIZE);
-
-	filesize = filp->f_op->read(filp, filebuf, MAX_FILE_SIZE, &filp->f_pos);
-	if (filesize <= 0) {
-		dsim_err("%s : failed to read %s\n", __func__, OCTA_A3_DIM_FILE_NAME);
-		ret = -EINVAL;
-		goto exit_kfree;
-	}
-
-#ifdef A3_LINE_DEBUG
-	dsim_info("a3_line dimming data read count : %d\n", filesize);
-#endif
-	while(exit) {
-		memset(tempbuf, 0, TEMP_BUF_SIZE);
-		ret = read_buf_to_finalchar(filebuf, tempbuf, offset);
-		tempbuf[TEMP_BUF_SIZE-1] = 0;
-		dsim_info("read ret : %d\n", ret);
-		if (ret == 0) {
-			dsim_info("a3_line end of file\n");
-			exit = 0;
-		} else {
-#ifdef A3_LINE_DEBUG
-			dsim_info("str : %s\n", tempbuf);
-#endif
-			if (strncmp(tempbuf, PHASE_BASIC_STRING, strlen(PHASE_BASIC_STRING)) == 0) {
-				dsim_info("a3 line parse basic info\n");
-				parsephase = PHASE_BASIC_INFO;
-			} else if (strncmp(tempbuf, PHASE_REFERENCE_STRING, strlen(PHASE_REFERENCE_STRING)) == 0) {
-				dsim_info("a3 line parse reference info\n");
-				parsephase = PHASE_REFRENCE_SHIFT;
-			} else if (strncmp(tempbuf, PHASE_COLOR_STRING, strlen(PHASE_COLOR_STRING)) == 0) {
-				dsim_info("a3 line parse color info\n");
-				parsephase = PHASE_COLOR_SHIFT;
-			} else if (strncmp(tempbuf, PHASE_ELVSS_LOW_TEMP, strlen(PHASE_ELVSS_LOW_TEMP)) == 0) {
-				dsim_info("a3 line parse color info\n");
-				parsephase = PHASE_ELVSS_LOW_TEMP_COMP;
-			}  else if (strncmp(tempbuf, PHASE_HMT_BASIC_STRING, strlen(PHASE_HMT_BASIC_STRING)) == 0) {
-				dsim_info("a3 line parse hmt basic info\n");
-				parsephase = PHASE_HMT_BASIC_INFO;
-			}   else if (strncmp(tempbuf, PHASE_HMT_REFERENCE_STRING, strlen(PHASE_HMT_REFERENCE_STRING)) == 0) {
-				dsim_info("a3 line parse hmt reference info\n");
-				parsephase = PHASE_HMT_REFRENCE_SHIFT;
-			}   else if (strncmp(tempbuf, PHASE_HMT_COLOR_STRING, strlen(PHASE_HMT_COLOR_STRING)) == 0) {
-				dsim_info("a3 line parse hmt color info\n");
-				parsephase = PHASE_HMT_COLOR_SHIFT;
-			}
-			else {
-				parse_fn[parsephase](panel, tempbuf);
-			}
-			offset += ret;
-		}
-	}
-
-#ifdef A3_LINE_DEBUG
-	dsim_info("------------ ref br ------------ \n");
-	for (i = 0; i < MAX_BR_INFO; i++) {
-		dsim_info("real br : %d, ref br : %d\n", diminfo[i].br, diminfo[i].refBr);
-	}
-
-	dsim_info("------------ aid ------------ \n");
-	for (i = 0; i < MAX_BR_INFO; i++) {
-		dsim_info("index : %d, aid[0] : %x, aid[1] : %x, aid[2] : %x\n",
-			i, diminfo[i].aid[0], diminfo[i].aid[1], diminfo[i].aid[2]);
-	}
-	dsim_info("------------ reference shift ------------ \n");
-
-	for (i = 0; i < MAX_BR_INFO; i++) {
-		debugbufcnt = 0;
-		memset(debugbuf, 0, 512);
-		for (j = 0 ; j < REF_SHIFT_CNT; j++) {
-			debugbufcnt += sprintf(debugbuf+debugbufcnt, "%d ", diminfo[i].rTbl[j]);
-		}
-		dsim_info("%s\n", debugbuf);
-	}
-
-	dsim_info("------------ color shift ------------ \n");
-
-	for (i = 0; i < MAX_BR_INFO; i++) {
-		debugbufcnt = 0;
-		memset(debugbuf, 0, 512);
-		for (j = 0 ; j < COLOR_SHIFT_CNT; j++) {
-			debugbufcnt += sprintf(debugbuf+debugbufcnt, "%d ", diminfo[i].cTbl[j]);
-		}
-		dsim_info("%s\n", debugbuf);
-	}
-#endif
-
-#ifdef A3_LINE_DEBUG
-	dsim_info("------------ hmt ref br ------------ \n");
-	for (i = 0; i < HMT_MAX_BR_INFO; i++) {
-		dsim_info("real br : %d, ref br : %d\n", hmt_diminfo[i].br, hmt_diminfo[i].refBr);
-	}
-
-	dsim_info("------------ hmt aid ------------ \n");
-	for (i = 0; i < HMT_MAX_BR_INFO; i++) {
-		dsim_info("index : %d, aid[0]:%x, aid[1]:%x, aid[2]:%x, aid[3]:%x\n",
-			i, hmt_diminfo[i].aid[0], hmt_diminfo[i].aid[1], hmt_diminfo[i].aid[2], hmt_diminfo[i].aid[3]);
-	}
-
-	dsim_info("------------ hmt reference shift ------------ \n");
-
-	for (i = 0; i < HMT_MAX_BR_INFO; i++) {
-		debugbufcnt = 0;
-		memset(debugbuf, 0, 512);
-		for (j = 0 ; j < REF_SHIFT_CNT; j++) {
-			debugbufcnt += sprintf(debugbuf+debugbufcnt, "%d ", hmt_diminfo[i].rTbl[j]);
-		}
-		dsim_info("%s\n", debugbuf);
-	}
-
-	dsim_info("------------ htm color shift ------------ \n");
-
-	for (i = 0; i < HMT_MAX_BR_INFO; i++) {
-		debugbufcnt = 0;
-		memset(debugbuf, 0, 512);
-		for (j = 0 ; j < COLOR_SHIFT_CNT; j++) {
-			debugbufcnt += sprintf(debugbuf+debugbufcnt, "%d ", hmt_diminfo[i].cTbl[j]);
-		}
-		dsim_info("%s\n", debugbuf);
-	}
-#endif
-
-	dimming = (struct dim_data *)panel->dim_data;
-	if (!dimming) {
-		dsim_err("%s : failed to get dimming data\n", __func__);
-		goto exit_kfree;
-	}
-
-	for (i = 0; i < MAX_BR_INFO; i++) {
-		if (diminfo[i].way == DIMMING_METHOD_AID) {
-			ret = cal_gamma_from_index(dimming, &diminfo[i]);
-			if (ret) {
-				dsim_err("%s : failed to calculate gamma : index : %d\n", __func__, i);
-				goto exit_kfree;
-			}
-		}
-	}
-#ifdef A3_LINE_DEBUG
-	for (i = 0; i < MAX_BR_INFO; i++) {
-		memset(debugbuf, 0, sizeof(debugbuf));
-		debugbufcnt = sprintf(debugbuf, "gamma[%3d] : ",diminfo[i].br);
-
-		for(j = 0; j < GAMMA_CMD_CNT; j++)
-			debugbufcnt += sprintf(debugbuf + debugbufcnt, "%02x ", diminfo[i].gamma[j]);
-
-		dsim_info("%s\n", debugbuf);
-	}
-#endif
-
-	hmt_dimming = (struct dim_data *)panel->hmt_dim_data;
-	if (!hmt_dimming) {
-		dsim_err("%s : failed to get dimming data\n", __func__);
-		goto exit_kfree;
-	}
-
-	for (i = 0; i < HMT_MAX_BR_INFO; i++) {
-		ret = cal_gamma_from_index(hmt_dimming, &hmt_diminfo[i]);
-		if (ret) {
-			dsim_err("%s : failed to calculate gamma : index : %d\n", __func__, i);
-			goto exit_kfree;
-		}
-
-	}
-#ifdef A3_LINE_DEBUG
-	for (i = 0; i < HMT_MAX_BR_INFO; i++) {
-		memset(debugbuf, 0, sizeof(debugbuf));
-		debugbufcnt = sprintf(debugbuf, "gamma[%3d] : ",hmt_diminfo[i].br);
-
-		for(j = 0; j < GAMMA_CMD_CNT; j++)
-			debugbufcnt += sprintf(debugbuf + debugbufcnt, "%02x ", hmt_diminfo[i].gamma[j]);
-
-		dsim_info("%s\n", debugbuf);
-	}
-#endif
-
-exit_kfree:
-	kfree(filebuf);
-
-exit_close:
-	filp_close(filp, NULL);
-	set_fs(oldfs);
-
-read_data_exit:
-	return ret;
-
-}
-
-static void a3_line_read_work_fn(struct delayed_work *work)
-{
-	int ret = 0;
-	struct panel_private *panel =
-		container_of(work, struct panel_private, octa_a3_read_data_work);
-
-	dsim_info("a3 line read data : %d\n", panel->octa_a3_read_cnt);
-
-	ret = octa_a3_read_dim_data(panel);
-
-	if (ret == -EAGAIN && panel->octa_a3_read_cnt) {
-
-		queue_delayed_work(panel->octa_a3_read_data_work_q,
-					&panel->octa_a3_read_data_work, msecs_to_jiffies(500));
-		panel->octa_a3_read_cnt--;
-
-	}
-	else if (ret == 0) {
-		dsim_info("a3 line read success \n");
-
-	}
-
-}
-
-/* support a3 line panel efs data end */
-
 static int init_dimming(struct dsim_device *dsim, u8 *mtp, u8 *hbm)
 {
 	int i, j;
@@ -1409,19 +663,9 @@ static int init_dimming(struct dsim_device *dsim, u8 *mtp, u8 *hbm)
 	dsim_info("%s : Panel Line : %x Panel type : %d Panel rev : %d\n",
 			__func__, panelline, paneltype, panelrev);
 
-	panel->octa_a3_read_data_work_q = NULL;
-
 	if (panelline == S6E3HF2_A3_LINE_ID) {
 		dsim_info("%s init dimming info for A3 Line Daisy rev.D, E panel\n", __func__);
-		diminfo = (void *)a3_daisy_dimming_info_RD;
-
-/* support a3 line panel efs data start */
-		INIT_DELAYED_WORK(&panel->octa_a3_read_data_work,
-				(work_func_t)a3_line_read_work_fn);
-
-		panel->octa_a3_read_data_work_q =
-				create_singlethread_workqueue("octa_a3_workqueue");
-/* support a3 line panel efs data end */
+		diminfo = (void *)a3_daisy_dimming_info;
 	} else {
 		if (paneltype == 1) {
 			switch(panelrev) {
@@ -1548,15 +792,6 @@ static int init_dimming(struct dsim_device *dsim, u8 *mtp, u8 *hbm)
 		dsim_info("%s\n", string_buf);
 	}
 
-/* support a3 line panel efs data start */
-	if (panel->octa_a3_read_data_work_q) {
-		panel->octa_a3_read_cnt = 50;
-		queue_delayed_work(panel->octa_a3_read_data_work_q,
-					&panel->octa_a3_read_data_work, msecs_to_jiffies(500));
-	}
-/* support a3 line panel efs data end */
-
-
 error:
 	return ret;
 
@@ -1582,45 +817,86 @@ static const unsigned int hmt_br_tbl [256] = {
 	93, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 105
 };
 
-struct SmtDimInfo hmt_dimming_info[HMT_MAX_BR_INFO] = {
+struct SmtDimInfo a2_hmt_dimming_info[HMT_MAX_BR_INFO] = {
 	{.br = 10, .refBr = 52, .cGma = gma2p15, .rTbl = HMTrtbl10nit, .cTbl = HMTctbl10nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 11, .refBr = 57, .cGma = gma2p15, .rTbl = HMTrtbl11nit, .cTbl = HMTctbl11nit, .aid = HMTaid8001_1, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 12, .refBr = 61, .cGma = gma2p15, .rTbl = HMTrtbl12nit, .cTbl = HMTctbl12nit, .aid = HMTaid8001_2, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 13, .refBr = 66, .cGma = gma2p15, .rTbl = HMTrtbl13nit, .cTbl = HMTctbl13nit, .aid = HMTaid8001_3, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 14, .refBr = 70, .cGma = gma2p15, .rTbl = HMTrtbl14nit, .cTbl = HMTctbl14nit, .aid = HMTaid8001_4, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 15, .refBr = 74, .cGma = gma2p15, .rTbl = HMTrtbl15nit, .cTbl = HMTctbl15nit, .aid = HMTaid8001_5, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 16, .refBr = 79, .cGma = gma2p15, .rTbl = HMTrtbl16nit, .cTbl = HMTctbl16nit, .aid = HMTaid8001_6, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 17, .refBr = 82, .cGma = gma2p15, .rTbl = HMTrtbl17nit, .cTbl = HMTctbl17nit, .aid = HMTaid8001_7, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 19, .refBr = 91, .cGma = gma2p15, .rTbl = HMTrtbl19nit, .cTbl = HMTctbl19nit, .aid = HMTaid8001_8, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 20, .refBr = 94, .cGma = gma2p15, .rTbl = HMTrtbl20nit, .cTbl = HMTctbl20nit, .aid = HMTaid8001_9, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 21, .refBr = 98, .cGma = gma2p15, .rTbl = HMTrtbl21nit, .cTbl = HMTctbl21nit, .aid = HMTaid8001_10, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 22, .refBr = 101, .cGma = gma2p15, .rTbl = HMTrtbl22nit, .cTbl = HMTctbl22nit, .aid = HMTaid8001_11, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 23, .refBr = 106, .cGma = gma2p15, .rTbl = HMTrtbl23nit, .cTbl = HMTctbl23nit, .aid = HMTaid8001_12, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 25, .refBr = 112, .cGma = gma2p15, .rTbl = HMTrtbl25nit, .cTbl = HMTctbl25nit, .aid = HMTaid8001_13, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 27, .refBr = 121, .cGma = gma2p15, .rTbl = HMTrtbl27nit, .cTbl = HMTctbl27nit, .aid = HMTaid8001_14, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 29, .refBr = 127, .cGma = gma2p15, .rTbl = HMTrtbl29nit, .cTbl = HMTctbl29nit, .aid = HMTaid8001_15, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 31, .refBr = 136, .cGma = gma2p15, .rTbl = HMTrtbl31nit, .cTbl = HMTctbl31nit, .aid = HMTaid8001_16, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 33, .refBr = 143, .cGma = gma2p15, .rTbl = HMTrtbl33nit, .cTbl = HMTctbl33nit, .aid = HMTaid8001_17, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 35, .refBr = 151, .cGma = gma2p15, .rTbl = HMTrtbl35nit, .cTbl = HMTctbl35nit, .aid = HMTaid8001_18, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 37, .refBr = 160, .cGma = gma2p15, .rTbl = HMTrtbl37nit, .cTbl = HMTctbl37nit, .aid = HMTaid8001_19, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 39, .refBr = 167, .cGma = gma2p15, .rTbl = HMTrtbl39nit, .cTbl = HMTctbl39nit, .aid = HMTaid8001_20, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 41, .refBr = 174, .cGma = gma2p15, .rTbl = HMTrtbl41nit, .cTbl = HMTctbl41nit, .aid = HMTaid8001_21, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 44, .refBr = 185, .cGma = gma2p15, .rTbl = HMTrtbl44nit, .cTbl = HMTctbl44nit, .aid = HMTaid8001_22, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 47, .refBr = 195, .cGma = gma2p15, .rTbl = HMTrtbl47nit, .cTbl = HMTctbl47nit, .aid = HMTaid8001_23, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 50, .refBr = 206, .cGma = gma2p15, .rTbl = HMTrtbl50nit, .cTbl = HMTctbl50nit, .aid = HMTaid8001_24, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 53, .refBr = 217, .cGma = gma2p15, .rTbl = HMTrtbl53nit, .cTbl = HMTctbl53nit, .aid = HMTaid8001_25, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 56, .refBr = 227, .cGma = gma2p15, .rTbl = HMTrtbl56nit, .cTbl = HMTctbl56nit, .aid = HMTaid8001_26, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 60, .refBr = 239, .cGma = gma2p15, .rTbl = HMTrtbl60nit, .cTbl = HMTctbl60nit, .aid = HMTaid8001_27, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 64, .refBr = 254, .cGma = gma2p15, .rTbl = HMTrtbl64nit, .cTbl = HMTctbl64nit, .aid = HMTaid8001_28, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 68, .refBr = 267, .cGma = gma2p15, .rTbl = HMTrtbl68nit, .cTbl = HMTctbl68nit, .aid = HMTaid8001_29, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 72, .refBr = 281, .cGma = gma2p15, .rTbl = HMTrtbl72nit, .cTbl = HMTctbl72nit, .aid = HMTaid8001_30, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 11, .refBr = 57, .cGma = gma2p15, .rTbl = HMTrtbl11nit, .cTbl = HMTctbl11nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 12, .refBr = 61, .cGma = gma2p15, .rTbl = HMTrtbl12nit, .cTbl = HMTctbl12nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 13, .refBr = 66, .cGma = gma2p15, .rTbl = HMTrtbl13nit, .cTbl = HMTctbl13nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 14, .refBr = 70, .cGma = gma2p15, .rTbl = HMTrtbl14nit, .cTbl = HMTctbl14nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 15, .refBr = 74, .cGma = gma2p15, .rTbl = HMTrtbl15nit, .cTbl = HMTctbl15nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 16, .refBr = 79, .cGma = gma2p15, .rTbl = HMTrtbl16nit, .cTbl = HMTctbl16nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 17, .refBr = 82, .cGma = gma2p15, .rTbl = HMTrtbl17nit, .cTbl = HMTctbl17nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 19, .refBr = 91, .cGma = gma2p15, .rTbl = HMTrtbl19nit, .cTbl = HMTctbl19nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 20, .refBr = 94, .cGma = gma2p15, .rTbl = HMTrtbl20nit, .cTbl = HMTctbl20nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 21, .refBr = 98, .cGma = gma2p15, .rTbl = HMTrtbl21nit, .cTbl = HMTctbl21nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 22, .refBr = 101, .cGma = gma2p15, .rTbl = HMTrtbl22nit, .cTbl = HMTctbl22nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 23, .refBr = 106, .cGma = gma2p15, .rTbl = HMTrtbl23nit, .cTbl = HMTctbl23nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 25, .refBr = 112, .cGma = gma2p15, .rTbl = HMTrtbl25nit, .cTbl = HMTctbl25nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 27, .refBr = 121, .cGma = gma2p15, .rTbl = HMTrtbl27nit, .cTbl = HMTctbl27nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 29, .refBr = 127, .cGma = gma2p15, .rTbl = HMTrtbl29nit, .cTbl = HMTctbl29nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 31, .refBr = 136, .cGma = gma2p15, .rTbl = HMTrtbl31nit, .cTbl = HMTctbl31nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 33, .refBr = 143, .cGma = gma2p15, .rTbl = HMTrtbl33nit, .cTbl = HMTctbl33nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 35, .refBr = 151, .cGma = gma2p15, .rTbl = HMTrtbl35nit, .cTbl = HMTctbl35nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 37, .refBr = 160, .cGma = gma2p15, .rTbl = HMTrtbl37nit, .cTbl = HMTctbl37nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 39, .refBr = 167, .cGma = gma2p15, .rTbl = HMTrtbl39nit, .cTbl = HMTctbl39nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 41, .refBr = 174, .cGma = gma2p15, .rTbl = HMTrtbl41nit, .cTbl = HMTctbl41nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 44, .refBr = 185, .cGma = gma2p15, .rTbl = HMTrtbl44nit, .cTbl = HMTctbl44nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 47, .refBr = 195, .cGma = gma2p15, .rTbl = HMTrtbl47nit, .cTbl = HMTctbl47nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 50, .refBr = 206, .cGma = gma2p15, .rTbl = HMTrtbl50nit, .cTbl = HMTctbl50nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 53, .refBr = 217, .cGma = gma2p15, .rTbl = HMTrtbl53nit, .cTbl = HMTctbl53nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 56, .refBr = 227, .cGma = gma2p15, .rTbl = HMTrtbl56nit, .cTbl = HMTctbl56nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 60, .refBr = 239, .cGma = gma2p15, .rTbl = HMTrtbl60nit, .cTbl = HMTctbl60nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 64, .refBr = 254, .cGma = gma2p15, .rTbl = HMTrtbl64nit, .cTbl = HMTctbl64nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 68, .refBr = 267, .cGma = gma2p15, .rTbl = HMTrtbl68nit, .cTbl = HMTctbl68nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 72, .refBr = 281, .cGma = gma2p15, .rTbl = HMTrtbl72nit, .cTbl = HMTctbl72nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
 	{.br = 77, .refBr = 216, .cGma = gma2p15, .rTbl = HMTrtbl77nit, .cTbl = HMTctbl77nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 82, .refBr = 225, .cGma = gma2p15, .rTbl = HMTrtbl82nit, .cTbl = HMTctbl82nit, .aid = HMTaid7003_1, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 87, .refBr = 237, .cGma = gma2p15, .rTbl = HMTrtbl87nit, .cTbl = HMTctbl87nit, .aid = HMTaid7003_2, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 93, .refBr = 249, .cGma = gma2p15, .rTbl = HMTrtbl93nit, .cTbl = HMTctbl93nit, .aid = HMTaid7003_3, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 99, .refBr = 265, .cGma = gma2p15, .rTbl = HMTrtbl99nit, .cTbl = HMTctbl99nit, .aid = HMTaid7003_4, .elvCaps = HMTelvCaps, .elv = HMTelv},
-	{.br = 105, .refBr = 278, .cGma = gma2p15, .rTbl = HMTrtbl105nit, .cTbl = HMTctbl105nit, .aid = HMTaid7003_5, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 82, .refBr = 225, .cGma = gma2p15, .rTbl = HMTrtbl82nit, .cTbl = HMTctbl82nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 87, .refBr = 237, .cGma = gma2p15, .rTbl = HMTrtbl87nit, .cTbl = HMTctbl87nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 93, .refBr = 249, .cGma = gma2p15, .rTbl = HMTrtbl93nit, .cTbl = HMTctbl93nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 99, .refBr = 265, .cGma = gma2p15, .rTbl = HMTrtbl99nit, .cTbl = HMTctbl99nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 105, .refBr = 278, .cGma = gma2p15, .rTbl = HMTrtbl105nit, .cTbl = HMTctbl105nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
 };
+
+struct SmtDimInfo a3_hmt_dimming_info[HMT_MAX_BR_INFO] = {
+	{.br = 10, .refBr = 41, .cGma = gma2p15, .rTbl = A3HMTrtbl10nit, .cTbl = A3HMTctbl10nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 11, .refBr = 45, .cGma = gma2p15, .rTbl = A3HMTrtbl11nit, .cTbl = A3HMTctbl11nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 12, .refBr = 49, .cGma = gma2p15, .rTbl = A3HMTrtbl12nit, .cTbl = A3HMTctbl12nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 13, .refBr = 53, .cGma = gma2p15, .rTbl = A3HMTrtbl13nit, .cTbl = A3HMTctbl13nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 14, .refBr = 58, .cGma = gma2p15, .rTbl = A3HMTrtbl14nit, .cTbl = A3HMTctbl14nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 15, .refBr = 60, .cGma = gma2p15, .rTbl = A3HMTrtbl15nit, .cTbl = A3HMTctbl15nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 16, .refBr = 65, .cGma = gma2p15, .rTbl = A3HMTrtbl16nit, .cTbl = A3HMTctbl16nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 17, .refBr = 70, .cGma = gma2p15, .rTbl = A3HMTrtbl17nit, .cTbl = A3HMTctbl17nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 19, .refBr = 79, .cGma = gma2p15, .rTbl = A3HMTrtbl19nit, .cTbl = A3HMTctbl19nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 20, .refBr = 82, .cGma = gma2p15, .rTbl = A3HMTrtbl20nit, .cTbl = A3HMTctbl20nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 21, .refBr = 87, .cGma = gma2p15, .rTbl = A3HMTrtbl21nit, .cTbl = A3HMTctbl21nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 22, .refBr = 91, .cGma = gma2p15, .rTbl = A3HMTrtbl22nit, .cTbl = A3HMTctbl22nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 23, .refBr = 93, .cGma = gma2p15, .rTbl = A3HMTrtbl23nit, .cTbl = A3HMTctbl23nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 25, .refBr = 99, .cGma = gma2p15, .rTbl = A3HMTrtbl25nit, .cTbl = A3HMTctbl25nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 27, .refBr = 107, .cGma = gma2p15, .rTbl = A3HMTrtbl27nit, .cTbl = A3HMTctbl27nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 29, .refBr = 113, .cGma = gma2p15, .rTbl = A3HMTrtbl29nit, .cTbl = A3HMTctbl29nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 31, .refBr = 121, .cGma = gma2p15, .rTbl = A3HMTrtbl31nit, .cTbl = A3HMTctbl31nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 33, .refBr = 130, .cGma = gma2p15, .rTbl = A3HMTrtbl33nit, .cTbl = A3HMTctbl33nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 35, .refBr = 136, .cGma = gma2p15, .rTbl = A3HMTrtbl35nit, .cTbl = A3HMTctbl35nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 37, .refBr = 142, .cGma = gma2p15, .rTbl = A3HMTrtbl37nit, .cTbl = A3HMTctbl37nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 39, .refBr = 152, .cGma = gma2p15, .rTbl = A3HMTrtbl39nit, .cTbl = A3HMTctbl39nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 41, .refBr = 158, .cGma = gma2p15, .rTbl = A3HMTrtbl41nit, .cTbl = A3HMTctbl41nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 44, .refBr = 169, .cGma = gma2p15, .rTbl = A3HMTrtbl44nit, .cTbl = A3HMTctbl44nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 47, .refBr = 177, .cGma = gma2p15, .rTbl = A3HMTrtbl47nit, .cTbl = A3HMTctbl47nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 50, .refBr = 190, .cGma = gma2p15, .rTbl = A3HMTrtbl50nit, .cTbl = A3HMTctbl50nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 53, .refBr = 199, .cGma = gma2p15, .rTbl = A3HMTrtbl53nit, .cTbl = A3HMTctbl53nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 56, .refBr = 210, .cGma = gma2p15, .rTbl = A3HMTrtbl56nit, .cTbl = A3HMTctbl56nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 60, .refBr = 222, .cGma = gma2p15, .rTbl = A3HMTrtbl60nit, .cTbl = A3HMTctbl60nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 64, .refBr = 234, .cGma = gma2p15, .rTbl = A3HMTrtbl64nit, .cTbl = A3HMTctbl64nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 68, .refBr = 251, .cGma = gma2p15, .rTbl = A3HMTrtbl68nit, .cTbl = A3HMTctbl68nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 72, .refBr = 263, .cGma = gma2p15, .rTbl = A3HMTrtbl72nit, .cTbl = A3HMTctbl72nit, .aid = HMTaid8001, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 77, .refBr = 197, .cGma = gma2p15, .rTbl = A3HMTrtbl77nit, .cTbl = A3HMTctbl77nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 82, .refBr = 208, .cGma = gma2p15, .rTbl = A3HMTrtbl82nit, .cTbl = A3HMTctbl82nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 87, .refBr = 217, .cGma = gma2p15, .rTbl = A3HMTrtbl87nit, .cTbl = A3HMTctbl87nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 93, .refBr = 233, .cGma = gma2p15, .rTbl = A3HMTrtbl93nit, .cTbl = A3HMTctbl93nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 99, .refBr = 247, .cGma = gma2p15, .rTbl = A3HMTrtbl99nit, .cTbl = A3HMTctbl99nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+	{.br = 105, .refBr = 260, .cGma = gma2p15, .rTbl = A3HMTrtbl105nit, .cTbl = A3HMTctbl105nit, .aid = HMTaid7003, .elvCaps = HMTelvCaps, .elv = HMTelv},
+};
+
 
 static int hmt_init_dimming(struct dsim_device *dsim, u8 *mtp)
 {
@@ -1631,6 +907,7 @@ static int hmt_init_dimming(struct dsim_device *dsim, u8 *mtp)
 	struct dim_data *dimming;
 	struct panel_private *panel = &dsim->priv;
 	struct SmtDimInfo *diminfo = NULL;
+	unsigned char panelline;
 
 	dimming = (struct dim_data *)kmalloc(sizeof(struct dim_data), GFP_KERNEL);
 	if (!dimming) {
@@ -1639,7 +916,15 @@ static int hmt_init_dimming(struct dsim_device *dsim, u8 *mtp)
 		goto error;
 	}
 
-	diminfo = hmt_dimming_info;
+	panelline = panel->id[0] & 0xc0;
+
+	if (panelline == S6E3HF2_A3_LINE_ID) {
+		dsim_info("%s hmt init dimming info for A3 Line Daisy panel\n", __func__);
+		diminfo = a3_hmt_dimming_info;
+	} else {
+		dsim_info("%s hmt init dimming info for A2 Line Daisy panel\n", __func__);
+		diminfo = a2_hmt_dimming_info;
+	}
 
 	panel->hmt_dim_data= (void *)dimming;
 	panel->hmt_dim_info = (void *)diminfo;
@@ -1947,6 +1232,13 @@ static int s6e3hf2_wqhd_probe(struct dsim_device *dsim)
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 	panel->mdnie_support = 1;
 #endif
+
+/* test */
+/*
+	panel->id[0] = 0x40;
+	panel->id[1] = 0x11;
+	panel->id[2] = 0x96;
+*/
 
 #ifdef CONFIG_PANEL_AID_DIMMING
 	ret = init_dimming(dsim, mtp, hbm);

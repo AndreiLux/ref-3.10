@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfgp2p.c 552891 2015-04-28 08:36:40Z $
+ * $Id: wl_cfgp2p.c 606116 2015-12-14 12:53:46Z $
  *
  */
 #include <typedefs.h>
@@ -1605,7 +1605,7 @@ wl_cfgp2p_listen_complete(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	s32 ret = BCME_OK;
 	struct net_device *ndev = NULL;
 
-	if (!cfg || !cfg->p2p)
+	if (!cfg || !cfg->p2p || !cfgdev)
 		return BCME_ERROR;
 
 	CFGP2P_DBG((" Enter\n"));
@@ -2120,6 +2120,7 @@ wl_cfgp2p_set_p2p_noa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* b
 	s32 ret = -1;
 	int count, start, duration;
 	wl_p2p_sched_t dongle_noa;
+	int iovar_len = sizeof(dongle_noa);
 
 	CFGP2P_DBG((" Enter\n"));
 
@@ -2180,8 +2181,12 @@ wl_cfgp2p_set_p2p_noa(struct bcm_cfg80211 *cfg, struct net_device *ndev, char* b
 		}
 		dongle_noa.desc[0].interval = htod32(cfg->p2p->noa.desc[0].interval*1000);
 
+		if (dongle_noa.action == WL_P2P_SCHED_ACTION_RESET) {
+			iovar_len -= sizeof(wl_p2p_sched_desc_t);
+		}
+
 		ret = wldev_iovar_setbuf(wl_to_p2p_bss_ndev(cfg, P2PAPI_BSSCFG_CONNECTION),
-			"p2p_noa", &dongle_noa, sizeof(dongle_noa), cfg->ioctl_buf,
+			"p2p_noa", &dongle_noa, iovar_len, cfg->ioctl_buf,
 			WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);
 
 		if (ret < 0) {

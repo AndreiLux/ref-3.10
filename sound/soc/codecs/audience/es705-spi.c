@@ -178,8 +178,6 @@ static int es705_spi_probe(struct spi_device *spi)
 
 	dev_info(&spi->dev, "%s()\n", __func__);
 
-	es705_priv.streamdev = spi_streamdev;
-
 	rc = es705_core_init(&spi->dev);
 	if (rc) {
 		dev_err(&spi->dev, "%s(): es705_core_init() failed %d\n",

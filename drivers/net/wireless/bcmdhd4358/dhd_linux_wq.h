@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_linux_wq.h 500879 2014-09-05 09:34:44Z $
+ * $Id: dhd_linux_wq.h 602251 2015-11-25 11:28:15Z $
  */
 #ifndef _dhd_linux_wq_h_
 #define _dhd_linux_wq_h_
@@ -37,6 +37,7 @@ enum _wq_event {
 	DHD_WQ_WORK_IPV6_NDO,
 	DHD_WQ_WORK_HANG_MSG,
 	DHD_WQ_WORK_SOC_RAM_DUMP,
+	DHD_WQ_WORK_DHD_LOG_DUMP,
 
 	DHD_MAX_WQ_EVENTS
 };

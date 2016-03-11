@@ -180,7 +180,3 @@ obj-$(CONFIG_ESOC)		+= esoc/
 
 #LED MATRIX FGPA Driver
 obj-$(CONFIG_ICE5_FPGA_LED_MATRIX)	+= ledmatrix/
-
-# SecFilter Driver
-obj-$(CONFIG_SEC_NET_FILTER)	+= secfilter/
-

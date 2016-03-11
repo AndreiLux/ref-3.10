@@ -24,6 +24,9 @@
 #include <linux/mfd/max77843-private.h>
 #include <linux/regulator/machine.h>
 
+#define WC_CURRENT_STEP		100
+#define WC_CURRENT_START	500
+
 enum {
 	CHIP_ID = 0,
 };
@@ -125,6 +128,7 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 #define MAX77843_MODE_OTG                       0x02
 #define MAX77843_MODE_BUCK                      0x04
 #define MAX77843_MODE_BOOST		        0x08
+#define MAX77843_WDTEN				0x10
 
 /* MAX&7843_CHG_REG_CHG_CNFG_01 */
 #define MAX77843_CHG_FQ_2MHz                    (1 << 3)
@@ -142,6 +146,10 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 
 #define CHG_CNFG_04_CHG_CV_PRM_SHIFT            0
 #define CHG_CNFG_04_CHG_CV_PRM_MASK             (0x3F << CHG_CNFG_04_CHG_CV_PRM_SHIFT)
+
+/* MAX77843_CHG_REG_CHG_CNFG_06 */
+#define CHG_CNFG_06_WDTCLR_MASK			0x03
+#define MAX77843_WDTCLR				0x01
 
 /* MAX77843_CHG_REG_CHG_CNFG_09 */
 #define MAX77843_CHG_CHGIN_LIM                  0x7F
@@ -175,6 +183,7 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 #define SIOP_WIRELESS_INPUT_LIMIT_CURRENT       530
 #define SIOP_WIRELESS_CHARGING_LIMIT_CURRENT    780
 #define SLOW_CHARGING_CURRENT_STANDARD          400
+#define STORE_MODE_INPUT_CURRENT                440
 
 #define INPUT_CURRENT_TA		                1000
 struct max77843_charger_data {
@@ -196,6 +205,7 @@ struct max77843_charger_data {
 	struct delayed_work	chgin_init_work;	/*  chgin init work */
 	struct delayed_work afc_work;
 	struct delayed_work	aicl_work;
+	struct delayed_work wc_current_work;
 
 /* mutex */
 	struct mutex irq_lock;
@@ -204,15 +214,18 @@ struct max77843_charger_data {
 	/* wakelock */
 	struct wake_lock recovery_wake_lock;
 	struct wake_lock wpc_wake_lock;
+	struct wake_lock wpc_curr_wake_lock;
 	struct wake_lock afc_wake_lock;
 	struct wake_lock chgin_wake_lock;
 	struct wake_lock aicl_wake_lock;
+	struct wake_lock wc_current_wake_lock;
 
 	unsigned int	is_charging;
 	unsigned int	charging_type;
 	unsigned int	battery_state;
 	unsigned int	battery_present;
 	unsigned int	cable_type;
+	unsigned int	batt_cable_type;
 	unsigned int	charging_current_max;
 	unsigned int	charging_current;
 	unsigned int	input_current_limit;
@@ -238,6 +251,8 @@ struct max77843_charger_data {
 
 	/* unsufficient power */
 	bool		reg_loop_deted;
+	bool		is_lcd_on;
+	bool		is_call_on;
 
 	/* wireless charge, w(wpc), v(vbus) */
 	int		wc_w_gpio;
@@ -248,9 +263,12 @@ struct max77843_charger_data {
 	int		wc_v_state;
 	bool		wc_pwr_det;
 	int		soft_reg_recovery_cnt;
+	int		wc_current;
+	int		wc_pre_current;
 
 	bool afc_detect;
 	bool is_mdock;
+	bool store_mode;
 
 	int pmic_ver;
 	int input_curr_limit_step;

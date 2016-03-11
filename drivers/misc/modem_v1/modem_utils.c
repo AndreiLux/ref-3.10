@@ -265,30 +265,6 @@ static inline void dump2hex(char *buff, size_t buff_size,
 	*dest = 0;
 }
 
-static inline bool log_enabled(u8 ch, enum ipc_layer layer)
-{
-	if (unlikely(layer == IOD_RX || layer == IOD_TX))
-		if (unlikely(!test_bit(DEBUG_FLAG_IOD, &dflags)))
-			return false;
-
-	if (sipc5_fmt_ch(ch))
-		return test_bit(DEBUG_FLAG_FMT, &dflags);
-	else if (sipc5_rfs_ch(ch))
-		return test_bit(DEBUG_FLAG_RFS, &dflags);
-	else if (sipc_csd_ch(ch))
-		return test_bit(DEBUG_FLAG_CSVT, &dflags);
-	else if (sipc_log_ch(ch))
-		return test_bit(DEBUG_FLAG_LOG, &dflags);
-	else if (sipc5_boot_ch(ch))
-		return test_bit(DEBUG_FLAG_BOOT, &dflags);
-	else if (sipc5_dump_ch(ch))
-		return test_bit(DEBUG_FLAG_DUMP, &dflags);
-	else if (test_bit(DEBUG_FLAG_UNKNOWN, &dflags))
-		return true;
-	else
-		return false;
-}
-
 static inline u32 dump_skb(char *str, u32 size, struct sk_buff *skb)
 {
 	u32 len, buflen;
@@ -315,24 +291,50 @@ inline void log_ipc_pkt(enum ipc_layer layer, u8 ch, struct sk_buff *skb)
 	if (unlikely(!skb))
 		return;
 
-	if (sipc_ps_ch(ch)) {
-#ifdef CONFIG_SEC_MODEM_DEBUGFS
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+	if (sipc_ps_ch(ch) && test_bit(DEBUG_FLAG_PS, &dflags)) {
 		buflen = dump_skb(str, SZ_64, skb);
-		trace_mif_log(layer_str(layer), buflen, str);
-#endif
+		trace_mif_log(layer_str(layer), ch, skb->len, buflen, str);
 		return;
 	}
 
-	if (!log_enabled(ch, layer))
+	if (unlikely(layer == IOD_RX || layer == IOD_TX)) {
+		if (unlikely(!test_bit(DEBUG_FLAG_IOD, &dflags))) {
+			return;
+		} else {
+			if (!sipc5_udl_ch(ch)) {
+				buflen = dump_skb(str, SZ_16, skb);
+				goto trace_log;
+			}
+			return;
+		}
+	}
+#endif
+	if (sipc5_fmt_ch(ch) && test_bit(DEBUG_FLAG_FMT, &dflags))
+		goto print_log;
+	if (sipc5_rfs_ch(ch) && test_bit(DEBUG_FLAG_RFS, &dflags))
+		goto print_log;
+	if (sipc_csd_ch(ch) && test_bit(DEBUG_FLAG_CSVT, &dflags))
+		goto print_log;
+	if (sipc_log_ch(ch) && test_bit(DEBUG_FLAG_LOG, &dflags))
+		goto print_log;
+	if (sipc5_boot_ch(ch) && test_bit(DEBUG_FLAG_BOOT, &dflags))
+		goto print_log;
+	if (sipc5_dump_ch(ch) && test_bit(DEBUG_FLAG_DUMP, &dflags))
+		goto print_log;
+	if (!test_bit(DEBUG_FLAG_UNKNOWN, &dflags))
 		return;
 
+print_log:
 	buflen = dump_skb(str, SZ_16, skb);
-#ifdef CONFIG_SEC_MODEM_DEBUGFS
-	if (!sipc5_udl_ch(ch))
-		trace_mif_log(layer_str(layer), buflen, str);
-#endif
 
-	pr_info("%s: %s(%d): %s\n", MIF_TAG, layer_str(layer), buflen, str);
+	pr_info("%s: %s(%u:%d): %s\n", MIF_TAG, layer_str(layer),
+				       ch, skb->len, str);
+
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+trace_log:
+	trace_mif_log(layer_str(layer), ch, skb->len, buflen, str);
+#endif
 }
 
 /* print buffer as hex string */

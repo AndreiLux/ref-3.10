@@ -245,7 +245,7 @@ int es705_uart_dev_rdb(struct es705_priv *es705, void *buf, int id)
 		goto rdb_err;
 	}
 
-	if (size == 0) {
+	if (size == 0 || size % 4 != 0) {
 		dev_err(es705->dev, "%s(): read request return size of 0\n",
 			__func__);
 		goto rdb_err;
@@ -253,17 +253,20 @@ int es705_uart_dev_rdb(struct es705_priv *es705, void *buf, int id)
 	if (size > PARSE_BUFFER_SIZE)
 		size = PARSE_BUFFER_SIZE;
 
-	for (rdcnt = 0; rdcnt < size; rdcnt++, dptr++) {
-		ret = es705_uart_read(es705, dptr, 1);
+	for (rdcnt = 0; rdcnt < size;) {
+		ret = es705_uart_read(es705, dptr, 4);
 		if (ret < 0) {
 			dev_err(es705->dev,
 				"%s(): data block ed error %d bytes ret = %d\n",
 				__func__, rdcnt, ret);
 			goto rdb_err;
 		}
+		rdcnt += 4;
+		dptr += 4;
 	}
 
 	es705->rdb_read_count = size;
+	dev_dbg(es705->dev, "%s(): rdcnt=%d\n", __func__, rdcnt);
 
 	ret = 0;
 	goto exit;
@@ -437,9 +440,6 @@ static int es705_uart_probe_thread(void *ptr)
 	es705_priv.cmd = es705_uart_cmd;
 	es705_priv.boot_setup = es705_uart_boot_setup;
 	es705_priv.boot_finish = es705_uart_boot_finish;
-
-	es705_priv.streamdev = uart_streamdev;
-	es705_priv.datablockdev = uart_datablockdev;
 
 	rc = es705_core_init(dev);
 	if (rc) {

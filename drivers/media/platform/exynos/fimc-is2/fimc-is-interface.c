@@ -43,7 +43,6 @@ u32 __iomem *last_fcount1;
 #define exit_process_barrier(itf) spin_unlock_irq(&itf->process_barrier);
 
 extern struct fimc_is_sysfs_debug sysfs_debug;
-extern bool force_caldata_dump;
 
 /* func to register error report callback */
 int fimc_is_set_err_report_vendor(struct fimc_is_interface *itf,
@@ -138,9 +137,15 @@ static int fimc_is_err_report_handler(struct fimc_is_interface *itf, struct fimc
 
 void fimc_is_storefirm(struct fimc_is_interface *this)
 {
+	struct fimc_is_core *core = this->core;
 	size_t fw_size = FIMC_IS_A5_MEM_SIZE;
 
 	info("%s\n", __func__);
+
+	vb2_ion_sync_for_cpu(core->resourcemgr.minfo.fw_cookie,
+		0,
+		FIMC_IS_BACKUP_SIZE,
+		DMA_BIDIRECTIONAL);
 
 	memcpy((void *)(this->itf_kvaddr + fw_size),
 			(void *)(this->itf_kvaddr), FIMC_IS_BACKUP_SIZE);
@@ -148,12 +153,18 @@ void fimc_is_storefirm(struct fimc_is_interface *this)
 
 void fimc_is_restorefirm(struct fimc_is_interface *this)
 {
+	struct fimc_is_core *core = this->core;
 	size_t fw_size = FIMC_IS_A5_MEM_SIZE;
 
 	info("%s\n", __func__);
 
 	memcpy((void *)(this->itf_kvaddr),
 		(void *)(this->itf_kvaddr + fw_size), FIMC_IS_BACKUP_SIZE);
+
+	vb2_ion_sync_for_device(core->resourcemgr.minfo.fw_cookie,
+		0,
+		FIMC_IS_BACKUP_SIZE,
+		DMA_BIDIRECTIONAL);
 }
 
 int fimc_is_set_fwboot(struct fimc_is_interface *this, int val) {
@@ -163,35 +174,33 @@ int fimc_is_set_fwboot(struct fimc_is_interface *this, int val) {
 	BUG_ON(!this);
 
 #ifdef FW_SUSPEND_RESUME
-	if (!force_caldata_dump) {
-		switch (val) {
-		case FIRST_LAUNCHING:
-			/* first launching */
-			set &= ~(1 << RESUME_BIT);
-			set |= (1 << SUSPEND_BIT);
-			clear_bit(IS_IF_RESUME, &this->fw_boot);
-			set_bit(IS_IF_SUSPEND, &this->fw_boot);
-			break;
-		case WARM_BOOT:
-			/* TWIZ & main camera*/
-			set |= (1 << RESUME_BIT) | (1 << SUSPEND_BIT);
-			set_bit(IS_IF_RESUME, &this->fw_boot);
-			set_bit(IS_IF_SUSPEND, &this->fw_boot);
-			break;
-		case COLD_BOOT:
-			/* front camera | !TWIZ camera | dual camera */
-			set = 0;
-			clear_bit(IS_IF_RESUME, &this->fw_boot);
-			clear_bit(IS_IF_SUSPEND, &this->fw_boot);
-			break;
-		default:
-			err("unsupported val(0x%X)", val);
-			set = 0;
-			clear_bit(IS_IF_RESUME, &this->fw_boot);
-			clear_bit(IS_IF_SUSPEND, &this->fw_boot);
-			ret = -EINVAL;
-			break;
-		}
+	switch (val) {
+	case FIRST_LAUNCHING:
+		/* first launching */
+		set &= ~(1 << RESUME_BIT);
+		set |= (1 << SUSPEND_BIT);
+		clear_bit(IS_IF_RESUME, &this->fw_boot);
+		set_bit(IS_IF_SUSPEND, &this->fw_boot);
+		break;
+	case WARM_BOOT:
+		/* TWIZ & main camera*/
+		set |= (1 << RESUME_BIT) | (1 << SUSPEND_BIT);
+		set_bit(IS_IF_RESUME, &this->fw_boot);
+		set_bit(IS_IF_SUSPEND, &this->fw_boot);
+		break;
+	case COLD_BOOT:
+		/* front camera | !TWIZ camera | dual camera */
+		set = 0;
+		clear_bit(IS_IF_RESUME, &this->fw_boot);
+		clear_bit(IS_IF_SUSPEND, &this->fw_boot);
+	break;
+	default:
+		err("unsupported val(0x%X)", val);
+		set = 0;
+		clear_bit(IS_IF_RESUME, &this->fw_boot);
+		clear_bit(IS_IF_SUSPEND, &this->fw_boot);
+		ret = -EINVAL;
+		break;
 	}
 #endif
 
@@ -3506,13 +3515,7 @@ int fimc_is_hw_sensor_mode(struct fimc_is_interface *this,
 }
 #endif
 
-int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-#if (HOST_FW_INTERFACE_VER >= 2)
-	u32 instance, u32 group, u32 shot, u32 fcount, u32 rcount
-#else
-        u32 instance, u32 group, u32 bayer, u32 shot, u32 fcount, u32 rcount
-#endif
-	)
+int fimc_is_hw_shot_nblk(struct fimc_is_interface *this, u32 instance, u32 group, u32 shot, u32 fcount, u32 rcount)
 {
 	int ret = 0;
 	struct fimc_is_msg msg;
@@ -3523,16 +3526,9 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 	msg.command = HIC_SHOT;
 	msg.instance = instance;
 	msg.group = group;
-#if (HOST_FW_INTERFACE_VER >= 2)
 	msg.param1 = shot;
 	msg.param2 = fcount;
 	msg.param3 = rcount;
-#else
-	msg.param1 = bayer;
-	msg.param2 = shot;
-	msg.param3 = fcount;
-	msg.param4 = rcount;
-#endif
 
 	ret = fimc_is_set_cmd_shot(this, &msg);
 

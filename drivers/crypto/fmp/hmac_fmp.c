@@ -25,6 +25,11 @@
 #include <linux/scatterlist.h>
 #include <linux/string.h>
 
+#if defined(CONFIG_FIPS_FMP)
+extern bool in_fmp_fips_err(void);
+#endif
+
+
 struct hmac_ctx {
 	struct crypto_shash *hash;
 };
@@ -191,6 +196,13 @@ static int hmac_create(struct crypto_template *tmpl, struct rtattr **tb)
 	int err;
 	int ds;
 	int ss;
+
+#if defined(CONFIG_FIPS_FMP)
+	if (unlikely(in_fmp_fips_err())) {
+		printk(KERN_ERR "FMP HMAC create failed due to fips error\n");
+		return -EPERM;
+	}
+#endif
 
 	err = crypto_check_attr_type(tb, CRYPTO_ALG_TYPE_SHASH);
 	if (err)

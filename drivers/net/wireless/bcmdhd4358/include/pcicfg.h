@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: pcicfg.h 531053 2015-02-02 07:23:56Z $
+ * $Id: pcicfg.h 571881 2015-07-16 09:49:56Z $
  */
 
 #ifndef	_h_pcicfg_
@@ -214,6 +214,7 @@ typedef struct _pcie_enhanced_caphdr {
 #define	PCI_16KB0_PCIREGS_OFFSET (8 * 1024)	/* bar0 + 8K accesses pci/pcie core registers */
 #define	PCI_16KB0_CCREGS_OFFSET	(12 * 1024)	/* bar0 + 12K accesses chipc core registers */
 #define PCI_16KBB0_WINSZ	(16 * 1024)	/* bar0 window size */
+#define PCI_SECOND_BAR0_OFFSET	(16 * 1024)	/* secondary  bar 0 window */
 
 
 /* Header types */

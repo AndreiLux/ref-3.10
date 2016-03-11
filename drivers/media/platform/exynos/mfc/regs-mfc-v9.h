@@ -155,6 +155,7 @@ static inline unsigned int r2h_bits(int cmd)
 
 #define S5P_FIMV_ERR_HEADER_NOT_FOUND		102
 #define S5P_FIMV_ERR_SYNC_POINT_NOT_RECEIVED	190
+#define S5P_FIMV_ERR_NON_PAIRED_FIELD		191
 #define S5P_FIMV_ERR_WARNINGS_START		160
 #define S5P_FIMV_ERR_WARNINGS_END		222
 #define S5P_FIMV_ERR_DEC_MASK			0xFFFF
@@ -189,6 +190,7 @@ static inline unsigned int r2h_bits(int cmd)
 
 #define S5P_FIMV_D_SEI_ENABLE			0xF0C4
 #define S5P_FIMV_D_SEI_NEED_INIT_BUFFER_SHIFT	1
+#define S5P_FIMV_D_SEI_RECOVERY_PARSING_ENABLE	2
 
 /* Buffer setting registers */
 /* Session return */

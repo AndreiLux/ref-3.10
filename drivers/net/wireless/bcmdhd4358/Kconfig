@@ -134,3 +134,9 @@ config BCMDHD_DEBUG_PAGEALLOC
 	depends on (BCM4354 || BCM4358)
 	---help---
 	  Enable Memory Pagealloc Debugging
+
+config BCMDHD_PREALLOC_MEMDUMP
+	bool "BROADCOM PCIE specific memory reserved for MEMDUMP"
+	depends on BROADCOM_WIFI_RESERVED_MEM
+	---help---
+	  Preallocated memory support for dongle memory dump

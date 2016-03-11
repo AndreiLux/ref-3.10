@@ -29,9 +29,6 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 #include <mach/exynos-fimc-is-sensor.h>
-#ifdef CONFIG_OIS_FW_UPDATE_THREAD_USE
-#include <linux/kthread.h>
-#endif
 #include <linux/pinctrl/pinctrl-samsung.h>
 
 #include "fimc-is-core.h"
@@ -72,9 +69,6 @@ static struct fimc_is_ois_info ois_uinfo;
 static struct fimc_is_ois_exif ois_exif_data;
 static bool fw_sdcard;
 static bool not_crc_bin;
-#ifdef CONFIG_OIS_FW_UPDATE_THREAD_USE
-static struct task_struct *ois_ts;
-#endif
 
 static int fimc_is_ois_i2c_config(struct i2c_client *client, bool onoff)
 {
@@ -275,38 +269,6 @@ static int fimc_is_ois_i2c_read_multi(struct i2c_client *client, u16 addr, u8 *d
 	return 0;
 }
 
-bool fimc_is_ois_check_sensor(struct fimc_is_core *core)
-{
-	int i = 0;
-	bool ret = false;
-	int retry_count = 20;
-
-	do {
-		ret = false;
-		for (i = 0; i < FIMC_IS_SENSOR_COUNT; i++) {
-			if (!core->sensor[i].is_probed) {
-				ret = true;
-				break;
-			}
-		}
-
-		if (i == FIMC_IS_SENSOR_COUNT && ret == false) {
-			info("Retry count = %d\n", retry_count);
-			break;
-		}
-
-		mdelay(100);
-		if (retry_count > 0) {
-			--retry_count;
-		} else {
-			err("Could not get sensor before start ois fw update routine.\n");
-			break;
-		}
-	} while (ret);
-
-	return ret;
-}
-
 int fimc_is_ois_gpio_on(struct fimc_is_core *core)
 {
 	int ret = 0;
@@ -314,17 +276,6 @@ int fimc_is_ois_gpio_on(struct fimc_is_core *core)
 	struct fimc_is_module_enum *module = NULL;
 	int sensor_id = 0;
 	int i = 0;
-	struct device *dev = &core->ischain[0].pdev->dev;
-
-	ret = fimc_is_sec_run_fw_sel(dev, SENSOR_POSITION_REAR);
-	if (ret) {
-		err("fimc_is_sec_run_fw_sel for rear is fail(%d)", ret);
-	}
-
-	ret = fimc_is_sec_run_fw_sel(dev, SENSOR_POSITION_FRONT);
-	if (ret) {
-		err("fimc_is_sec_run_fw_sel for front is fail(%d)", ret);
-	}
 
 	sensor_id = core->pdata->rear_sensor_id;
 
@@ -332,11 +283,12 @@ int fimc_is_ois_gpio_on(struct fimc_is_core *core)
 		fimc_is_search_sensor_module(&core->sensor[i], sensor_id, &module);
 		if (module)
 			break;
-		else {
-			err("%s: Could not find sensor id.", __func__);
-			ret = -EINVAL;
-			goto p_err;
-		}
+	}
+
+	if (!module) {
+		err("%s: Could not find sensor id.", __func__);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
 	module_pdata = module->pdata;
@@ -371,11 +323,12 @@ int fimc_is_ois_gpio_off(struct fimc_is_core *core)
 		fimc_is_search_sensor_module(&core->sensor[i], sensor_id, &module);
 		if (module)
 			break;
-		else {
-			err("%s: Could not find sensor id.", __func__);
-			ret = -EINVAL;
-			goto p_err;
-		}
+	}
+
+	if (!module) {
+		err("%s: Could not find sensor id.", __func__);
+		ret = -EINVAL;
+		goto p_err;
 	}
 
 	module_pdata = module->pdata;
@@ -1469,7 +1422,7 @@ bool fimc_is_ois_crc_check(struct fimc_is_core *core, char *buf)
 	}
 }
 
-void fimc_is_ois_fw_update(struct fimc_is_core *core)
+void fimc_is_ois_fw_update_impl(struct fimc_is_core *core)
 {
 	u8 SendData[256], RcvData;
 	u16 RcvDataShort = 0;
@@ -1740,39 +1693,15 @@ p_err:
 	return;
 }
 
-#ifdef CONFIG_OIS_FW_UPDATE_THREAD_USE
-int fimc_is_ois_thread(void *data)
+void fimc_is_ois_fw_update(struct fimc_is_core *core)
 {
-	struct fimc_is_core *core = data;
-	bool ret = false;
-
-	ret = fimc_is_ois_check_sensor(core);
-	if (ret) {
-		err("Do not update ois fw update. Check sensor failed!\n");
-		return -EINVAL;
-	} else {
-		info("Start ois fw update. Check sensor success!\n");
-	}
-
 	fimc_is_ois_gpio_on(core);
 	msleep(150);
-	fimc_is_ois_fw_update(core);
+	fimc_is_ois_fw_update_impl(core);
 	fimc_is_ois_gpio_off(core);
-
-	return 0;
-}
-
-void fimc_is_ois_init_thread(struct fimc_is_core *core)
-{
-	info("OIS fimc_is_ois_init_thread\n");
-
-	ois_ts = kthread_run(fimc_is_ois_thread, core, "ois_thread");
-	if (IS_ERR_OR_NULL(ois_ts))
-		err("failed to create a thread for ois fw update\n");
 
 	return;
 }
-#endif /* CONFIG_OIS_FW_UPDATE_THREAD_USE */
 
 int fimc_is_ois_parse_dt(struct i2c_client *client)
 {
@@ -1901,13 +1830,6 @@ static int fimc_is_ois_probe(struct i2c_client *client,
 
 static int fimc_is_ois_remove(struct i2c_client *client)
 {
-#ifdef CONFIG_OIS_FW_UPDATE_THREAD_USE
-	if (ois_ts) {
-		kthread_stop(ois_ts);
-		ois_ts = NULL;
-	}
-#endif
-
 	return 0;
 }
 

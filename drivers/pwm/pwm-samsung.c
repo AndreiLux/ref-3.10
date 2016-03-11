@@ -24,6 +24,7 @@
 #include <linux/of.h>
 #include <linux/spinlock.h>
 
+#include <mach/exynos-pm.h>
 #define NPWM				4
 
 #define REG_TCFG0			0x00
@@ -83,10 +84,16 @@ struct s3c_chip {
 	unsigned int		pwm_type;
 	unsigned int		reg_tcfg0;
 	unsigned int		clk_ctrl;
+	unsigned int		need_hw_init;
 };
 
 static DEFINE_SPINLOCK(pwm_spinlock);
 static int pwm_enable_cnt = 0;
+static struct s3c_chip *g_s3c;
+
+static void s3c_pwm_init(struct s3c_chip *s3c, struct s3c_pwm_device *s3c_pwm);
+static void s3c_pwm_save(struct s3c_chip *s3c);
+static void s3c_pwm_restore(struct s3c_chip *s3c);
 
 static inline int pwm_is_tdiv(struct s3c_pwm_device *s3c_pwm)
 {
@@ -110,7 +117,10 @@ static int s3c_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 	spin_lock_irqsave(&pwm_spinlock, flags);
 
 	if (!pwm_enable_cnt && s3c->clk_ctrl)
-		clk_enable(s3c->clk);
+		clk_prepare_enable(s3c->clk);
+
+	if (s3c->need_hw_init)
+		s3c_pwm_restore(s3c);
 
 	if (pwm_is_s3c24xx(s3c)) {
 		tcon = __raw_readl(reg_base + REG_TCON);
@@ -157,6 +167,9 @@ static void s3c_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 
 	spin_lock_irqsave(&pwm_spinlock, flags);
 
+	if (s3c->need_hw_init)
+		s3c_pwm_restore(s3c);
+
 	if (pwm_is_s3c24xx(s3c)) {
 		tcon = __raw_readl(reg_base + REG_TCON);
 		tcon &= ~pwm_tcon_start(s3c_pwm);
@@ -170,7 +183,7 @@ static void s3c_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 	s3c_pwm->running = 0;
 	pwm_enable_cnt--;
 	if (!pwm_enable_cnt && s3c->clk_ctrl)
-		clk_disable(s3c->clk);
+		clk_disable_unprepare(s3c->clk);
 
 	spin_unlock_irqrestore(&pwm_spinlock, flags);
 }
@@ -213,6 +226,9 @@ static int s3c_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * fact that anything faster than 1Hz is easily representable
 	 * by 32bits. */
 
+	if (s3c->need_hw_init)
+		s3c_pwm_restore(s3c);
+
 	if (period_ns > NS_IN_HZ || duty_ns > NS_IN_HZ)
 		return -ERANGE;
 
@@ -227,7 +243,7 @@ static int s3c_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	/* Check to see if we are changing the clock rate of the PWM */
 
-	clk_enable(s3c->clk);
+	clk_prepare_enable(s3c->clk);
 
 	if (s3c_pwm->period_ns != period_ns && pwm_is_tdiv(s3c_pwm)) {
 		tin_rate = pwm_calc_tin(pwm, period);
@@ -325,7 +341,7 @@ static int s3c_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	spin_unlock_irqrestore(&pwm_spinlock, flags);
 out:
-	clk_disable(s3c->clk);
+	clk_disable_unprepare(s3c->clk);
 
 	return ret;
 }
@@ -374,7 +390,7 @@ static int s3c_pwm_request(struct pwm_chip *chip,
 	if (!s3c_pwm)
 		return -ENOMEM;
 
-	clk_enable(s3c->clk);
+	clk_prepare_enable(s3c->clk);
 	/* calculate base of control bits in TCON */
 	s3c_pwm->tcon_base = id == 0 ? 0 : (id * 4) + 4;
 	s3c_pwm->pwm_id = id;
@@ -408,11 +424,11 @@ static int s3c_pwm_request(struct pwm_chip *chip,
 
 	pwm_dbg(s3c, "config bits %02x\n",
 		(__raw_readl(reg_base + REG_TCON) >> s3c_pwm->tcon_base) & 0x0f);
-	clk_disable(s3c->clk);
+	clk_disable_unprepare(s3c->clk);
 	return 0;
 
 err:
-	clk_disable(s3c->clk);
+	clk_disable_unprepare(s3c->clk);
 	devm_kfree(chip->dev, s3c_pwm);
 	return ret;
 }
@@ -488,6 +504,28 @@ static inline int s3c_pwm_get_driver_data(struct device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_CPU_IDLE
+static int pwm_samsung_notifier(struct notifier_block *nb,
+				unsigned long cmd, void *v)
+{
+	switch (cmd) {
+	case LPA_ENTER:
+		if (!g_s3c->need_hw_init)
+			s3c_pwm_save(g_s3c);
+		break;
+	case LPA_EXIT:
+			g_s3c->need_hw_init = 1;
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block pwm_samsung_notifier_block = {
+	.notifier_call = pwm_samsung_notifier,
+};
+#endif
+
 static int s3c_pwm_probe(struct platform_device *pdev)
 {
 	static struct resource	*pwm_mem;
@@ -535,8 +573,9 @@ static int s3c_pwm_probe(struct platform_device *pdev)
 						"clock-control", NULL);
 #endif
 	if (s3c->clk_ctrl)
-		clk_disable(s3c->clk);
+		clk_disable_unprepare(s3c->clk);
 
+	g_s3c = s3c;
 	ret = pwmchip_add(&s3c->chip);
 	if (ret < 0) {
 		dev_err(dev, "failed to register pwm\n");
@@ -561,17 +600,15 @@ static int s3c_pwm_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int s3c_pwm_suspend(struct device *dev)
+static void s3c_pwm_save(struct s3c_chip *s3c)
 {
-	struct s3c_chip *s3c = dev_get_drvdata(dev);
 	struct s3c_pwm_device *s3c_pwm;
 	void __iomem *reg_base = s3c->reg_base;
 	unsigned long tcon;
 	unsigned char i;
 
-	if (!pwm_enable_cnt && s3c->clk_ctrl)
-		clk_enable(s3c->clk);
+	if (!pwm_enable_cnt && s3c->clk_ctrl && !s3c->need_hw_init)
+		clk_prepare_enable(s3c->clk);
 
 	if (!pwm_is_s3c24xx(s3c)) {
 		for (i = 0; i < NPWM; i++) {
@@ -598,22 +635,23 @@ static int s3c_pwm_suspend(struct device *dev)
 		}
 	}
 	/* Save pwm registers*/
+	if (pwm_enable_cnt)
 	s3c->reg_tcfg0 = __raw_readl(s3c->reg_base + REG_TCFG0);
 
-	clk_disable(s3c->clk);
-	return 0;
+	clk_disable_unprepare(s3c->clk);
 }
 
-static int s3c_pwm_resume(struct device *dev)
+static void s3c_pwm_restore(struct s3c_chip *s3c)
 {
-	struct s3c_chip *s3c = dev_get_drvdata(dev);
 	struct s3c_pwm_device *s3c_pwm;
 	unsigned char i;
 
-	clk_enable(s3c->clk);
+	clk_prepare_enable(s3c->clk);
 
 	/* Restore pwm registers*/
+	if (pwm_enable_cnt)
 	__raw_writel(s3c->reg_tcfg0, s3c->reg_base + REG_TCFG0);
+	s3c->need_hw_init = 0;
 
 	for (i = 0; i < NPWM; i++) {
 		if (s3c->s3c_pwm[i] == NULL)
@@ -621,9 +659,27 @@ static int s3c_pwm_resume(struct device *dev)
 		s3c_pwm = s3c->s3c_pwm[i];
 		s3c_pwm_init(s3c, s3c_pwm);
 	}
+}
 
-	if (!pwm_enable_cnt && s3c->clk_ctrl)
-		clk_disable(s3c->clk);
+#ifdef CONFIG_PM_SLEEP
+static int s3c_pwm_suspend(struct device *dev)
+{
+	struct s3c_chip *s3c = dev_get_drvdata(dev);
+
+	if(!s3c->need_hw_init)
+		s3c_pwm_save(s3c);
+
+	return 0;
+}
+
+static int s3c_pwm_resume(struct device *dev)
+{
+	struct s3c_chip *s3c = dev_get_drvdata(dev);
+
+	s3c_pwm_restore(s3c);
+
+	if (!pwm_enable_cnt && s3c->clk_ctrl && !s3c->need_hw_init)
+		clk_disable_unprepare(s3c->clk);
 
 	return 0;
 }
@@ -649,6 +705,9 @@ static int __init pwm_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_CPU_IDLE
+	exynos_pm_register_notifier(&pwm_samsung_notifier_block);
+#endif
 	ret = platform_driver_register(&s3c_pwm_driver);
 	if (ret)
 		pr_err("failed to add pwm driver\n");

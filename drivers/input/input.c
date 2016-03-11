@@ -474,7 +474,7 @@ DECLARE_STATE_FUNC(press)
 
 	if(input_booster_event == BOOSTER_OFF) {
 		pr_debug("[Input Booster] %s      State : Press  index : %d, time : %d\n", glGage, _this->index, _this->param[_this->index].time);
-		if(_this->multi_events <= 0) {
+		if(_this->multi_events <= 0 && _this->index < 2) {
 			if(delayed_work_pending(&_this->input_booster_timeout_work[(_this->index) ? _this->index-1 : 0]) || (_this->param[(_this->index) ? _this->index-1 : 0].time == 0)) {
 				if(_this->change_on_release || (_this->param[(_this->index) ? _this->index-1 : 0].time == 0)) {
 					pr_debug("[Input Booster] %s           cancel the pending workqueue\n", glGage);
@@ -610,7 +610,7 @@ void input_booster(struct input_dev *dev)
 								touch_booster.index = 1;
 								TIMEOUT_FUNC(touch)(NULL);
 								touch_booster.param[0].hmp_boost = temp_hmp_boost;
-								touch_booster.index = temp_index;
+								touch_booster.index = ( temp_index >= 2 ? 1 : temp_index );
 							}
 						}
 					} else if(TouchIDs[input_events[iTouchSlot].value] >= 0 && input_events[iTouchID].value < 0) {
@@ -684,6 +684,11 @@ void input_booster_init()
 	}
 
 	np = of_find_compatible_node(NULL, NULL, "input_booster");
+
+	if(np == NULL) {
+		ndevice_in_dt = 0;
+		return;
+	}
 
 	// Geting the count of devices.
 	ndevice_in_dt = of_get_child_count(np);
@@ -835,17 +840,19 @@ void input_event(struct input_dev *dev,
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 
 #if !defined(CONFIG_INPUT_BOOSTER) // Input Booster +
-		if (type == EV_SYN && input_count > 0) {
-			pr_debug("[Input Booster1] ==============================================\n");
-			input_booster(dev);
-			input_count=0;
-		} else {
-			pr_debug("[Input Booster1] type = %x, code = %x, value =%x\n", type, code, value);
-			input_events[input_count].type = type;
-			input_events[input_count].code = code;
-			input_events[input_count].value = value;
-			if(input_count < MAX_EVENTS) {
-				input_count++;
+		if(device_tree_infor != NULL) {
+			if (type == EV_SYN && input_count > 0) {
+				pr_debug("[Input Booster1] ==============================================\n");
+				input_booster(dev);
+				input_count=0;
+			} else {
+				pr_debug("[Input Booster1] type = %x, code = %x, value =%x\n", type, code, value);
+				input_events[input_count].type = type;
+				input_events[input_count].code = code;
+				input_events[input_count].value = value;
+				if(input_count < MAX_EVENTS) {
+					input_count++;
+				}
 			}
 		}
 #endif  // Input Booster -

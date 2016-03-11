@@ -29,8 +29,7 @@
 #include "../sensor/module/fimc-is-device-imx219.h"
 #include "../sensor/module/fimc-is-device-imx240.h"
 #include "../sensor/module/fimc-is-device-4h5.h"
-
-
+#include "../sensor/module/fimc-is-device-5e3.h"
 #include "../sensor/module/fimc-is-device-2p3.h"
 #include "../sensor/module/fimc-is-device-4e6.h"
 #include "../sensor/module/fimc-is-device-2t2.h"

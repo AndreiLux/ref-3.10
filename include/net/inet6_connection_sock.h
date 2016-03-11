@@ -28,6 +28,10 @@ extern int inet6_csk_bind_conflict(const struct sock *sk,
 extern struct dst_entry* inet6_csk_route_req(struct sock *sk,
 					     struct flowi6 *fl6,
 					     const struct request_sock *req);
+#ifdef CONFIG_MPTCP
+u32 inet6_synq_hash(const struct in6_addr *raddr, const __be16 rport,
+		    const u32 rnd, const u32 synq_hsize);
+#endif
 
 extern struct request_sock *inet6_csk_search_req(const struct sock *sk,
 						 struct request_sock ***prevp,

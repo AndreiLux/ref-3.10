@@ -229,6 +229,15 @@ struct decon_resources {
 	struct clk *aclk_disp;
 	struct clk *pclk_disp;
 	struct clk *mif_pll;
+	struct clk *disp_pll;
+	struct clk *m_sclk_decon_eclk;
+	struct clk *mout_bus1_pll_top0;
+	struct clk *dout_sclk_decon_eclk;
+	struct clk *m_decon_eclk;
+	struct clk *um_decon_eclk;
+	struct clk *d_decon_eclk;
+	struct clk *m_decon_vclk;
+	struct clk *d_decon_vclk;
 };
 
 struct decon_rect {
@@ -702,6 +711,7 @@ struct decon_device {
 
 	struct mutex			update_regs_list_lock;
 	struct list_head		update_regs_list;
+	int				update_regs_list_cnt;
 	struct task_struct		*update_regs_thread;
 	struct kthread_worker		update_regs_worker;
 	struct kthread_work		update_regs_work;
@@ -792,6 +802,9 @@ struct decon_device {
 	bool				lpd_disable;
 	bool				sblock_disable;
 	bool				sdma_map_disable;
+
+	int	systrace_pid;
+	void	(*tracing_mark_write)( int pid, char id, char* str1, int value );
 };
 
 static inline struct decon_device *get_decon_drvdata(u32 id)

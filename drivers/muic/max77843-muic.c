@@ -59,6 +59,14 @@
 #include <linux/mfd/samsung/irq.h>
 #endif
 
+#if defined(CONFIG_MUIC_DET_JACK)
+#include <linux/switch.h>
+#include <linux/input.h>
+#include <linux/of_gpio.h>
+#endif
+
+#include <linux/sec_debug.h>
+
 extern struct muic_platform_data muic_pdata;
 static bool debug_en_vps = false;
 
@@ -406,6 +414,7 @@ static const struct max77843_muic_vps_data muic_vps_table[] = {
 		.vps_name	= "VZW Incompatible",
 		.attached_dev	= ATTACHED_DEV_VZW_INCOMPATIBLE_MUIC,
 	},
+#ifdef CONFIG_MUIC_MAX77843_SUPPORT_LANHUB
 	{
 		.adc1k		= 0x00,
 		.adcerr		= 0x00,
@@ -413,10 +422,11 @@ static const struct max77843_muic_vps_data muic_vps_table[] = {
 		.vbvolt		= VB_DONTCARE,
 		.chgdetrun	= CHGDETRUN_DONTCARE,
 		.chgtyp		= CHGTYP_DONTCARE,
-		.control1	= CTRL1_OPEN,
+		.control1	= CTRL1_USB,
 		.vps_name	= "USB LANHUB",
 		.attached_dev	= ATTACHED_DEV_USB_LANHUB_MUIC,
 	},
+#endif
 	{
 		.adc1k		= 0x00,
 		.adcerr		= 0x00,
@@ -428,7 +438,63 @@ static const struct max77843_muic_vps_data muic_vps_table[] = {
 		.vps_name	= "TYPE2 Charger",
 		.attached_dev	= ATTACHED_DEV_TYPE2_CHG_MUIC,
 	},
+#if defined(CONFIG_MUIC_DET_JACK)
+	{
+		.adc1k		= 0x00,
+		.adcerr		= 0x00,
+		.adc		= ADC_AUDIOMODE_W_REMOTE,
+		.vbvolt		= VB_LOW,
+		.chgdetrun	= CHGDETRUN_FALSE,
+		.chgtyp		= CHGTYP_NO_VOLTAGE,
+		.control1	= CTRL1_AUDIO,
+		.vps_name	= "EARJACK",
+		.attached_dev	= ATTACHED_DEV_EARJACK_MUIC,
+	},
+	{
+		.adc1k		= 0x00,
+		.adcerr		= 0x00,
+		.adc		= ADC_SEND_END,
+		.vbvolt		= VB_LOW,
+		.chgdetrun	= CHGDETRUN_FALSE,
+		.chgtyp		= CHGTYP_NO_VOLTAGE,
+		.control1	= CTRL1_AUDIO,
+		.vps_name	= "EARJACK SENDKEY",
+		.attached_dev	= ATTACHED_DEV_EARJACK_SENDKEY,
+	},
+	{
+		.adc1k		= 0x00,
+		.adcerr		= 0x00,
+		.adc		= ADC_VOL_DN,
+		.vbvolt		= VB_LOW,
+		.chgdetrun	= CHGDETRUN_FALSE,
+		.chgtyp		= CHGTYP_NO_VOLTAGE,
+		.control1	= CTRL1_AUDIO,
+		.vps_name	= "EARJACK VOLUME DOWN",
+		.attached_dev	= ATTACHED_DEV_EARJACK_VOL_DN,
+	},
+	{
+		.adc1k		= 0x00,
+		.adcerr		= 0x00,
+		.adc		= ADC_VOL_UP,
+		.vbvolt		= VB_LOW,
+		.chgdetrun	= CHGDETRUN_FALSE,
+		.chgtyp		= CHGTYP_NO_VOLTAGE,
+		.control1	= CTRL1_AUDIO,
+		.vps_name	= "EARJACK VOLUME UP",
+		.attached_dev	= ATTACHED_DEV_EARJACK_VOL_UP,
+	},
+#endif
 };
+
+#if defined(CONFIG_MUIC_DET_JACK)
+static struct switch_dev switch_earjack = {
+	.name = "h2w",		/* /sys/class/switch/h2w/state */
+};
+
+static struct switch_dev switch_earjackkey = {
+	.name = "send_end",	/* /sys/class/switch/send_end/state */
+};
+#endif
 
 static int muic_lookup_vps_table(muic_attached_dev_t new_dev)
 {
@@ -660,6 +726,7 @@ static int switch_to_ap_uart(struct max77843_muic_data *muic_data,
 	case ATTACHED_DEV_JIG_UART_OFF_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_OTG_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_FG_MUIC:
+	case ATTACHED_DEV_JIG_UART_ON_MUIC:
 		ret = com_to_uart_ap(muic_data);
 		break;
 	default:
@@ -680,6 +747,7 @@ static int switch_to_cp_uart(struct max77843_muic_data *muic_data,
 	case ATTACHED_DEV_JIG_UART_OFF_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_OTG_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_FG_MUIC:
+	case ATTACHED_DEV_JIG_UART_ON_MUIC:
 		ret = com_to_uart_cp(muic_data);
 		break;
 	default:
@@ -1147,11 +1215,20 @@ static ssize_t max77843_muic_set_afc_disable(struct device *dev,
 {
 	struct max77843_muic_data *muic_data = dev_get_drvdata(dev);
 	struct muic_platform_data *pdata = muic_data->pdata;
+	int ret;
 
 	if (!strncasecmp(buf, "1", 1)) {
-		pdata->afc_disable = true;
+		ret = set_param(CM_OFFSET + 1, '1');
+		if (ret < 0)
+			pr_err("%s:set_param failed\n", __func__);
+		else
+			pdata->afc_disable = true;
 	} else if (!strncasecmp(buf, "0", 1)) {
-		pdata->afc_disable = false;
+		ret = set_param(CM_OFFSET + 1, '0');
+		if (ret < 0)
+			pr_err("%s:set_param failed\n", __func__);
+		else
+			pdata->afc_disable = false;
 	} else {
 		pr_warn("%s:%s invalid value\n", MUIC_DEV_NAME, __func__);
 	}
@@ -1336,6 +1413,30 @@ static ssize_t max77843_muic_set_hv(struct device *dev,
 }
 #endif
 
+#if defined(CONFIG_MUIC_DET_JACK)
+static ssize_t key_state_onoff_show(struct device *dev,	struct device_attribute *attr, char *buf)
+{
+	struct max77843_muic_data *muic_data = dev_get_drvdata(dev);
+	int value = 0;
+
+	if (muic_data->earkeypressed && muic_data->keycode == KEY_MEDIA)
+		value = 1;
+
+	return snprintf(buf, 4, "%d\n", value);
+}
+
+static ssize_t earjack_state_onoff_show(struct device *dev,	struct device_attribute *attr, char *buf)
+{
+	struct max77843_muic_data *muic_data = dev_get_drvdata(dev);
+	int value = 0;
+
+	if (muic_data->eardetected == true)
+		value = 1;
+
+	return snprintf(buf, 4, "%d\n", value);
+}
+#endif
+
 static DEVICE_ATTR(uart_sel, 0664, max77843_muic_show_uart_sel,
 		max77843_muic_set_uart_sel);
 static DEVICE_ATTR(usb_sel, 0664, max77843_muic_show_usb_sel,
@@ -1365,6 +1466,13 @@ static DEVICE_ATTR(afc_disable, 0664,
 #ifdef CONFIG_MUIC_HV_FORCE_LIMIT
 static DEVICE_ATTR(hv_sel, 0664, max77843_muic_show_hv,
 		max77843_muic_set_hv);
+#endif
+
+#if defined(CONFIG_MUIC_DET_JACK)
+static DEVICE_ATTR(key_state, 0444,
+		key_state_onoff_show, NULL);
+static DEVICE_ATTR(state, 0444,
+		earjack_state_onoff_show, NULL);
 #endif
 
 static struct attribute *max77843_muic_attributes[] = {
@@ -1650,6 +1758,120 @@ static void max77843_muic_handle_vbus(struct max77843_muic_data *muic_data)
 }
 #endif /* CONFIG_VBUS_NOTIFIER */
 
+#if defined(CONFIG_MUIC_DET_JACK)
+
+static void max77843_muic_earjack_detect_workfunc(struct work_struct *work)
+{
+	struct max77843_muic_data *muic_data = container_of(work, struct max77843_muic_data, earjack_work);
+
+	if(muic_data->eardetected){
+		dev_info(muic_data->dev, "%s: GPIO= %d,enable Gpio\n", __func__, muic_data->mic_en_gpio);
+		gpio_direction_output(muic_data->mic_en_gpio, 1);
+	}else {
+		dev_info(muic_data->dev, "%s: GPIO = %d ,disable Gpio \n", __func__, muic_data->mic_en_gpio);
+	    gpio_direction_output(muic_data->mic_en_gpio, 0);
+	}
+	/* send event jack type to upper layer */
+	switch_set_state(&switch_earjack, muic_data->eardetected);
+
+	return;
+}
+
+static int max77843_muic_set_ear_jack(struct max77843_muic_data *muic_data)
+{
+	u8 ctrl1_val, ctrl1_msk;
+	u8 ctrl2_val,ctrl2_msk;
+	int ret = 0;
+
+	ctrl1_val = (MAX77843_MUIC_CTRL1_COM_AUDIO << COMN1SW_SHIFT) | (MAX77843_MUIC_CTRL1_COM_AUDIO << COMP2SW_SHIFT);
+	ctrl1_msk = COMN1SW_MASK | COMP2SW_MASK;
+
+	if (muic_data->init_detect_done == MAX77843_INIT_START) {
+		ctrl1_val = ctrl1_val | (1 << NOBCCOMP_SHIFT);
+		ctrl1_msk = ctrl1_msk | NOBCCOMP_MASK;
+	}
+
+	ret = max77843_update_reg(muic_data->i2c, MAX77843_MUIC_REG_CTRL1, ctrl1_val,
+			    ctrl1_msk);
+
+	ctrl2_val = CTRL2_CPEN1_LOWPWD0;
+	ctrl2_msk = CTRL2_CPEN_MASK | CTRL2_LOWPWR_MASK;
+
+	max77843_update_reg(muic_data->i2c,
+			MAX77843_MUIC_REG_CTRL2, ctrl2_val, ctrl2_msk);
+
+	return ret;
+
+}
+static int max77843_muic_earjack_detect(struct max77843_muic_data *muic_data, bool attached)
+{
+	dev_info(muic_data->dev, "%s:EarJack attached= %d\n", __func__,attached);
+
+	if (muic_data->init_detect_done == MAX77843_NOT_INIT)
+		return 0;
+
+	muic_data->eardetected = attached ? true : false;
+
+	schedule_work(&muic_data->earjack_work);
+
+	max77843_muic_set_ear_jack(muic_data);
+
+	return 0;
+}
+
+static void max77843_muic_earjack_key_detect_workfunc(struct work_struct *work)
+{
+	struct max77843_muic_data *muic_data = container_of(work, struct max77843_muic_data, earjackkey_work);
+
+	dev_info(muic_data->dev, "%s:EarJackKey Work earkeypressed= %d\n", __func__, muic_data->earkeypressed);
+
+	/* send event sendend key type to upper layer */
+	switch_set_state(&switch_earjackkey, muic_data->earkeypressed);
+
+	return;
+}
+
+static int max77843_muic_earjack_key_detect(struct max77843_muic_data *muic_data, muic_attached_dev_t new_dev)
+{
+	unsigned int code;
+
+	dev_info(muic_data->dev, "%s:EarJackKey\n", __func__);
+
+	if (muic_data->earkeypressed) {
+		switch (new_dev) {
+			case ATTACHED_DEV_EARJACK_SENDKEY:
+				code = KEY_MEDIA;
+				muic_data->old_keycode = KEY_MEDIA;
+				break;
+			case ATTACHED_DEV_EARJACK_VOL_UP:
+				code = KEY_VOLUMEUP;
+				muic_data->old_keycode = KEY_VOLUMEUP;
+				break;
+			case ATTACHED_DEV_EARJACK_VOL_DN:
+				code = KEY_VOLUMEDOWN;
+				muic_data->old_keycode = KEY_VOLUMEDOWN;
+				break;
+			default:
+				dev_info(muic_data->dev, "%s: should not reach here(0x%x)\n", __func__, new_dev);
+				return 0;
+		}
+		muic_data->keycode = code;
+	}
+	else {
+		code = muic_data->old_keycode;
+	}
+
+	/* send event sendend key type to upper layer */
+	input_event(muic_data->input, EV_KEY, code, muic_data->earkeypressed);
+	input_sync(muic_data->input);
+
+	schedule_work(&muic_data->earjackkey_work);
+
+	return 0;
+}
+
+#endif
+
 static int max77843_muic_handle_detach(struct max77843_muic_data *muic_data)
 {
 	int ret = 0;
@@ -1685,6 +1907,9 @@ static int max77843_muic_handle_detach(struct max77843_muic_data *muic_data)
 
 	switch (muic_data->attached_dev) {
 	case ATTACHED_DEV_OTG_MUIC:
+#ifdef CONFIG_MUIC_MAX77843_SUPPORT_LANHUB
+	case ATTACHED_DEV_USB_LANHUB_MUIC:
+#endif
 	case ATTACHED_DEV_CHARGING_CABLE_MUIC:
 	case ATTACHED_DEV_HMT_MUIC:
 		break;
@@ -1713,6 +1938,21 @@ static int max77843_muic_handle_detach(struct max77843_muic_data *muic_data)
 		break;
 	}
 
+#if defined(CONFIG_MUIC_DET_JACK)
+	if(muic_data->attached_dev == ATTACHED_DEV_EARJACK_MUIC
+	|| muic_data->attached_dev == ATTACHED_DEV_EARJACK_SENDKEY
+	|| muic_data->attached_dev == ATTACHED_DEV_EARJACK_VOL_DN
+	|| muic_data->attached_dev == ATTACHED_DEV_EARJACK_VOL_UP) {
+		dev_info(muic_data->dev, "%s: EARJACK\n", __func__);
+		muic_data->earkeypressed = false;
+		max77843_muic_earjack_key_detect(muic_data, 0);
+		max77843_muic_earjack_detect(muic_data, false);
+		max77843_update_reg(muic_data->i2c,
+		MAX77843_MUIC_REG_CTRL1, 0, NOBCCOMP_MASK);
+		max77843_muic_adcmode_switch(muic_data, MAX77843_MUIC_CTRL4_ADCMODE_ONE_SHOT);
+		msleep(50);
+	}
+#endif
 #if defined(CONFIG_MUIC_NOTIFIER)
 	if (noti)
 		muic_notifier_detach_attached_dev(muic_data->attached_dev);
@@ -1742,9 +1982,25 @@ static int max77843_muic_logically_detach(struct max77843_muic_data *muic_data,
 		enable_accdet = false;
 
 	switch (muic_data->attached_dev) {
+	case ATTACHED_DEV_OTG_MUIC:
+#ifdef CONFIG_MUIC_MAX77843_SUPPORT_LANHUB
+		if (new_dev == ATTACHED_DEV_USB_LANHUB_MUIC) {
+			pr_info("%s:%s: OTG->LANHUB\n", MUIC_DEV_NAME, __func__);
+			force_path_open = false;
+			enable_accdet = false;
+			goto out;
+		}
+		break;
+	case ATTACHED_DEV_USB_LANHUB_MUIC:
+		if (new_dev == ATTACHED_DEV_OTG_MUIC) {
+			pr_info("%s:%s: LANHUB->OTG\n", MUIC_DEV_NAME, __func__);
+			force_path_open = false;
+			enable_accdet = false;
+		}
+		break;
+#endif
 	case ATTACHED_DEV_USB_MUIC:
 	case ATTACHED_DEV_CDP_MUIC:
-	case ATTACHED_DEV_OTG_MUIC:
 	case ATTACHED_DEV_CHARGING_CABLE_MUIC:
 	case ATTACHED_DEV_HMT_MUIC:
 	case ATTACHED_DEV_UNDEFINED_CHARGING_MUIC:
@@ -1826,6 +2082,14 @@ static int max77843_muic_logically_detach(struct max77843_muic_data *muic_data,
 	case ATTACHED_DEV_NONE_MUIC:
 		force_path_open = false;
 		goto out;
+#if defined(CONFIG_MUIC_DET_JACK)
+	case ATTACHED_DEV_EARJACK_MUIC:
+	case ATTACHED_DEV_EARJACK_SENDKEY:
+	case ATTACHED_DEV_EARJACK_VOL_DN:
+	case ATTACHED_DEV_EARJACK_VOL_UP:
+		force_path_open = false;
+		break;
+#endif
 	default:
 		pr_warn("%s:%s try to attach without logically detach\n",
 				MUIC_DEV_NAME, __func__);
@@ -1884,6 +2148,13 @@ static int max77843_muic_handle_attach(struct max77843_muic_data *muic_data,
 
 	switch (new_dev) {
 	case ATTACHED_DEV_OTG_MUIC:
+#ifdef CONFIG_MUIC_MAX77843_SUPPORT_LANHUB
+		if (muic_data->attached_dev == ATTACHED_DEV_USB_LANHUB_MUIC)
+			break;
+	case ATTACHED_DEV_USB_LANHUB_MUIC:
+		if (muic_data->attached_dev == ATTACHED_DEV_OTG_MUIC)
+			break;
+#endif
 	case ATTACHED_DEV_CHARGING_CABLE_MUIC:
 	case ATTACHED_DEV_HMT_MUIC:
 		ret = write_vps_regs(muic_data, new_dev);
@@ -1900,6 +2171,8 @@ static int max77843_muic_handle_attach(struct max77843_muic_data *muic_data,
 		new_dev = check_jig_uart_on_factory_test(muic_data, new_dev);
 		if (new_dev != ATTACHED_DEV_JIG_UART_ON_MUIC)
 			goto out;
+#else
+		ret = max77843_muic_attach_uart_path(muic_data, new_dev);
 #endif
 		break;
 	case ATTACHED_DEV_TA_MUIC:
@@ -1971,6 +2244,22 @@ static int max77843_muic_handle_attach(struct max77843_muic_data *muic_data,
 	case ATTACHED_DEV_VZW_INCOMPATIBLE_MUIC:
 		ret = write_vps_regs(muic_data, new_dev);
 		break;
+#if defined(CONFIG_MUIC_DET_JACK)
+	case ATTACHED_DEV_EARJACK_MUIC:
+		if(muic_data->eardetected == true && muic_data->earkeypressed == true){
+			muic_data->earkeypressed = false;
+			max77843_muic_earjack_key_detect(muic_data, new_dev);
+		}else{
+			ret = max77843_muic_earjack_detect(muic_data, true);
+		}
+		break;
+	case ATTACHED_DEV_EARJACK_SENDKEY:
+	case ATTACHED_DEV_EARJACK_VOL_DN:
+	case ATTACHED_DEV_EARJACK_VOL_UP:
+		muic_data->earkeypressed = true;
+		ret = max77843_muic_earjack_key_detect(muic_data, new_dev);
+		break;
+#endif
 	default:
 		pr_warn("%s:%s unsupported dev(%d)\n", MUIC_DEV_NAME, __func__,
 				new_dev);
@@ -2053,6 +2342,9 @@ static bool muic_check_vps_adc
 		case ADC_SEND_END ... ADC_REMOTE_S12:
 		case ADC_UART_CABLE:
 		case ADC_AUDIOMODE_W_REMOTE:
+#if !defined(CONFIG_MUIC_MAX77843_SUPPORT_LANHUB)
+		case ADC_USB_LANHUB:
+#endif
 			ret = true;
 			goto out;
 			break;
@@ -2209,12 +2501,22 @@ static bool is_need_muic_adcmode_continuous(muic_attached_dev_t new_dev)
 	bool ret = false;
 
 	switch (new_dev) {
+#ifdef CONFIG_MUIC_MAX77843_SUPPORT_LANHUB
+	case ATTACHED_DEV_OTG_MUIC:
+	case ATTACHED_DEV_USB_LANHUB_MUIC:
+#endif
 	case ATTACHED_DEV_SMARTDOCK_MUIC:
 	case ATTACHED_DEV_SMARTDOCK_VB_MUIC:
 	case ATTACHED_DEV_SMARTDOCK_TA_MUIC:
 	case ATTACHED_DEV_SMARTDOCK_USB_MUIC:
 	case ATTACHED_DEV_AFC_CHARGER_PREPARE_MUIC:
 	case ATTACHED_DEV_AFC_CHARGER_5V_MUIC:
+#if defined(CONFIG_MUIC_DET_JACK)
+	case ATTACHED_DEV_EARJACK_MUIC:
+	case ATTACHED_DEV_EARJACK_SENDKEY:
+	case ATTACHED_DEV_EARJACK_VOL_DN:
+	case ATTACHED_DEV_EARJACK_VOL_UP:
+#endif
 		ret = true;
 		break;
 	default:
@@ -2303,6 +2605,7 @@ static void max77843_muic_detect_dev(struct max77843_muic_data *muic_data, int i
 	pr_info("%s:%s vdnmon:0x%x mpnack:0x%x vbadc:0x%x dpdnvden:0x%x\n",
 		MUIC_DEV_NAME, __func__, vdnmon, mpnack, vbadc, dpdnvden);
 
+#if defined(CONFIG_SEC_FACTORY)
 	/* Workaround for Factory mode.
 	 * Abandon adc interrupt of approximately +-100K range
 	 * if previous cable status was JIG UART BOOT OFF.
@@ -2313,16 +2616,16 @@ static void max77843_muic_detect_dev(struct max77843_muic_data *muic_data, int i
 				(adc == (ADC_JIG_UART_OFF - 1))) {
 			if (!muic_data->is_factory_start || adc != ADC_JIG_UART_ON) {
 				pr_warn("%s:%s abandon ADC\n", MUIC_DEV_NAME, __func__);
-#if defined(CONFIG_SEC_FACTORY)
+
 				if (adc != ADC_JIG_UART_ON) {
 					pr_warn("%s: %s: Change of JIGSET.\n", MUIC_DEV_NAME, __func__);
 					ret = max77843_write_reg(i2c, MAX77843_MUIC_REG_CTRL3, 0x01);
 				}
-#endif
 				return;
 			}
 		}
 	}
+#endif
 
 	for (i = 0; i < ARRAY_SIZE(muic_vps_table); i++) {
 		tmp_vps = &(muic_vps_table[i]);
@@ -2446,6 +2749,11 @@ static irqreturn_t max77843_muic_irq(int irq, void *data)
 	}
 #endif
 
+#if defined(CONFIG_MUIC_DET_JACK)
+	if (!(muic_data->init_detect_done == MAX77843_INIT_DONE))
+		return IRQ_HANDLED;
+#endif
+
 	mutex_lock(&muic_data->muic_mutex);
 	if (muic_data->is_muic_ready == true)
 		max77843_muic_detect_dev(muic_data, irq);
@@ -2551,7 +2859,15 @@ static void max77843_muic_init_detect(struct max77843_muic_data *muic_data)
 	mutex_lock(&muic_data->muic_mutex);
 	muic_data->is_muic_ready = true;
 
+#if defined(CONFIG_MUIC_DET_JACK)
+	muic_data->init_detect_done = MAX77843_INIT_START;
+#endif
+
 	max77843_muic_detect_dev(muic_data, -1);
+
+#if defined(CONFIG_MUIC_DET_JACK)
+	muic_data->init_detect_done = MAX77843_INIT_DONE;
+#endif
 
 	mutex_unlock(&muic_data->muic_mutex);
 }
@@ -2575,6 +2891,10 @@ static int of_max77843_muic_dt(struct max77843_muic_data *muic_data)
 		ret = prop_num;
 		goto err;
 	}
+
+#if defined(CONFIG_MUIC_DET_JACK)
+	muic_data->mic_en_gpio = of_get_named_gpio(np_muic, "muic,usb-mic-en-gpio", 0);
+#endif
 
 	/* for debug */
 	for (i = 0; i < prop_num; i++) {
@@ -2768,6 +3088,11 @@ static int max77843_muic_probe(struct platform_device *pdev)
 	struct max77843_dev *max77843 = dev_get_drvdata(pdev->dev.parent);
 	struct max77843_platform_data *mfd_pdata = dev_get_platdata(max77843->dev);
 	struct max77843_muic_data *muic_data;
+#if defined(CONFIG_MUIC_DET_JACK)
+	struct input_dev *input;
+	struct class *audio;
+	struct device *earjack;
+#endif
 	int ret = 0;
 
 	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
@@ -2778,6 +3103,15 @@ static int max77843_muic_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_return;
 	}
+
+#if defined(CONFIG_MUIC_DET_JACK)
+	input = input_allocate_device();
+	if (!input) {
+		dev_err(&pdev->dev, "%s: failed to allocate input\n", __func__);
+		ret = -ENOMEM;
+		goto err_kfree;
+	}
+#endif
 
 	if (!mfd_pdata) {
 		pr_err("%s: failed to get max77843 mfd platform data\n", __func__);
@@ -2810,6 +3144,9 @@ static int max77843_muic_probe(struct platform_device *pdev)
 	muic_data->is_muic_ready = false;
 	muic_data->is_otg_test = false;
 	muic_data->is_factory_start = false;
+#if defined(CONFIG_MUIC_DET_JACK)
+	muic_data->input = input;
+#endif
 #if defined(CONFIG_MUIC_MAX77843_IGNORE_ADCERR_WA) && defined(CONFIG_SEC_FACTORY)
 	muic_data->ignore_adcerr = true;
 #else
@@ -2821,7 +3158,44 @@ static int max77843_muic_probe(struct platform_device *pdev)
 	set_muic_reset(muic_data, false);
 #endif
 
+#if defined(CONFIG_MUIC_DET_JACK)
+	muic_data->eardetected = false;
+	muic_data->earkeypressed = false;
+	muic_data->init_detect_done = MAX77843_NOT_INIT;
+	muic_data->old_keycode = 0;
+	muic_data->keycode = 0;
+#endif
 	platform_set_drvdata(pdev, muic_data);
+
+#if defined(CONFIG_MUIC_DET_JACK)
+	input->name = pdev->name;
+	input->phys = "deskdock-key/input0";
+	input->dev.parent = &pdev->dev;
+
+	input->id.bustype = BUS_HOST;
+	input->id.vendor = 0x0001;
+	input->id.product = 0x0001;
+	input->id.version = 0x0001;
+
+	/* Enable auto repeat feature of Linux input subsystem */
+	__set_bit(EV_REP, input->evbit);
+
+	dev_info(muic_data->dev, "input->name:%s\n", input->name);
+
+	input_set_capability(input, EV_KEY, KEY_MEDIA);
+	input_set_capability(input, EV_KEY, KEY_VOLUMEUP);
+	input_set_capability(input, EV_KEY, KEY_VOLUMEDOWN);
+	input_set_capability(input, EV_KEY, KEY_PLAYPAUSE);
+	input_set_capability(input, EV_KEY, KEY_PREVIOUSSONG);
+	input_set_capability(input, EV_KEY, KEY_NEXTSONG);
+
+	ret = input_register_device(input);
+	if (ret) {
+		dev_err(muic_data->dev, "%s: Unable to register input device, "
+			"error: %d\n", __func__, ret);
+		goto fail;
+	}
+#endif
 
 	if (muic_data->pdata->init_gpio_cb) {
 		ret = muic_data->pdata->init_gpio_cb(get_switch_sel());
@@ -2851,6 +3225,53 @@ static int max77843_muic_probe(struct platform_device *pdev)
 				MUIC_DEV_NAME, __func__, ret);
 		goto fail_init_irq;
 	}
+
+#if defined(CONFIG_MUIC_DET_JACK)
+	ret = switch_dev_register(&switch_earjack);
+	if (ret < 0) {
+		pr_info("%s : Failed to register switch device\n", __func__);
+		goto fail;
+	}
+
+	ret = switch_dev_register(&switch_earjackkey);
+	if (ret < 0) {
+		pr_info("%s : Failed to register switch device\n", __func__);
+		goto err_switch_earjack_register;
+	}
+
+	audio = class_create(THIS_MODULE, "audio");
+	if (IS_ERR(audio)) {
+		pr_err("Failed to create class(audio)!\n");
+		goto err_switch_earjackkey_register;
+	}
+
+	earjack = device_create(audio, NULL, 0, NULL, "earjack");
+	if (IS_ERR(earjack)) {
+		pr_err("Failed to create device(earjack)!\n");
+		goto err_switch_earjackkey_register;
+	}
+
+	ret = device_create_file(earjack, &dev_attr_key_state);
+	if (ret) {
+		pr_err("Failed to create device file in sysfs entries(%s)!\n",
+			dev_attr_key_state.attr.name);
+		goto err_switch_earjackkey_register;
+	}
+
+	ret = device_create_file(earjack, &dev_attr_state);
+	if (ret) {
+		pr_err("Failed to create device file in sysfs entries(%s)!\n",
+			dev_attr_state.attr.name);
+		goto err_switch_earjackkey_register;
+	}
+
+	dev_set_drvdata(earjack, muic_data);
+#endif
+
+#if defined(CONFIG_MUIC_DET_JACK)
+	INIT_WORK(&muic_data->earjack_work, max77843_muic_earjack_detect_workfunc);
+	INIT_WORK(&muic_data->earjackkey_work, max77843_muic_earjack_key_detect_workfunc);
+#endif
 
 #if defined(CONFIG_HV_MUIC_MAX77843_AFC)
 	max77843_hv_muic_initialize(muic_data);
@@ -2888,6 +3309,12 @@ fail_init_irq:
 	sysfs_remove_group(&switch_device->kobj, &max77843_muic_group);
 fail_sysfs_create:
 	mutex_unlock(&muic_data->muic_mutex);
+#if defined(CONFIG_MUIC_DET_JACK)
+err_switch_earjackkey_register:
+	switch_dev_unregister(&switch_earjackkey);
+err_switch_earjack_register:
+	switch_dev_unregister(&switch_earjack);
+#endif
 fail:
 	platform_set_drvdata(pdev, NULL);
 	mutex_destroy(&muic_data->muic_mutex);

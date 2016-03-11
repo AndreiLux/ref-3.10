@@ -12,6 +12,7 @@
 
 /* MHI Includes */
 #include "mhi_uci.h"
+#include "mhi.h"
 
 #define TRB_MAX_DATA_SIZE 0x1000
 
@@ -446,7 +447,7 @@ static ssize_t mhi_uci_client_write(struct file *file,
 			wait_ret = wait_event_interruptible_timeout(uci_handle->write_wait_queue,
 					get_free_trbs(uci_handle->outbound_handle) > 0,
 					msecs_to_jiffies(3*60*1000));
-			if(wait_ret == 0) {
+			if((wait_ret == 0) && !uci_handle->outbound_handle->mhi_dev_ctxt->flags.stop_threads) {
 				mhi_uci_log(UCI_DBG_ERROR,
 					"mhi uci write timeout %d?\n", chan);
 				panic("CP Crash - mhi uci write timeout");

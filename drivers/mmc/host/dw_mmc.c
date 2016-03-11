@@ -1034,6 +1034,9 @@ static void dw_mci_idmac_complete_dma(struct dw_mci *host)
 #define AES_CBC		1
 #define AES_XTS		2
 
+extern volatile unsigned int disk_key_flag;
+extern spinlock_t disk_key_lock;
+
 static void dw_mci_translate_sglist(struct dw_mci *host, struct mmc_data *data,
 				    unsigned int sg_len)
 {
@@ -1044,7 +1047,6 @@ static void dw_mci_translate_sglist(struct dw_mci *host, struct mmc_data *data,
 #if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
 	unsigned int sector = 0;
 	unsigned int sector_key = DW_MMC_BYPASS_SECTOR_BEGIN;
-	static unsigned int fmp_key_flag = 0;
 #if defined(CONFIG_MMC_DW_FMP_DM_CRYPT)
 	struct mmc_blk_request *brq = NULL;
 	struct mmc_queue_req *mq_rq = NULL;
@@ -1120,9 +1122,10 @@ static void dw_mci_translate_sglist(struct dw_mci *host, struct mmc_data *data,
 					desc->des30 = 0;
 					desc->des31 = htonl(sector);
 
-					/* Disk Enc Key, Tweak Key */
-					if (!fmp_key_flag) {
+					if (disk_key_flag) {
 						int ret;
+
+					/* Disk Enc Key, Tweak Key */
 						ret = exynos_smc(SMC_CMD_FMP, FMP_KEY_SET, EMMC0_FMP, 0);
 						if (ret) {
 							dev_err(host->dev, "Failed to smc call for FMP key setting: %x\n", ret);
@@ -1132,9 +1135,11 @@ static void dw_mci_translate_sglist(struct dw_mci *host, struct mmc_data *data,
 							host->state_cmd = STATE_IDLE;
 							spin_unlock(&host->lock);
 						}
-						fmp_key_flag = 1;
-					}
 
+						spin_lock(&disk_key_lock);
+						disk_key_flag = 0;
+						spin_unlock(&disk_key_lock);
+					}
 				}
 				if ((sector_key & DW_MMC_FILE_ENCRYPTION_SECTOR_BEGIN) &&
 					(host->pdata->quirks & DW_MCI_QUIRK_USE_SMU)) {

@@ -180,6 +180,7 @@ static inline unsigned int r2h_bits(int cmd)
 
 #define S5P_FIMV_D_SEI_ENABLE			0xF0C4
 #define S5P_FIMV_D_SEI_NEED_INIT_BUFFER_SHIFT	1
+#define S5P_FIMV_D_SEI_RECOVERY_PARSING_ENABLE	2
 
 /* Buffer setting registers */
 /* Session return */

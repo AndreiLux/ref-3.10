@@ -297,6 +297,8 @@ static int parse_sysfs_caminfo(struct exynos_platform_fimc_is *pdata, struct dev
 	DT_READ_U32(np, "read_version", cam_infos[camera_num].read_version);
 	DT_READ_U32(np, "core_voltage", cam_infos[camera_num].core_voltage);
 	DT_READ_U32(np, "upgrade", cam_infos[camera_num].upgrade);
+	DT_READ_U32(np, "fw_write", cam_infos[camera_num].fw_write);
+	DT_READ_U32(np, "fw_dump", cam_infos[camera_num].fw_dump);
 	DT_READ_U32(np, "companion", cam_infos[camera_num].companion);
 	DT_READ_U32(np, "ois", cam_infos[camera_num].ois);
 

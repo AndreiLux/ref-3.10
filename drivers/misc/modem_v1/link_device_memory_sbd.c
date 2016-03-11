@@ -152,7 +152,8 @@ static int setup_sbd_rb(struct sbd_link_device *sl, struct sbd_ring_buffer *rb,
 	Prepare array of pointers to the data buffer for each SBD
 	*/
 	alloc_size = (rb->len * sizeof(u8 *));
-	rb->buff = kmalloc(alloc_size, GFP_ATOMIC);
+	if (!rb->buff)
+		rb->buff = kmalloc(alloc_size, GFP_ATOMIC);
 	if (!rb->buff)
 		return -ENOMEM;
 
@@ -335,7 +336,11 @@ static void init_ipc_device(struct sbd_link_device *sl, u16 id,
 	ipc_dev->id = id;
 	ipc_dev->ch = ch;
 
+#ifdef CONFIG_SEC_MODEM_XMM7260_CAT6
 	atomic_set(&ipc_dev->config_done, 0);
+#else
+	atomic_set(&ipc_dev->config_done, 1);
+#endif
 
 	rb = &ipc_dev->rb[UL];
 	spin_lock_init(&rb->lock);
@@ -430,6 +435,12 @@ int create_sbd_link_device(struct link_device *ld, struct sbd_link_device *sl,
 	for (i = 0; i < sl->num_channels; i++)
 		init_ipc_device(sl, i, sbd_id2dev(sl, i));
 
+#ifdef CONFIG_DEBUG_PKTLOG
+	sl->pktlog = create_pktlog("lli");
+	if (!sl->pktlog)
+		mif_err("packet log device create fail\n");
+#endif
+
 	return 0;
 }
 
@@ -482,6 +493,8 @@ int sbd_pio_tx(struct sbd_ring_buffer *rb, struct sk_buff *skb)
 	unsigned int count = skb->len;
 	unsigned int space = (rb->buff_size - rb->payload_offset);
 	u8 *dst;
+
+	pktlog_tx_bottom_skb(rb->sl, skb);
 
 	ret = check_rb_space(rb, qlen, in, out);
 	if (unlikely(ret < 0))
@@ -601,6 +614,8 @@ struct sk_buff *sbd_pio_rx(struct sbd_ring_buffer *rb)
 	set_skb_priv(rb, skb);
 
 	check_more(rb, skb);
+
+	pktlog_rx_bottom_skb(rb->sl, skb);
 
 	return skb;
 }

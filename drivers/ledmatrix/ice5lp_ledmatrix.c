@@ -50,8 +50,9 @@
 #define LEDMATRIX_TEST_CODE_SIZE	(56*10+8)
 #define LEDMATRIX_TEST_CODE_ADDR	0x00
 #define LEDMATRIX_VER_ADDR		0x07
-#define LEDMATRIX_VER_ID		0xA1
-#define LEDMATRIX_VER_RETRY	3
+#define LEDMATRIX_VER_ID		0xA2
+#define LEDMATRIX_VER_ID_05T	0xA1
+#define LEDMATRIX_VER_RETRY	5
 #define READ_LENGTH		8
 
 //#define US_TO_PATTERN		1000000
@@ -192,20 +193,36 @@ retry_fw_dn:
 		pr_err("%s: cannot request spi_clk_scl(%d)", __func__, ret);
 	}
 
+	if(retry_count%2==0)
+	{
+		if (request_firmware(&data->fw1, "ice50/EINK1.fw", &client->dev))
+			pr_err("%s: Fail to open firmware 1 file\n", __func__);
+		else
+			ice5lp_fw_update_start(data->fw1->data, data->fw1->size, g_pdata->creset_1);
 
-	if (request_firmware(&data->fw1, "ice50/EINK1.fw", &client->dev))
-		pr_err("%s: Fail to open firmware 1 file\n", __func__);
+
+		usleep_range(1000, 1100);
+
+		if (request_firmware(&data->fw0, "ice50/EINK0.fw", &client->dev))
+			pr_err("%s: Fail to open firmware 0 file\n", __func__);
+		else
+			ice5lp_fw_update_start(data->fw0->data, data->fw0->size, g_pdata->creset_0);
+	}
 	else
-		ice5lp_fw_update_start(data->fw1->data, data->fw1->size, g_pdata->creset_1);
+	{
+		if (request_firmware(&data->fw1, "ice50/EINK1_05T.fw", &client->dev))
+			pr_err("%s: Fail to open firmware 05T 1 file\n", __func__);
+		else
+			ice5lp_fw_update_start(data->fw1->data, data->fw1->size, g_pdata->creset_1);
 
 
-	usleep_range(1000, 1100);
+		usleep_range(1000, 1100);
 
-	if (request_firmware(&data->fw0, "ice50/EINK0.fw", &client->dev))
-		pr_err("%s: Fail to open firmware 0 file\n", __func__);
-	else
-		ice5lp_fw_update_start(data->fw0->data, data->fw0->size, g_pdata->creset_0);
-
+		if (request_firmware(&data->fw0, "ice50/EINK0_05T.fw", &client->dev))
+			pr_err("%s: Fail to open firmware 05T 0 file\n", __func__);
+		else
+			ice5lp_fw_update_start(data->fw0->data, data->fw0->size, g_pdata->creset_0);	
+	}
 	gpio_set_value(g_pdata->spi_clk_scl, GPIO_LEVEL_LOW);
 	gpio_set_value(g_pdata->spi_si_sda,GPIO_LEVEL_LOW);
 	usleep_range(1000, 1100);
@@ -227,11 +244,14 @@ retry_fw_dn:
 
 	if (ice5lp_check_fwdone(client)) {
 		pr_info("ice5lp_ledmatrix firmware update success\n");
+		usleep_range(30, 40);
+		gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_LOW);
 		fw_loaded = 1;
 	} else {
 		retry_count++;
 		if(retry_count > LEDMATRIX_VER_RETRY){
 			pr_info("Finally, fail to update ice5lp_ledmatrix firmware!\n");
+			gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_LOW);
 			return;
 		}
 		pr_info("fail to update ice5lp_ledmatrix firmware! retry %d\n",retry_count);
@@ -281,6 +301,8 @@ static int ice5lp_check_fwdone(struct i2c_client *client)
 	ice5lp_ledmatrix_read(client, LEDMATRIX_VER_ADDR, 1, &fw_ver);
 	pr_info("%s: fw 0x%x\n", __func__, fw_ver);
 	if(fw_ver == LEDMATRIX_VER_ID)
+		ret = 1;
+	else if(fw_ver == LEDMATRIX_VER_ID_05T)
 		ret = 1;
 	else
 		ret = 0;
@@ -687,8 +709,8 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 	/* make data for sending */
 	/*  0 : solid normal
 	 *   1 : off
-	 *   2 : pattern normal
-	 *   3 : pattern scroll
+	 *   2 : ANI + scroll
+	 *   3 : ANI + loop
 	 *   4 : normal-> blinking -> scroll
 	 */ 
 	switch(value)
@@ -699,6 +721,7 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 			i2c_block_transfer.data[1] = 0x00;
 			i2c_block_transfer.data[2] = 0x00;
 			i2c_block_transfer.data[3] = 0x00;
+			i2c_block_transfer.data[4] = 0x00;
 			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
 				i2c_block_transfer.data[i] = 0xff;
 			break;
@@ -708,13 +731,15 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 			i2c_block_transfer.data[1] = 0x00;
 			i2c_block_transfer.data[2] = 0x00;
 			i2c_block_transfer.data[3] = 0x00;
+			i2c_block_transfer.data[4] = 0x00;
 			break;
 		case 2 :
 			len = LEDMATRIX_TEST_CODE_SIZE;
-			i2c_block_transfer.data[0] = 0x01;
-			i2c_block_transfer.data[1] = 0x00;
-			i2c_block_transfer.data[2] = 0x00;
-			i2c_block_transfer.data[3] = 0x00;
+			i2c_block_transfer.data[0] = 0x15;
+			i2c_block_transfer.data[1] = 0x11;
+			i2c_block_transfer.data[2] = 0x06;
+			i2c_block_transfer.data[3] = 0x0B;
+			i2c_block_transfer.data[4] = 0x05;
 			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
 				i2c_block_transfer.data[i] = BSR_data[i];
 			break;
@@ -724,6 +749,7 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 			i2c_block_transfer.data[1] = 0x11;
 			i2c_block_transfer.data[2] = 0x07;
 			i2c_block_transfer.data[3] = 0x0A;
+			i2c_block_transfer.data[4] = 0x05;
 			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
 				i2c_block_transfer.data[i] = BSR_data[i];
 			break;
@@ -733,6 +759,7 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 			i2c_block_transfer.data[1] = 0x15;
 			i2c_block_transfer.data[2] = 0x31;
 			i2c_block_transfer.data[3] = 0x00;
+			i2c_block_transfer.data[4] = 0x05;
 			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
 				i2c_block_transfer.data[i] = BSR_data[i];
 			break;
@@ -742,6 +769,7 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 			i2c_block_transfer.data[1] = 0x00;
 			i2c_block_transfer.data[2] = 0x00;
 			i2c_block_transfer.data[3] = 0x00;
+			i2c_block_transfer.data[4] = 0x00;
 			break;
 	}
 	
@@ -796,11 +824,51 @@ static ssize_t ledmatrix_ver_check_show(struct device *dev, struct device_attrib
 
 static DEVICE_ATTR(ledmatrix_ver_check, 0660, ledmatrix_ver_check_show, NULL);
 
+static ssize_t ledmatrix_pwr_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	if (send_success)
+		return sprintf(buf, "1\n");
+	else
+		return sprintf(buf, "0\n");
+}
+
+static ssize_t ledmatrix_pwr_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int value;
+	int rc;
+
+	rc = kstrtoul(buf, (unsigned int)0, (unsigned long *)&value);
+	if (rc < 0)
+		return rc;
+
+	if (!fw_loaded) {
+		pr_info("ice5: %s : firmware is not loaded\n", __func__);
+		return -EIO;
+	}
+
+	if(value==0)
+	{
+		gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_LOW);
+		pr_info("ice5: %s : FPGA_RST LOW\n", __func__);
+	}
+	else if(value==1)
+	{
+		gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_HIGH);
+		pr_info("ice5: %s : FPGA_RST HIGH\n", __func__);
+	}
+	
+	return size;
+}
+static DEVICE_ATTR(ledmatrix_pwr, 0660, ledmatrix_pwr_show, ledmatrix_pwr_store);
+
 static struct attribute *sec_ledmatrix_attributes[] = {
 	&dev_attr_ledmatrix_send.attr,
 	&dev_attr_ledmatrix_send_result.attr,
 	&dev_attr_ledmatrix_test.attr,
 	&dev_attr_ledmatrix_ver_check.attr,
+	&dev_attr_ledmatrix_pwr.attr,
 	NULL,
 };
 
@@ -823,9 +891,9 @@ static int of_ice5lp_ledmatrix_dt(struct device *dev, struct ice5lp_ledmatrix_pl
 	pdata->fpga_reset = of_get_named_gpio(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,fpga_reset", 0);
 	pdata->spi_si_sda = of_get_named_gpio(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,spi_si_sda", 0);
 	pdata->spi_clk_scl = of_get_named_gpio(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,spi_clk_scl", 0);
-	
+
 	pdata->ledmatrix_en = of_get_named_gpio(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,ledmatrix_en", 0);	
-	
+
 	return 0;
 }
 #else

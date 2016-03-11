@@ -25,18 +25,24 @@ menuconfig MALI_T7XX
 choice
 	prompt "version Configuration"
 	depends on MALI_T7XX
-	default MALI_R5P0
+	default MALI_R5P0_REL
 	help
 	  Select the gpu support version.
 
-config MALI_R5P0
+config MALI_R5P0_REL
 	depends on MALI_T7XX
 	bool "r5p0 driver"
 
-if MALI_R5P0
-source "drivers/gpu/arm/t7xx/r5p0/Kconfig"
-endif
+config MALI_R7P0
+	depends on MALI_T7XX
+	bool "r7p0 driver"
 
 endchoice
 
-
+if MALI_R5P0_REL
+source "drivers/gpu/arm/t7xx/r5p0/Kconfig"
+endif
+ 
+if MALI_R7P0
+source "drivers/gpu/arm/t7xx/r7p0/Kconfig"
+endif

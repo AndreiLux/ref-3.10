@@ -132,18 +132,30 @@ static uint32_t send_cmd_to_user(uint32_t command_id)
 	g_user_rsp.id = TLC_TUI_CMD_NONE;
 	g_user_rsp.return_code = TLC_TUI_ERR_UNKNOWN_CMD;
 
-
+	/* Check that the client (TuiService) is still present before to return
+	* the command. */
+	if (atomic_read(&fileopened)) {
 	/* S.LSI : Clean up previous response. */
 	complete_all(&io_comp);
 	INIT_COMPLETION(io_comp);
 
-	/* Give way to ioctl thread */
+		/* Unlock the ioctl thread (IOCTL_WAIT) in order to let the
+		* client know that there is a command to process. */
+		pr_info("%s: give way to ioctl thread\n", __func__);
 	complete(&dci_comp);
-	pr_debug("send_cmd_to_user: give way to ioctl thread\n");
-
-	/* Wait for ioctl thread to complete */
-	wait_for_completion_interruptible(&io_comp);
-	pr_debug("send_cmd_to_user: Got an answer from ioctl thread.\n");
+		pr_info("TUI TLC is running, waiting for the userland response\n");
+		/* Wait for the client acknowledge (IOCTL_ACK). */
+		unsigned long completed = wait_for_completion_interruptible_timeout(&io_comp,HZ*5);
+		if (!completed) {
+			pr_debug("%s:%d No acknowledge from client, timeout!\n",
+				__func__, __LINE__);
+		}
+	} else {
+		/* There is no client, do nothing except reporting an error to SWd. */
+		printk(KERN_INFO "TUI TLC seems dead. Not waiting for userland answer\n");
+		ret = TUI_DCI_ERR_INTERNAL_ERROR;
+		goto end;
+	}
 	INIT_COMPLETION(io_comp);
 
 	/* Check id of the cmd processed by ioctl thread (paranoia) */
@@ -166,6 +178,10 @@ static uint32_t send_cmd_to_user(uint32_t command_id)
 		}
 	}
 
+end:
+	/* In any case, reset the value of the command, to ensure that commands
+	* sent due to inturrupted wait_for_completion are TLC_TUI_CMD_NONE. */
+	reset_global_command_id();
 	return ret;
 }
 
@@ -219,9 +235,11 @@ static void tlc_process_cmd(void)
 
 		/* Start android TUI activity */
 		ret = send_cmd_to_user(TLC_TUI_CMD_START_ACTIVITY);
-		if (TUI_DCI_OK != ret)
+		if (TUI_DCI_OK != ret){
+//			send_cmd_to_user(TLC_TUI_CMD_STOP_ACTIVITY);
+			pr_info("%s Start Tuiactivity failed : ret = %d\n", __func__, ret);
 			break;
-
+		}
 			/* allocate TUI frame buffer */
 		ret = hal_tui_alloc(dci->nwd_rsp.alloc_buffer,
 				dci->cmd_nwd.payload.alloc_data.alloc_size,
@@ -262,7 +280,10 @@ static void tlc_process_cmd(void)
 				, __func__, ret_val);
 #endif
 		/* Stop android TUI activity */
-		ret = send_cmd_to_user(TLC_TUI_CMD_STOP_ACTIVITY);
+		/* Ignore return code, because an error means the TLC has been
+		* killed, which imply that the activity is stopped already. */
+		send_cmd_to_user(TLC_TUI_CMD_STOP_ACTIVITY);
+		ret = TUI_DCI_OK;
 		break;
 
 	default:

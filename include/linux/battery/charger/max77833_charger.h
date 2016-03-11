@@ -122,6 +122,7 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 #define MAX77833_MODE_OTG                       0x02
 #define MAX77833_MODE_BUCK                      0x04
 #define MAX77833_MODE_BOOST		        0x08
+#define MAX77833_WDTEN				0x10
 
 /* MAX77833_CHG_REG_CHG_CNFG_02 */
 #define MAX77833_CHG_TO_ITH		        0x07
@@ -133,6 +134,9 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 #define MAX77833_CHG_MINVSYS_SHIFT              5
 #define MAX77833_CHG_PRM_MASK                   0x1F
 #define MAX77833_CHG_PRM_SHIFT                  0
+
+/* MAX77833_CHG_REG_CHG_CNFG_12 */
+#define MAX77833_WDTCLR				0x01
 
 /* MAX77833_CHG_REG_CHG_CNFG_17 */
 #define MAX77833_CHG_WCIN_LIM                   0x7F
@@ -154,6 +158,7 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 #define SIOP_HV_WIRELESS_INPUT_LIMIT_CURRENT	500
 #define SIOP_HV_WIRELESS_CHARGING_LIMIT_CURRENT	1000
 #define SLOW_CHARGING_CURRENT_STANDARD          400
+#define STORE_MODE_INPUT_CURRENT                440
 
 enum chg_adc_value {
 	CHG_ADC_I_IN = CHG_CNFG_20_ADC_CHG_SEL_IIN,
@@ -163,7 +168,7 @@ enum chg_adc_value {
 	CHG_INIT_DETECTED_I_IN,
 };
 
-#define INPUT_CURRENT_TA		                1500
+#define INPUT_CURRENT_TA		                1000
 #define INPUT_CURRENT_WPC		                500
 
 struct max77833_charger_data {
@@ -246,6 +251,7 @@ struct max77833_charger_data {
 	bool afc_detect;
 	bool wc_afc_detect;
 	bool is_mdock;
+	bool store_mode;
 
 	bool iin_current_detecting;
 	int detected_iin_current;

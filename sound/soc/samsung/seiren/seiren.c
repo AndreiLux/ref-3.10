@@ -951,6 +951,12 @@ static ssize_t esa_write(struct file *file, const char *buffer,
 		esa_debug("%s: use ibuf1\n", __func__);
 	}
 
+	if (size > rtd->ibuf_size) {
+		esa_err("%s: copy size is bigger than buffer size\n",
+				__func__);
+		goto err;
+	}
+
 	/* receive stream data from user */
 	if (copy_from_user(ibuf, buffer, size)) {
 		esa_err("%s: failed to copy_from_user\n", __func__);
@@ -1757,6 +1763,12 @@ static ssize_t esa_write(struct file *file, const char *buffer,
 		goto out;
 	}
 
+	if (size > FX_BUF_SIZE) {
+		esa_err("%s: copy size is bigger than buffer size\n",
+				__func__);
+		goto out;
+	}
+
 	if (copy_from_user(si.fx_work_buf, buffer, size)) {
 		esa_err("%s: failed to copy_from_user\n", __func__);
 		ret = -EFAULT;
@@ -1810,7 +1822,7 @@ static int esa_mmap(struct file *filep, struct vm_area_struct *vmarea)
 	unsigned long len = vmarea->vm_end - vmarea->vm_start;
 	int ret = 0;
 
-	esa_err("%s: start=0x%p, size=%ld, offset=%ld, phys=0x%llX",
+	esa_info("%s: start=0x%p, size=%ld, offset=%ld, phys=0x%llX",
 			__func__,
 			(void *)vmarea->vm_start, len, vmarea->vm_pgoff,
 			(u64)si.fwarea_pa[1]);
@@ -1826,7 +1838,7 @@ static int esa_mmap(struct file *filep, struct vm_area_struct *vmarea)
 	ret = (int)remap_pfn_range(vmarea, vmarea->vm_start,
 			pfn, len, pgprot_noncached(vmarea->vm_page_prot));
 
-	esa_err("%s: ret = 0x%x\n", __func__, ret);
+	esa_info("%s: ret = 0x%x\n", __func__, ret);
 	return ret;
 }
 

@@ -60,7 +60,7 @@ int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsign
 			sip_smc_log_idx = 0;
 		spin_unlock_irqrestore(&sip_smc_log_lock, flags_sip);
 	} else if ((cmd & EXYNOS_SMC_CMD_MASK) == SMC_OEM_BASE) {
-		pr_info("%s: cmd: 0x%x, arg1: 0x%x, arg2: 0x%x, arg3: 0x%x\n",
+		pr_debug("%s: cmd: 0x%x, arg1: 0x%x, arg2: 0x%x, arg3: 0x%x\n",
 			__func__, (u32)cmd, (u32)arg1, (u32)arg2, (u32)arg3);
 		spin_lock_irqsave(&oem_smc_log_lock, flags_oem);
 		oem_smc_log[oem_smc_log_idx].cpu_clk = local_clock();

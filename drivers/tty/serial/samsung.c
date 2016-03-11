@@ -1034,6 +1034,15 @@ static void s3c24xx_serial_shutdown(struct uart_port *port)
 		wr_regl(port, S3C64XX_UINTP, 0xf);
 		wr_regl(port, S3C64XX_UINTM, 0xf);
 	}
+
+#ifdef BT_UART_TRACE
+	/* Audio Uart reset when called uart close by Bluetooth */
+	if (ourport->port.line == BLUETOOTH_UART_PORT_LINE) {
+		pr_info(KERN_ERR "s3c24xx_serial_shutdown: port=%d reset\n",ourport->port.line);
+		lpass_reset_toggle(LPASS_IP_UART);
+	}
+#endif
+
 }
 
 static int s3c24xx_serial_startup(struct uart_port *port)

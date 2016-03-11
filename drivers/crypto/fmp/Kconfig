@@ -1,8 +1,18 @@
-config FIPS_FMP
-	tristate "Samsung EXYNOS FMP Test for FIPS"
-	depends on FMP
+config FMP_UFS
+	tristate "Samsung EXYNOS FMP Driver for UFS"
+	depends on SCSI_UFSHCD && SCSI_UFSHCD_PLATFORM
 	---help---
-	  This selects Samsung EXYNOS FMP Test driver for FIPS.
+	  This selects EXYNOS FMP UFS driver.
+
+	  If you have a controller with this interface, say Y here.
+
+	  If unsure, say N.
+
+config FIPS_FMP
+	tristate "Samsung EXYNOS FMP Validation Driver for FIPS"
+	depends on FMP_UFS
+	---help---
+	  This selects Samsung EXYNOS FMP Validation driver for FIPS.
 
 	  If you have a controller with this interface, say Y here.
 

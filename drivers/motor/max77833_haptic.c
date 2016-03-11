@@ -25,7 +25,8 @@
 #include <linux/sec_sysfs.h>
 #include <linux/power_supply.h>
 
-#define TEST_MODE_TIME 10000
+#define TEST_MODE_TIME	10000
+#define MAX_INTENSITY	10000
 
 #define MOTOR_LRA			(1<<6)
 #define MOTOR_EN_PWM	0x23
@@ -35,14 +36,6 @@
 #define MAX77833_REG_MAINCTRL1_MRDBTMER_MASK	(0x7)
 #define MAX77833_REG_MAINCTRL1_MREN		(1 << 3)
 #define MAX77833_REG_MAINCTRL1_BIASEN		(1 << 7)
-
-#ifdef CONFIG_MOTOR_DRV_MAX77843
-extern void (*vibtonz_en)(bool);
-extern void (*vibtonz_pwm)(int);
-#else
-void (*vibtonz_en)(bool);
-void (*vibtonz_pwm)(int);
-#endif
 
 static struct device *motor_dev;
 
@@ -54,12 +47,13 @@ struct max77833_haptic_data {
 	struct pwm_device *pwm;
 	struct timed_output_dev tout_dev;
 	struct hrtimer timer;
-	unsigned int timeout;
-
 	struct workqueue_struct *workqueue;
 	struct work_struct work;
 	spinlock_t lock;
 	bool running;
+	u32 intensity;
+	u32 timeout;
+	int duty;
 };
 
 static struct max77833_haptic_data *g_hap_data;
@@ -203,7 +197,7 @@ static void haptic_work(struct work_struct *work)
 	int error = 0, temperature_level;
 
 	pr_info("[VIB] %s\n", __func__);
-	if (hap_data->timeout > 0) {
+	if (hap_data->timeout > 0 && hap_data->intensity) {
 		if (hap_data->running)
 			return;
 		max77833_haptic_i2c(hap_data, true);
@@ -282,7 +276,7 @@ static void haptic_work(struct work_struct *work)
 
 		prev_temperature_level = temperature_level;
 
-		pwm_config(hap_data->pwm, hap_data->pdata->duty,
+		pwm_config(hap_data->pwm, hap_data->duty,
 				hap_data->pdata->period);
 		pwm_enable(hap_data->pwm);
 		hap_data->running = true;
@@ -296,133 +290,6 @@ static void haptic_work(struct work_struct *work)
 	}
 	return;
 }
-
-#ifdef CONFIG_VIBETONZ
-void max77833_vibtonz_en(bool en)
-{
-	int error = 0, temperature_level;
-	if (g_hap_data == NULL) {
-		pr_err("[VIB] the motor is not ready!!!");
-		return ;
-	}
-
-	if (en) {
-		if (g_hap_data->running)
-			return;
-		max77833_haptic_i2c(g_hap_data, true);
-		temperature_level = temperature_check();
-
-		if (temperature_level != prev_temperature_level) {
-			switch(temperature_level)
-			{
-				case 0:
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_MIN_FREQ_LOW, g_hap_data->pdata->auto_res_min_low_low_temp);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_MIN_FREQ_LOW, error);
-					}
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_MAX_FREQ_LOW, g_hap_data->pdata->auto_res_max_low_low_temp);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_MAX_FREQ_LOW, error);
-					}
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_INIT_GUESS_LOW, g_hap_data->pdata->auto_res_init_low_low_temp);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_INIT_GUESS_LOW, error);
-					}
-					break;
-				case 1:
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_MIN_FREQ_LOW, g_hap_data->pdata->auto_res_min_low);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_MIN_FREQ_LOW, error);
-					}
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_MAX_FREQ_LOW, g_hap_data->pdata->auto_res_max_low);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_MAX_FREQ_LOW, error);
-					}
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_INIT_GUESS_LOW, g_hap_data->pdata->auto_res_init_low);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_INIT_GUESS_LOW, error);
-					}
-					break;
-				case 2:
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_MIN_FREQ_LOW, g_hap_data->pdata->auto_res_min_low_high_temp);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_MIN_FREQ_LOW, error);
-					}
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_MAX_FREQ_LOW, g_hap_data->pdata->auto_res_max_low_high_temp);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_MAX_FREQ_LOW, error);
-					}
-					error = max77833_write_reg(g_hap_data->i2c,
-						MAX77833_AUTORES_INIT_GUESS_LOW, g_hap_data->pdata->auto_res_init_low_high_temp);
-					if (error < 0) {
-						pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
-						__func__, MAX77833_AUTORES_INIT_GUESS_LOW, error);
-					}
-					break;
-				default:
-					pr_err("[VIB] %s Failed to read temperature [%d]\n",
-					__func__, temperature_level);
-					break;
-			}
-		}
-		prev_temperature_level = temperature_level;
-
-		pwm_config(g_hap_data->pwm, prev_duty, g_hap_data->pdata->period);
-		pwm_enable(g_hap_data->pwm);
-
-		g_hap_data->running = true;
-
-	} else {
-		if (!g_hap_data->running)
-			return;
-		pwm_disable(g_hap_data->pwm);
-		max77833_haptic_i2c(g_hap_data, false);
-		g_hap_data->running = false;
-	}
-}
-
-void max77833_vibtonz_pwm(int nForce)
-{
-	int pwm_period = 0, pwm_duty = 0;
-
-	pr_info("%s : %d\n", __func__, nForce);
-
-	if (g_hap_data == NULL) {
-		printk(KERN_ERR "[VIB] the motor is not ready!!!");
-		return ;
-	}
-
-	pwm_period = g_hap_data->pdata->period;
-	pwm_duty = pwm_period / 2 + ((pwm_period / 2 - 2) * nForce) / 127;
-
-	if (pwm_duty > g_hap_data->pdata->duty)
-		pwm_duty = g_hap_data->pdata->duty;
-	else if (pwm_period - pwm_duty > g_hap_data->pdata->duty)
-		pwm_duty = pwm_period - g_hap_data->pdata->duty;
-
-	/* add to avoid the glitch issue */
-	if (prev_duty != pwm_duty) {
-		prev_duty = pwm_duty;
-		pwm_config(g_hap_data->pwm, pwm_duty, pwm_period);
-	}
-}
-#endif
 
 #if defined(CONFIG_OF)
 static struct max77833_haptic_platform_data *of_max77833_haptic_dt(struct device *dev)
@@ -681,6 +548,52 @@ static struct attribute_group sec_motor_attr_group = {
 	.attrs = sec_motor_attributes,
 };
 
+static ssize_t intensity_store(struct device *dev,
+	struct device_attribute *devattr, const char *buf, size_t count)
+{
+	struct timed_output_dev *tdev = dev_get_drvdata(dev);
+	struct max77833_haptic_data *drvdata
+		= container_of(tdev, struct max77833_haptic_data, tout_dev);
+	int duty = drvdata->pdata->period >> 1;
+	int intensity = 0, ret = 0;
+
+	ret = kstrtoint(buf, 0, &intensity);
+
+	if (intensity < 0 || MAX_INTENSITY < intensity) {
+		pr_err("out of rage\n");
+		return -EINVAL;
+	}
+
+	if (MAX_INTENSITY == intensity)
+		duty = drvdata->pdata->duty;
+	else if (0 != intensity) {
+		long long tmp = drvdata->pdata->duty >> 1;
+
+		tmp *= (intensity / 100);
+		duty += (int)(tmp / 100);
+	}
+
+	drvdata->intensity = intensity;
+	drvdata->duty = duty;
+
+	pwm_config(drvdata->pwm, duty, drvdata->pdata->period);
+
+	return count;
+}
+
+static ssize_t intensity_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct timed_output_dev *tdev = dev_get_drvdata(dev);
+	struct max77833_haptic_data *drvdata
+		= container_of(tdev, struct max77833_haptic_data, tout_dev);
+
+	return sprintf(buf, "intensity: %u\n",
+			(drvdata->intensity * 100));
+}
+
+static DEVICE_ATTR(intensity, 0660, intensity_show, intensity_store);
+
 static int max77833_haptic_probe(struct platform_device *pdev)
 {
 	int error = 0;
@@ -774,8 +687,13 @@ static int max77833_haptic_probe(struct platform_device *pdev)
 	}
 #endif
 
-	vibtonz_en = max77833_vibtonz_en;
-	vibtonz_pwm = max77833_vibtonz_pwm;
+	error = sysfs_create_file(&hap_data->tout_dev.dev->kobj,
+				&dev_attr_intensity.attr);
+	if (error < 0) {
+		pr_err("Failed to register sysfs : %d\n", error);
+		goto err_timed_output_register;
+	}
+
 	prev_temperature_level = 1;
 
 	/* autoresonance range setting */
@@ -898,14 +816,12 @@ static int max77833_haptic_suspend(struct platform_device *pdev,
 	pr_info("[VIB] %s\n", __func__);
 	cancel_work_sync(&g_hap_data->work);
 	hrtimer_cancel(&g_hap_data->timer);
-	vibetonz_clk_on(&pdev->dev, false);
 	max77833_haptic_i2c(data, false);
 	return 0;
 }
 static int max77833_haptic_resume(struct platform_device *pdev)
 {
 	pr_info("[VIB] %s\n", __func__);
-	vibetonz_clk_on(&pdev->dev, true);
 	return 0;
 }
 

@@ -91,7 +91,7 @@ bad_msg:
 		FUNC, ld->name, arrow(RX), ld->mc->name,
 		hdr[0], hdr[1], hdr[2], hdr[3]);
 	set_rxq_tail(dev, in);	/* Reset tail (out) pointer */
-	modemctl_notify_event(MDM_EVENT_CP_FORCE_CRASH);
+	modemctl_notify_event(MDM_CRASH_PACKET_CRACKED);
 
 no_mem:
 	return NULL;

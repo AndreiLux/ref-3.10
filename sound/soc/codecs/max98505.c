@@ -371,6 +371,13 @@ static const struct soc_enum spk_state_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_state_text), spk_state_text),
 };
 
+static const char * const spk_en_text[] = {"Disable", "Enable"};
+
+static const struct soc_enum max98505_spk_en_enum[] = {
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_en_text),
+			spk_en_text),
+};
+
 static int max98505_spk_out_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol) {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
@@ -551,6 +558,37 @@ static int max98505_volume_step_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int max98505_spk_en_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	unsigned int value = 0;
+
+	regmap_read(max98505->regmap,
+			MAX98505_R036_BLOCK_ENABLE,
+			&value);
+	ucontrol->value.integer.value[0] =
+		(value & MAX98505_SPK_EN_MASK) > 0 ? 1 : 0;
+
+	return 0;
+}
+
+static int max98505_spk_en_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	int enable = !!(int)ucontrol->value.integer.value[0];
+
+	regmap_update_bits(max98505->regmap,
+			MAX98505_R036_BLOCK_ENABLE,
+			MAX98505_SPK_EN_MASK,
+			enable ? MAX98505_SPK_EN_MASK : 0);
+
+	return 0;
+}
+
 static const struct snd_kcontrol_new max98505_snd_controls[] = {
 
 	SOC_SINGLE_EXT_TLV("Speaker Volume", MAX98505_R02D_GAIN,
@@ -586,6 +624,10 @@ static const struct snd_kcontrol_new max98505_snd_controls[] = {
 
 	SOC_SINGLE_EXT("Volume Step", SND_SOC_NOPM, 0, 15, 0,
 			max98505_volume_step_get, max98505_volume_step_put),
+
+	SOC_ENUM_EXT("SPK Enable Switch", max98505_spk_en_enum,
+			max98505_spk_en_get,
+			max98505_spk_en_put),
 
 #ifdef USE_DSM_LOG
 	SOC_SINGLE_EXT("DSM LOG", SND_SOC_NOPM, 0, 3, 0,
@@ -952,10 +994,8 @@ static void __max98505_dai_digital_mute(struct snd_soc_dai *codec_dai, int mute)
 				max98505->volume);
 		regmap_update_bits(max98505->regmap,
 				MAX98505_R036_BLOCK_ENABLE,
-				MAX98505_BST_EN_MASK |
-				MAX98505_SPK_EN_MASK,
-				MAX98505_BST_EN_MASK |
-				MAX98505_SPK_EN_MASK);
+				MAX98505_BST_EN_MASK,
+				MAX98505_BST_EN_MASK);
 		regmap_write(max98505->regmap,
 				MAX98505_R038_GLOBAL_ENABLE,
 				MAX98505_EN_MASK);
@@ -1283,8 +1323,10 @@ static int max98505_probe(struct snd_soc_codec *codec)
 	/* Enable ADC */
 	regmap_update_bits(max98505->regmap,
 			MAX98505_R036_BLOCK_ENABLE,
-			MAX98505_ADC_VIMON_EN_MASK,
-			MAX98505_ADC_VIMON_EN_MASK);
+			MAX98505_ADC_VIMON_EN_MASK |
+			MAX98505_SPK_EN_MASK,
+			MAX98505_ADC_VIMON_EN_MASK |
+			MAX98505_SPK_EN_MASK);
 	pdata->vstep.adc_status = 1;
 
 	max98505_set_slave(max98505);

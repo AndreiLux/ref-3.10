@@ -18,8 +18,24 @@
 
 extern wait_queue_head_t ringbuf_wait;
 
+/*
+ * Compatibility Issue :
+ * dumpstate process of Android M tries to open stlog node with O_NONBLOCK.
+ * But on Android L, it tries to open stlog node without O_NONBLOCK.
+ * In order to resolve this issue, stlog_open() always works as NONBLOCK mode.
+ * If you want runtime debugging, please use stlog_open_pipe().
+ */
 static int stlog_open(struct inode * inode, struct file * file)
 {
+	//Open as non-blocking mode for printing once.
+	file->f_flags |= O_NONBLOCK;
+	return do_stlog(STLOG_ACTION_OPEN, NULL, 0, STLOG_FROM_PROC);
+}
+
+static int stlog_open_pipe(struct inode * inode, struct file * file)
+{
+	//Open as blocking mode for runtime debugging
+	file->f_flags &= ~(O_NONBLOCK);
 	return do_stlog(STLOG_ACTION_OPEN, NULL, 0, STLOG_FROM_PROC);
 }
 
@@ -32,10 +48,12 @@ static int stlog_release(struct inode * inode, struct file * file)
 static ssize_t stlog_read(struct file *file, char __user *buf,
 			 size_t count, loff_t *ppos)
 {
-	if (file->f_flags & O_NONBLOCK) //For runtime debugging
-	    return do_stlog(STLOG_ACTION_READ, buf, count, STLOG_FROM_PROC);
+	//Blocking mode for runtime debugging
+	if (!(file->f_flags & O_NONBLOCK))
+		return do_stlog(STLOG_ACTION_READ, buf, count, STLOG_FROM_PROC);
 
-	return do_stlog(STLOG_ACTION_READ_ALL, buf, count, STLOG_FROM_PROC); //Print once, consume all the buffers
+	//Non-blocking mode, print once, consume all the buffers
+	return do_stlog(STLOG_ACTION_READ_ALL, buf, count, STLOG_FROM_PROC);
 }
 
 static ssize_t stlog_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
@@ -47,9 +65,7 @@ static ssize_t stlog_write(struct file *file, const char __user *buf, size_t cou
 loff_t stlog_llseek(struct file *file, loff_t offset, int whence)
 {
 	return (loff_t)do_stlog(STLOG_ACTION_SIZE_BUFFER, 0, 0, STLOG_FROM_READER);
-}	
-
-
+}
 
 static const struct file_operations stlog_operations = {
 	.read		= stlog_read,
@@ -59,9 +75,48 @@ static const struct file_operations stlog_operations = {
 	.llseek		= stlog_llseek,
 };
 
+static const struct file_operations stlog_pipe_operations = {
+	.read		= stlog_read,
+	.open		= stlog_open_pipe,
+	.release	= stlog_release,
+	.llseek		= stlog_llseek,
+};
+
+static const char DEF_STLOG_VER_STR[] = "1.0.2\n";
+
+static ssize_t stlog_ver_read(struct file *file, char __user *buf,
+			 size_t count, loff_t *ppos)
+{
+	ssize_t ret = 0;
+	loff_t off = *ppos;
+	ssize_t len = strlen(DEF_STLOG_VER_STR);
+
+	if (off >= len)
+		return 0;
+
+	len -= off;
+	if (count < len)
+		return -ENOMEM;
+
+	ret = copy_to_user(buf, &DEF_STLOG_VER_STR[off], len);
+	if (ret < 0)
+		return ret;
+
+	len -= ret;
+	*ppos += len;
+
+	return len;
+}
+
+static const struct file_operations stlog_ver_operations = {
+	.read		= stlog_ver_read,
+};
+
 static int __init stlog_init(void)
 {
 	proc_create("stlog", S_IRUGO, NULL, &stlog_operations);
+	proc_create("stlog_pipe", S_IRUGO, NULL, &stlog_pipe_operations);
+	proc_create("stlog_version", S_IRUGO, NULL, &stlog_ver_operations);
 	return 0;
 }
 module_init(stlog_init);
@@ -95,29 +150,29 @@ module_param_named(pid, stlog_pid, bool, S_IRUGO | S_IWUSR);
 
 
 enum ringbuf_flags {
-	RINGBUF_NOCONS	= 1,	
-	RINGBUF_NEWLINE	= 2,	
-	RINGBUF_PREFIX	= 4,	
-	RINGBUF_CONT	= 8,	
+	RINGBUF_NOCONS	= 1,
+	RINGBUF_NEWLINE	= 2,
+	RINGBUF_PREFIX	= 4,
+	RINGBUF_CONT	= 8,
 };
 
 struct ringbuf {
-	u64 ts_nsec;		
-	u16 len;	
-	u16 text_len;		
+	u64 ts_nsec;
+	u16 len;
+	u16 text_len;
 #ifdef CONFIG_STLOG_CPU_ID
-	u8 cpu_id;		
+	u8 cpu_id;
 #endif
 #ifdef CONFIG_STLOG_PID
 	char comm[TASK_COMM_LEN];
-	pid_t pid;	
+	pid_t pid;
 #endif
-	u8 flags:5;		
-	u8 level:3;	
+	u8 flags:5;
+	u8 level:3;
 };
 
 /*
- * The ringbuf_lock protects smsg buffer, indices, counters. 
+ * The ringbuf_lock protects smsg buffer, indices, counters.
  */
 static DEFINE_RAW_SPINLOCK(ringbuf_lock);
 
@@ -183,12 +238,12 @@ static void ringbuf_store(enum ringbuf_flags flags, const char *text, u16 text_l
 	struct ringbuf *msg;
 	u32 size, pad_len;
 
-	
+
 	#ifdef	DEBUG_STLOG
 	printk("[STLOG] %s stlog_seq %llu stlog_idx %lu ringbuf_first_seq %llu ringbuf_first_idx %lu ringbuf_next_seq %llu ringbuf_next_idx %lu \n",
 			__func__,stlog_seq,stlog_idx,ringbuf_first_seq,ringbuf_first_idx,ringbuf_next_seq,ringbuf_next_idx);
 	#endif
-	
+
 
 	/* number of '\0' padding bytes to next message */
 	size = sizeof(struct ringbuf) + text_len;
@@ -286,7 +341,7 @@ static size_t stlog_print_cpuid(const struct ringbuf *msg, char *buf)
 
 	if (!stlog_cpu_id)
 		return 0;
-	
+
 	if (!buf)
 		return snprintf(NULL, 0, "C%d ", msg->cpu_id);
 
@@ -366,7 +421,7 @@ static int stlog_print(char __user *buf, int size)
 	printk("[STLOG] %s stlog_seq %llu stlog_idx %lu ringbuf_first_seq %llu ringbuf_first_idx %lu ringbuf_next_seq %llu ringbuf_next_idx %lu \n",
 			__func__,stlog_seq,stlog_idx,ringbuf_first_seq,ringbuf_first_idx,ringbuf_next_seq,ringbuf_next_idx);
 	#endif
-	
+
 	text = kmalloc(RINGBUF_LINE_MAX + S_PREFIX_MAX, GFP_KERNEL);
 	if (!text)
 		return -ENOMEM;
@@ -489,7 +544,7 @@ static int stlog_print_all(char __user *buf, int size, bool clear)
 			else{
 				#ifdef	DEBUG_STLOG
 				printk("[STLOG] %s seq %llu text %s \n",__func__,seq,text);
-				#endif				
+				#endif
 				len += textlen;
 				}
 			raw_spin_lock_irq(&ringbuf_lock);
@@ -516,13 +571,12 @@ static int stlog_print_all(char __user *buf, int size, bool clear)
 int do_stlog(int type, char __user *buf, int len, bool from_file)
 {
 	int error=0;
-	char *kern_buf=0;
 
 	switch (type) {
 	case STLOG_ACTION_CLOSE:	/* Close log */
 		break;
 	case STLOG_ACTION_OPEN:	/* Open log */
-		
+
 	#ifdef	DEBUG_STLOG
 		printk("[STLOG] %s OPEN stlog_seq %llu stlog_idx %lu ringbuf_first_seq %llu ringbuf_first_idx %lu ringbuf_next_seq %llu ringbuf_next_idx %lu \n",
 				__func__,stlog_seq,stlog_idx,ringbuf_first_seq,ringbuf_first_idx,ringbuf_next_seq,ringbuf_next_idx);
@@ -535,7 +589,7 @@ int do_stlog(int type, char __user *buf, int len, bool from_file)
 		#endif
 		error = -EINVAL;
 		if (!buf || len < 0)
-			goto out;		
+			goto out;
 		if (!len)
 			goto out;
 		if (!access_ok(VERIFY_WRITE, buf, len)) {
@@ -568,7 +622,7 @@ int do_stlog(int type, char __user *buf, int len, bool from_file)
 			stlog_clear_idx=ringbuf_first_idx;
 			error=0;
 			goto out;
-			}		
+		}
 		error = stlog_print_all(buf, len, true);
 		break;
 	/* Size of the log buffer */
@@ -583,7 +637,6 @@ int do_stlog(int type, char __user *buf, int len, bool from_file)
 		break;
 	}
 out:
-	kfree(kern_buf);
 	return error;
 }
 
@@ -595,7 +648,7 @@ int do_stlog_write(int type, const char __user *buf, int len, bool from_file)
 	char *line=0;
 
 	if (!buf || len < 0)
-		goto out;		
+		goto out;
 	if (!len)
 		goto out;
 	if (len > RINGBUF_LINE_MAX)
@@ -607,12 +660,14 @@ int do_stlog_write(int type, const char __user *buf, int len, bool from_file)
 
 	line = kern_buf;
 	if (copy_from_user(line, buf, len)) {
-			error = -EFAULT;
-			goto out;
-		}
+		error = -EFAULT;
+		goto out;
+	}
 
-	stlog("%s", line);		
-
+	line[len] = '\0';
+	error = stlog("%s", line);
+	if ((line[len-1] == '\n') && (error == (len-1)))
+		error++;
 out:
 	kfree(kern_buf);
 	return error;

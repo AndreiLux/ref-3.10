@@ -91,9 +91,12 @@
 #include <linux/wakelock.h>
 #include <linux/suspend.h>
 #include <linux/kernel.h>
+#include <linux/time.h>
 #include "bcm_gps_spi.h"
 #include "bbd_internal.h"
+#include "bcm477x_ssi_spi.h"
 
+#include <linux/kernel_stat.h>
 #include <linux/ssp_platformdata.h>
 #include <linux/gpio.h>
 #include <plat/gpio-cfg.h>
@@ -109,6 +112,7 @@
 #define CONFIG_SPI_NO_AUTOBAUD       0
 #define CONFIG_DDS
 #define CONFIG_4WORD_BURST
+#define DEBUG_TIME_STAT
 
 
 #ifdef CONFIG_SPI_DMA_BITS_PER_WORD
@@ -264,7 +268,7 @@ int bbd_tty_close(void);
 struct bcm4773_message
 {		
 	unsigned char			cmd_stat;
-	unsigned char			data[UART_XMIT_SIZE];
+	unsigned char			data[MAX_TX_RX_BUF_SIZE];
 } __attribute__((__packed__));
 
 /* structures */
@@ -290,6 +294,10 @@ struct bcm4773_uart_port
 	struct spi_transfer             master_transfer;
 	struct spi_transfer             dbg_transfer;
 	struct wake_lock             bcm4773_wake_lock;
+
+#define BCM4773_DBG_TRANSFER_BUF_MAX	(1024 * 1024)
+	unsigned char*			dbg_xfer_buffer;
+	int				dbg_xfer_buffer_used;
 };
 
 /* UART name and device definitions */
@@ -1004,6 +1012,13 @@ static bcm4773_stat_t bcm4773_write_receive( struct bcm4773_uart_port *bcm_port,
 }
 
 
+#ifdef DEBUG_TIME_STAT
+static struct timespec ts;
+static u64 ts_irq, ts_rx_start, ts_rx_end;
+u64 min_rx_lat=0xFFFFFFFFFFFFFFFFULL, max_rx_lat=0;
+u64 min_rx_dur= 0xFFFFFFFFFFFFFFFFULL, max_rx_dur =0;
+#endif
+
 static irqreturn_t bcm4773_irq_handler( int irq, void *pdata )
 {
 	struct bcm4773_uart_port	*bport=(struct bcm4773_uart_port *) pdata;
@@ -1012,6 +1027,12 @@ static irqreturn_t bcm4773_irq_handler( int irq, void *pdata )
 	bcm4773_stat_t  status = gpio_get_value(bport->host_req_pin);
 	if (!status)
 		return IRQ_HANDLED;
+
+#ifdef DEBUG_TIME_STAT
+	//Timestamp irq. It should be done after checking if host_req is high
+ 	ts = ktime_to_timespec(ktime_get_boottime());
+	ts_irq = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+#endif
 
 #ifdef DEBUG_IRQ_HANDLER
 	// FIXME Do we need to check HOST_REQ is set or not ???
@@ -1043,6 +1064,7 @@ static void bcm4773_insert_flip_string(struct uart_port	*port, struct bcm4773_ua
 	if( port->state->port.tty != NULL && length > 0 )
 	{
 		unsigned char *data = bcm4773_get_read_buf( bport);
+		bbd_update_stat(STAT_RX_SSI, length);
 #ifndef CONFIG_MACH_UNIVERSAL5420  // T-Phone		
 		count=tty_insert_flip_string(&port->state->port, data + 1, length );     /* 1 means excluding RX_PKT_LEN */
 #else	                           // H-Phone
@@ -1098,6 +1120,14 @@ static void bcm4773_rxtx_work( struct work_struct *work )
 		{
 			if ( status ) 
 			{
+#ifdef DEBUG_TIME_STAT
+				//Timestamp rx_start
+				//In case we happen to find pending host_req when we come here to send, it's not counted.
+				if (ts_irq) {
+ 					ts = ktime_to_timespec(ktime_get_boottime());
+					ts_rx_start = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+				}
+#endif
 				status=bcm4773_read_transmit( bport, &length );
 
 				if( BCM4773_MSG_STAT(status) != 0x00 )
@@ -1123,6 +1153,14 @@ static void bcm4773_rxtx_work( struct work_struct *work )
 #else
 				status = 0;	   
 #endif		   
+
+#ifdef DEBUG_TIME_STAT
+				//Timestamp rx_end if it ends
+				if (ts_rx_start && !gpio_get_value(bport->host_req_pin)) {
+ 					ts = ktime_to_timespec(ktime_get_boottime());
+					ts_rx_end = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+				}
+#endif
 			}
 
 			if( pending != 0 )
@@ -1174,7 +1212,7 @@ static void bcm4773_rxtx_work( struct work_struct *work )
 				{
 					/* Transmission successfull. Update the TX count. */
 					port->icount.tx+=pending;
-
+					bbd_update_stat(STAT_TX_SSI, pending);
 					//FIXED: Full Duplex issue,  length = BCM4773_MSG_LEN(status);
 					if ( length != 0 )
 						bcm4773_insert_flip_string(port,bport,length,__func__,__LINE__);
@@ -1235,6 +1273,22 @@ static void bcm4773_rxtx_work( struct work_struct *work )
 	profile_rxtx_work.rxtx_enter[count]--;
 #endif
 	spin_unlock_irqrestore( &(bport->lock), flags );
+
+
+#ifdef DEBUG_TIME_STAT
+	if (ts_irq && ts_rx_start && ts_rx_end) {
+		u64 lat = ts_rx_start - ts_irq;
+		u64 dur = ts_rx_end - ts_rx_start;
+		min_rx_lat = (lat < min_rx_lat) ? lat : min_rx_lat;
+		max_rx_lat = (lat > max_rx_lat) ? lat : max_rx_lat;
+		min_rx_dur = (dur < min_rx_dur) ? dur : min_rx_dur;
+		max_rx_dur = (dur > max_rx_dur) ? dur : max_rx_dur;
+
+		//printk("rx latency (%llu, %llu)  rx duration (%llu, %llu)\n", min_rx_lat, max_rx_lat, min_rx_dur, max_rx_dur);
+
+		ts_irq = ts_rx_start = ts_rx_end = false;
+	}
+#endif
 
 	spin_lock_irqsave( &bport->irq_lock, flags);
 	if (!atomic_read(&bport->suspending))	// we dont' want to enable irq when going to suspendq
@@ -1363,6 +1417,22 @@ static struct notifier_block bcm4773_notifier_block = {
 };
 #endif
 
+void bcm4773_debug_info(void) 
+{
+    int pin_ttyBCM, pin_MCU_REQ, pin_MCU_RESP;
+    int irq_enabled, irq_count;
+
+    pin_ttyBCM = gpio_get_value(g_bport->host_req_pin);
+    pin_MCU_REQ = gpio_get_value(g_bport->mcu_req);
+    pin_MCU_RESP = gpio_get_value(g_bport->mcu_resp);
+
+    irq_enabled = atomic_read(&g_bport->irq_enabled);
+    irq_count = kstat_irqs_cpu(g_bport->port.irq, 0);
+
+    printk("[SSPBBD]: %s pin_ttyBCM:%d, pin_MCU_REQ:%d, pin_MCU_RESP:%d\n", __func__, pin_ttyBCM, pin_MCU_REQ, pin_MCU_RESP);
+    printk("[SSPBBD]: %s irq_enabled:%d, irq_count:%d\n", __func__, irq_enabled, irq_count);
+}
+
 static int bcm4773_spi_probe( struct spi_device *spi )
 {
 	struct bcm4773_uart_port	*bcm4773_uart_port;
@@ -1379,32 +1449,11 @@ static int bcm4773_spi_probe( struct spi_device *spi )
 		}
 	}
 
-#ifdef SUPPORT_MCU_HOST_WAKE
-	if (of_property_read_u32(spi->dev.of_node, "ssp-hw-rev", &gpbbd_dev->hw_rev)) {
-		/* default value is zero(open) for old hw */
-		gpbbd_dev->hw_rev = 0;
-	}
-	printk("[SSPBBD]: %s ssp-hw-rev[%d]\n", __func__, gpbbd_dev->hw_rev);
-#endif
-
 	/*   All the gpio pins SCLK,CS0,MOSI,MISO and HOST_REQ should be defined in arch/arm/boot/dts/exynos5430-kqlte_eur_open_00.dts
 	 *   The fake HOST_REQ pin is commented out.
 	 *   pdata->mcu_int1 = of_get_named_gpio(spi->dev.of_node, "ssp-irq2", 0);
 	 */
-#ifndef CONFIG_MACH_UNIVERSAL5420  // T-Phone		
 	pdata->mcu_int1 = of_get_named_gpio(spi->dev.of_node, "ssp-host-req", 0);
-#else	                           // H-Phone
-	//FIXME: Because JK modified something in android/kernel/exynos5420/arch/arm/mach-exynos  
-	pdata->mcu_int1 = GPIO_MCU_HOST_REQ;
-	//pdata->mcu_int1 = 205;
-#endif	
-		
-		/* We don't need to setup the gpio HOST_REQ pin "mcu_int1"
-		 *  - gpio_request(pdata->mcu_int1, "mcu_ap_int1");
-		 *  - gpio_export(pdata->mcu_int1,1);
-		 *  - gpio_direction_input(pdata->mcu_int1);
-		 */
-
 	if (pdata->mcu_int1<0) {
 		pr_err(PFX "[SSPBBD]: Failed to get mcu_ap_int1 from DT, err %d\n",pdata->mcu_int1);
 		return -1;
@@ -1470,6 +1519,9 @@ static int bcm4773_spi_probe( struct spi_device *spi )
 	bcm4773_uart_port->dbg_transfer.rx_buf=kmalloc( sizeof( struct bcm4773_message ), GFP_KERNEL );
 	bcm4773_uart_port->dbg_transfer.tx_dma=0;
 	bcm4773_uart_port->dbg_transfer.rx_dma=0;
+	bcm4773_uart_port->dbg_xfer_buffer = kmalloc(BCM4773_DBG_TRANSFER_BUF_MAX, GFP_KERNEL);
+	if (!bcm4773_uart_port->dbg_xfer_buffer)	BUG();
+	bcm4773_uart_port->dbg_xfer_buffer_used = 0;
 #endif
 
 	if( !bcm4773_uart_port->master_transfer.tx_buf || !bcm4773_uart_port->master_transfer.rx_buf ||
@@ -1664,6 +1716,7 @@ static int bcm4773_spi_remove( struct spi_device *spi )
 	kfree( bport->master_transfer.tx_buf );
 	kfree( bport->dbg_transfer.rx_buf );		
 	kfree( bport->dbg_transfer.tx_buf );
+	kfree( bport->dbg_xfer_buffer);
 #endif
 	free_irq( spi->irq, bport );
 	kfree( bport );
@@ -1692,6 +1745,9 @@ static struct uart_ops	bcm4773_serial_ops=
         .verify_port    = bcm4773_verify_port,
 };
 
+extern void disable_stat(void);
+extern void enable_stat(void);
+
 static int bcm4773_suspend( struct spi_device *spi, pm_message_t state )
 {
 	struct bcm4773_uart_port *bport = bcm4773_spi_get_drvdata( spi );
@@ -1708,6 +1764,7 @@ static int bcm4773_suspend( struct spi_device *spi, pm_message_t state )
 	
 	atomic_set(&bport->suspending, 1);
 
+	disable_stat();
 
 	spin_lock_irqsave( &bport->irq_lock, flags);
 	if (atomic_xchg(&bport->irq_enabled, 0)) {
@@ -1754,6 +1811,8 @@ static int bcm4773_resume( struct spi_device *spi )
 
 	if (pssp_driver->resume)
 		pssp_driver->resume(spi);
+
+	enable_stat();
 
 	atomic_set(&bport->suspending, 0);
 
@@ -1812,6 +1871,8 @@ static void bcm4773_spi_shutdown(struct spi_device *spi)
 	
 	atomic_set(&bport->suspending, 1);
 
+	disable_stat();
+	
 	spin_lock_irqsave( &bport->irq_lock, flags);
 	if (atomic_xchg(&bport->irq_enabled, 0)) {
 		struct irq_desc	*desc = irq_to_desc(bport->port.irq);
@@ -1974,6 +2035,99 @@ unsigned char* bcm477x_debug_buffer(size_t* len)
 }
 EXPORT_SYMBOL(bcm477x_debug_buffer);
 
+static struct spi_message *big_msg;
+int bcm477x_add_xfer(struct spi_transfer* xfer)
+{
+#ifdef DEBUG_TRANSFER
+//	char                            the_dir[10] = {'w',' ',0 };
+#endif
+
+	if (!xfer) BUG();
+	if (!big_msg) {
+		big_msg = (struct spi_message *) kzalloc(sizeof(*big_msg), GFP_KERNEL);
+		if (!big_msg) BUG();
+		spi_message_init(big_msg);
+		big_msg->spi = bcm4773_uart_to_spidevice(g_bport);
+
+	}
+
+#ifdef CONFIG_SPI_DMA_BITS_PER_WORD
+	if ( (*(unsigned char*)xfer->tx_buf == (SSI_MODE_HALF_DUPLEX | SSI_WRITE_TRANS | SSI_MODE_DEBUG)) && (xfer->len > SSI_MAX_RW_BYTE_COUNT))
+	{
+		int align = (CONFIG_SPI_DMA_BYTES_PER_WORD * WORD_BURST_SIZE);
+		xfer->bits_per_word = (xfer->len % align) ? 8 : CONFIG_SPI_DMA_BITS_PER_WORD;
+		if (xfer->bits_per_word == 8)
+			printk("%s: byte not aligned\n", __func__);
+	}
+#endif
+
+	spi_message_add_tail(xfer, big_msg);
+
+	return 0;
+}
+EXPORT_SYMBOL(bcm477x_add_xfer);
+
+int bcm477x_init_xfer(void)
+{
+	printk("%s called\n", __func__);
+	return 0;
+}
+
+int bcm477x_flush_xfer(void)
+{
+	int ret=-1;
+
+	printk("%s called\n", __func__);
+	if (!big_msg) {
+		printk("nothing to flush\n");
+		return ret;
+	}
+	ret = spi_sync_locked( big_msg->spi, big_msg );
+
+	//free all
+#if 0
+	{
+		struct spi_transfer *xf,*n;
+		list_for_each_entry_safe(xf, n, &big_msg->transfers, transfer_list) {
+			list_del(&xf->transfer_list);
+			kfree(xf);
+		}
+		kfree(big_msg);
+		big_msg = NULL;
+	}
+#else
+	g_bport->dbg_xfer_buffer_used = 0;	
+#endif
+	return ret;
+}
+
+struct spi_transfer* bcm477x_alloc_xfer(size_t len)
+{
+//	struct spi_device *spi = bcm4773_uart_to_spidevice(g_bport);
+	struct spi_transfer *xfer;
+
+	// if (len<0)      BUG();
+
+	if (g_bport->dbg_xfer_buffer_used % 16) {
+		g_bport->dbg_xfer_buffer_used += 16 - (g_bport->dbg_xfer_buffer_used % 16);	//we should guarentee alignment when we emulate kmalloc
+	}
+	
+	if (g_bport->dbg_xfer_buffer_used + len > BCM4773_DBG_TRANSFER_BUF_MAX)	BUG();
+
+	xfer = (struct spi_transfer *)&g_bport->dbg_xfer_buffer[g_bport->dbg_xfer_buffer_used];
+	g_bport->dbg_xfer_buffer_used += (sizeof(*xfer) + len);
+	//xfer = (struct spi_transfer *)kzalloc(sizeof(*xfer) + len, GFP_KERNEL);
+	//if (!xfer)      BUG();
+	
+
+	memset(xfer, 0, sizeof(*xfer));
+	xfer->tx_buf = &xfer[1];
+	xfer->tx_dma = 0;
+	xfer->bits_per_word = 8;        //init as default
+
+	return xfer;
+}
+EXPORT_SYMBOL(bcm477x_alloc_xfer);
 
 
 int bcm477x_debug_write(const unsigned char* buf, size_t len, int flag)

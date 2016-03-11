@@ -93,8 +93,8 @@ static int ipc_bridge_submit_inturb(struct ipc_bridge *dev, gfp_t gfp_flags, boo
 	}
 
 	if (!resuming) {
-		if (dev->inturb->dev->dev.power.runtime_status == RPM_SUSPENDING ||
-				dev->inturb->dev->state == USB_STATE_NOTATTACHED) {
+		if ((atomic_read(&dev->inturb->reject) == 1) ||
+				(dev->inturb->dev->state == USB_STATE_NOTATTACHED)) {
 			dev_err(&dev->intf->dev, "%s: runtime_status: %d, rx_state %d, state %d\n",
 					__func__, dev->inturb->dev->dev.power.runtime_status,
 					dev->rx_state, dev->inturb->dev->state);
@@ -215,6 +215,7 @@ static void ipc_bridge_int_cb(struct urb *urb)
 	switch (urb->status) {
 	case 0:
 		dev_info(&dev->intf->dev, "%s: len:%d\n", __func__, urb->actual_length);
+		usb_mark_last_busy(urb->dev);
 	case -ENOENT:
 		break;
 
@@ -439,6 +440,7 @@ static int ipc_bridge_suspend(struct usb_interface *intf, pm_message_t message)
 	if (dev->rx_state == RX_BUSY) {
 		dev->susp_fail_cnt++;
 		ret = -EBUSY;
+		dev_err(&dev->intf->dev, "failed before usb_kill_urb\n");
 		goto done;
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -449,6 +451,7 @@ static int ipc_bridge_suspend(struct usb_interface *intf, pm_message_t message)
 	if (dev->rx_state != RX_IDLE) {
 		dev->susp_fail_cnt++;
 		ret = -EBUSY;
+		dev_err(&dev->intf->dev, "failed after usb_kill_urb\n");
 		goto done;
 	}
 done:

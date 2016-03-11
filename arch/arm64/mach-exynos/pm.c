@@ -45,6 +45,7 @@ extern u32 exynos_eint_to_pin_num(int eint);
 
 #if defined(CONFIG_SOC_EXYNOS7420)
 #define EXYNOS7420_EINT_PEND(b, x)	((b) + 0xA00 + (((x) >> 3) * 4))
+#define EXYNOS7420_EINT_MASK(b, x)	((b) + 0x900 + (((x) >> 3) * 4))
 
 static void exynos_show_wakeup_reason_eint(void)
 {
@@ -94,8 +95,24 @@ static void exynos_show_wakeup_registers(unsigned long wakeup_stat)
 			__raw_readl(EXYNOS7420_EINT_PEND(exynos_eint_base, 16)),
 			__raw_readl(EXYNOS7420_EINT_PEND(exynos_eint_base, 24)));
 }
+
+void exynos_show_eint_mask_registers(void)
+{
+    pr_info("EINT_MASK: 0x%02x, 0x%02x 0x%02x, 0x%02x\n",
+			__raw_readl(EXYNOS7420_EINT_MASK(exynos_eint_base, 0)),
+			__raw_readl(EXYNOS7420_EINT_MASK(exynos_eint_base, 8)),
+			__raw_readl(EXYNOS7420_EINT_MASK(exynos_eint_base, 16)),
+			__raw_readl(EXYNOS7420_EINT_MASK(exynos_eint_base, 24)));
+    pr_info("EINT_PEND: 0x%02x, 0x%02x 0x%02x, 0x%02x\n",
+			__raw_readl(EXYNOS7420_EINT_PEND(exynos_eint_base, 0)),
+			__raw_readl(EXYNOS7420_EINT_PEND(exynos_eint_base, 8)),
+			__raw_readl(EXYNOS7420_EINT_PEND(exynos_eint_base, 16)),
+			__raw_readl(EXYNOS7420_EINT_PEND(exynos_eint_base, 24)));
+}
 #else
 static void exynos_show_wakeup_registers(unsigned long wakeup_stat) {}
+
+void exynos_show_eint_mask_registers(void) {}
 #endif
 
 static void exynos_show_wakeup_reason(bool sleep_abort)

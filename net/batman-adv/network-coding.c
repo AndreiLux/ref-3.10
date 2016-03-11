@@ -1249,7 +1249,11 @@ static void batadv_nc_skb_store_before_coding(struct batadv_priv *bat_priv,
 	struct ethhdr *ethhdr;
 
 	/* Copy skb header to change the mac header */
+#ifdef CONFIG_MPTCP
+	skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+#else
 	skb = pskb_copy(skb, GFP_ATOMIC);
+#endif
 	if (!skb)
 		return;
 

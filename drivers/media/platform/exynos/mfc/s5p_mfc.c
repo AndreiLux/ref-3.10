@@ -160,20 +160,21 @@ int exynos_mfc_sysmmu_fault_handler(struct iommu_domain *iodmn, struct device *d
 /*
  * A framerate table determines framerate by the interval(us) of each frame.
  * Framerate is not accurate, just rough value to seperate overload section.
- * Base line of each section are selected from 25fps(40000us), 45fps(22222us)
- * and 100fps(10000us).
+ * Base line of each section are selected from 40fps(25000us), 80fps(12500us),
+ * 145fps(6940us) and 205fps(4860us).
  *
- * interval(us) | 0           10000         22222         40000           |
- * framerate    |     120fps    |    60fps    |    30fps    |    25fps    |
+ * interval(us) | 0         4860          6940          12500         25000          |
+ * framerate    |    240fps   |    180fps   |    120fps   |    60fps    |    30fps   |
  */
 
 #define COL_FRAME_RATE		0
 #define COL_FRAME_INTERVAL	1
 static unsigned long framerate_table[][2] = {
-	{ 25000, 40000 },
-	{ 30000, 22222 },
-	{ 60000, 10000 },
-	{ 120000, 0 },
+       { 30000, 25000 },
+       { 60000, 12500 },
+       { 120000, 6940 },
+       { 180000, 4860 },
+       { 240000, 0 },
 };
 
 static inline unsigned long timeval_diff(struct timeval *to,
@@ -280,6 +281,7 @@ int get_framerate_by_timestamp(struct s5p_mfc_ctx *ctx, struct v4l2_buffer *buf)
 
 	if (list_empty(&ctx->ts_list)) {
 		dec_add_timestamp(ctx, buf, &ctx->ts_list);
+        return get_framerate_by_interval(0);		
 	} else {
 		found = 0;
 		list_for_each_entry_reverse(temp_ts, &ctx->ts_list, list) {
@@ -807,7 +809,9 @@ static void mfc_check_ref_frame(struct s5p_mfc_ctx *ctx,
 {
 	struct s5p_mfc_dec *dec = ctx->dec_priv;
 	struct s5p_mfc_buf *ref_buf, *tmp_buf;
+	struct list_head *dst_list;
 	int index;
+	int found = 0;
 
 	list_for_each_entry_safe(ref_buf, tmp_buf, ref_list, list) {
 		index = ref_buf->vb.v4l2_buf.index;
@@ -823,7 +827,24 @@ static void mfc_check_ref_frame(struct s5p_mfc_ctx *ctx,
 			clear_bit(index, &dec->dpb_status);
 			mfc_debug(2, "Move buffer[%d], fd[%d] to dst queue\n",
 					index, dec->assigned_fd[index]);
+			found = 1;
 			break;
+		}
+	}
+
+	if (is_h264(ctx) && !found) {
+		dst_list = &ctx->dst_queue;
+		list_for_each_entry_safe(ref_buf, tmp_buf, dst_list, list) {
+			index = ref_buf->vb.v4l2_buf.index;
+			if (index == ref_index && ref_buf->already) {
+				dec->assigned_fd[index] =
+					ref_buf->vb.v4l2_planes[0].m.fd;
+				clear_bit(index, &dec->dpb_status);
+				mfc_debug(2, "re-assigned buffer[%d], fd[%d] for H264\n",
+						index, dec->assigned_fd[index]);
+				found = 1;
+				break;
+			}
 		}
 	}
 }
@@ -842,11 +863,17 @@ static void mfc_handle_released_info(struct s5p_mfc_ctx *ctx,
 	if (released_flag) {
 		for (t = 0; t < MFC_MAX_DPBS; t++) {
 			if (released_flag & (1 << t)) {
-				mfc_debug(2, "Release FD[%d] = %03d !! ",
-						t, dec->assigned_fd[t]);
-				refBuf->dpb[ncount].fd[0] = dec->assigned_fd[t];
+				if (dec->err_sync_flag & (1 << t)) {
+					mfc_debug(2, "Released, but reuse. FD[%d] = %03d\n",
+							t, dec->assigned_fd[t]);
+					dec->err_sync_flag &= ~(1 << t);
+				} else {
+					mfc_debug(2, "Release FD[%d] = %03d\n",
+							t, dec->assigned_fd[t]);
+					refBuf->dpb[ncount].fd[0] = dec->assigned_fd[t];
+					ncount++;
+				}
 				dec->assigned_fd[t] = MFC_INFO_INIT_FD;
-				ncount++;
 				mfc_check_ref_frame(ctx, dst_queue_addr, t);
 			}
 		}
@@ -992,6 +1019,24 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 		if (s5p_mfc_mem_plane_addr(ctx, &dst_buf->vb, 0)
 							== dspl_y_addr) {
 			index = dst_buf->vb.v4l2_buf.index;
+			if (ctx->codec_mode == S5P_FIMV_CODEC_VC1RCV_DEC &&
+				s5p_mfc_err_dspl(err) == S5P_FIMV_ERR_SYNC_POINT_NOT_RECEIVED) {
+				if (released_flag & (1 << index)) {
+					list_del(&dst_buf->list);
+					dec->ref_queue_cnt--;
+					list_add_tail(&dst_buf->list, &ctx->dst_queue);
+					ctx->dst_queue_cnt++;
+					dec->dpb_status &= ~(1 << index);
+					released_flag &= ~(1 << index);
+					mfc_debug(2, "SYNC_POINT_NOT_RECEIVED, released.\n");
+				} else {
+					dec->err_sync_flag |= 1 << index;
+					mfc_debug(2, "SYNC_POINT_NOT_RECEIVED, used.\n");
+				}
+				dec->dynamic_used |= released_flag;
+				break;
+			}
+
 			list_del(&dst_buf->list);
 
 			if (dec->is_dynamic_dpb)
@@ -1492,6 +1537,12 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 							dec->consumed;
 			/* Do not move src buffer to done_list */
 #endif
+		} else if (s5p_mfc_err_dec(err) == S5P_FIMV_ERR_NON_PAIRED_FIELD) {
+			/*
+			 * For non-paired field, the same buffer need to be
+			 * resumitted and the consumed stream will be 0
+			 */
+			mfc_debug(2, "Not paired field. Running again the same buffer.\n");
 		} else {
 			index = src_buf->vb.v4l2_buf.index;
 			if (call_cop(ctx, recover_buf_ctrls_val, ctx, &ctx->src_ctrls[index]) < 0)
@@ -1718,11 +1769,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	case S5P_FIMV_R2H_CMD_COMPLETE_SEQ_RET:
 	case S5P_FIMV_R2H_CMD_ENC_BUFFER_FULL_RET:
 		if (ctx->type == MFCINST_DECODER) {
-			if (ctx->codec_mode == S5P_FIMV_CODEC_VC1RCV_DEC
-				&& s5p_mfc_err_dec(err) == S5P_FIMV_ERR_SYNC_POINT_NOT_RECEIVED)
-				s5p_mfc_handle_frame_error(ctx, reason, err);
-			else
-				s5p_mfc_handle_frame(ctx, reason, err);
+			s5p_mfc_handle_frame(ctx, reason, err);
 		} else if (ctx->type == MFCINST_ENCODER) {
 			if (reason == S5P_FIMV_R2H_CMD_SLICE_DONE_RET) {
 				dev->preempt_ctx = ctx->num;
@@ -2287,8 +2334,8 @@ static int s5p_mfc_open(struct file *file)
 		}
 	}
 
-	mfc_info_ctx("MFC open completed [%d:%d] dev = %p, ctx = %p\n",
-			dev->num_drm_inst, dev->num_inst, dev, ctx);
+	mfc_info_ctx("MFC open completed [%d:%d] dev = %p, ctx = %p, version = %d\n",
+			dev->num_drm_inst, dev->num_inst, dev, ctx, MFC_DRIVER_INFO);
 	mutex_unlock(&dev->mfc_mutex);
 	return ret;
 

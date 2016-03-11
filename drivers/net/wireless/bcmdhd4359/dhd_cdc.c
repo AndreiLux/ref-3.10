@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_cdc.c 553272 2015-04-29 07:27:21Z $
+ * $Id: dhd_cdc.c 596022 2015-10-29 11:02:47Z $
  *
  * BDC is like CDC, except it includes a header for data packets to convey
  * packet priority over the bus, and flags (e.g. to indicate checksum status
@@ -104,19 +104,11 @@ dhdcdc_cmplt(dhd_pub_t *dhd, uint32 id, uint32 len)
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
-#if defined(CUSTOMER_HW4)
-	DHD_OS_WAKE_LOCK(dhd);
-#endif 
-
 	do {
 		ret = dhd_bus_rxctl(dhd->bus, (uchar*)&prot->msg, cdc_len);
 		if (ret < 0)
 			break;
 	} while (CDC_IOC_ID(ltoh32(prot->msg.flags)) != id);
-
-#if defined(CUSTOMER_HW4)
-	DHD_OS_WAKE_UNLOCK(dhd);
-#endif 
 
 	return ret;
 }
@@ -215,9 +207,9 @@ done:
 	return ret;
 }
 
-#if defined(CUSTOMER_HW4) && defined(CONFIG_CONTROL_PM)
+#ifdef DHD_PM_CONTROL_FROM_FILE
 extern bool g_pm_control;
-#endif /* CUSTOMER_HW4 & CONFIG_CONTROL_PM */
+#endif /* DHD_PM_CONTROL_FROM_FILE */
 
 static int
 dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uint8 action)
@@ -242,15 +234,14 @@ dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uint8
 		return -EIO;
 	}
 
-#ifdef CUSTOMER_HW4
 	if (cmd == WLC_SET_PM) {
-#ifdef CONFIG_CONTROL_PM
+#ifdef DHD_PM_CONTROL_FROM_FILE
 		if (g_pm_control == TRUE) {
 			DHD_ERROR(("%s: SET PM ignored!(Requested:%d)\n",
 				__FUNCTION__, *(char *)buf));
 			goto done;
 		}
-#endif /* CONFIG_CONTROL_PM */
+#endif /* DHD_PM_CONTROL_FROM_FILE */
 #if defined(WLAIBSS)
 		if (dhd->op_mode == DHD_FLAG_IBSS_MODE) {
 			DHD_ERROR(("%s: SET PM ignored for IBSS!(Requested:%d)\n",
@@ -258,9 +249,9 @@ dhdcdc_set_ioctl(dhd_pub_t *dhd, int ifidx, uint cmd, void *buf, uint len, uint8
 			goto done;
 		}
 #endif /* WLAIBSS */
-		DHD_ERROR(("%s: SET PM to %d\n", __FUNCTION__, *(char *)buf));
+		DHD_TRACE_HW4(("%s: SET PM to %d\n", __FUNCTION__, *(char *)buf));
 	}
-#endif /* CUSTOMER_HW4 */
+
 	memset(msg, 0, sizeof(cdc_ioctl_t));
 
 	msg->cmd = htol32(cmd);
@@ -381,6 +372,8 @@ dhd_prot_iovar_op(dhd_pub_t *dhdp, const char *name,
 void
 dhd_prot_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 {
+	if (!dhdp || !dhdp->prot)
+		return;
 	bcm_bprintf(strbuf, "Protocol CDC: reqid %d\n", dhdp->prot->reqid);
 #ifdef PROP_TXSTATUS
 	dhd_wlfc_dump(dhdp, strbuf);
@@ -564,6 +557,9 @@ dhd_sync_with_dongle(dhd_pub_t *dhd)
 	wlc_rev_info_t revinfo;
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
+#ifdef BCMASSERT_LOG
+	dhd_get_assert_info(dhd);
+#endif /* BCMASSERT_LOG */
 
 	/* Get the device rev info */
 	memset(&revinfo, 0, sizeof(revinfo));

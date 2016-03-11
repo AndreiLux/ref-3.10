@@ -51,15 +51,16 @@ static inline void perf_print(struct fimg2d_bltcmd *cmd)
 void fimg2d_debug_command(struct fimg2d_bltcmd *cmd);
 void fimg2d_debug_command_simple(struct fimg2d_bltcmd *cmd);
 
-static inline void fimg2d_dump_command(struct fimg2d_bltcmd *cmd)
+static inline void fimg2d_dump_command(struct fimg2d_bltcmd *cmd,
+							bool force_dump)
 {
-	if (g2d_debug == DBG_DEBUG)
+	if (g2d_debug == DBG_DEBUG || force_dump)
 		fimg2d_debug_command(cmd);
 	else if (g2d_debug == DBG_ONELINE)
 		fimg2d_debug_command_simple(cmd);
 }
 #else
-#define fimg2d_dump_command(cmd)
+#define fimg2d_dump_command(cmd, force_dump)
 #endif
 
 #endif /* __FIMG2D_HELPER_H */

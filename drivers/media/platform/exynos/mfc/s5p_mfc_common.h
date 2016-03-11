@@ -37,7 +37,7 @@
 #include <linux/pm_qos.h>
 #endif
 
-#define MFC_DRIVER_INFO		150604
+#define MFC_DRIVER_INFO		150902
 
 #define MFC_MAX_BUFFERS		32
 #define MFC_MAX_REF_BUFS	2
@@ -182,15 +182,6 @@ enum mfc_buf_usage_type {
 	MFCBUF_INVALID = 0,
 	MFCBUF_NORMAL,
 	MFCBUF_DRM,
-};
-
-enum mfc_buf_process_type {
-	MFCBUFPROC_DEFAULT 		= 0x0,
-	MFCBUFPROC_COPY 		= (1 << 0),
-	MFCBUFPROC_SHARE 		= (1 << 1),
-	MFCBUFPROC_META 		= (1 << 2),
-	MFCBUFPROC_ANBSHARE		= (1 << 3),
-	MFCBUFPROC_ANBSHARE_NV12L	= (1 << 4),
 };
 
 struct s5p_mfc_ctx;
@@ -437,6 +428,10 @@ struct s5p_mfc_h264_enc_params {
 	u8 rc_frame_qp;
 	u8 rc_min_qp;
 	u8 rc_max_qp;
+	u8 rc_min_qp_p;
+	u8 rc_max_qp_p;
+	u8 rc_min_qp_b;
+	u8 rc_max_qp_b;
 	u8 rc_mb_dark;
 	u8 rc_mb_smooth;
 	u8 rc_mb_static;
@@ -490,6 +485,10 @@ struct s5p_mfc_mpeg4_enc_params {
 	u8 rc_frame_qp;
 	u8 rc_min_qp;
 	u8 rc_max_qp;
+	u8 rc_min_qp_p;
+	u8 rc_max_qp_p;
+	u8 rc_min_qp_b;
+	u8 rc_max_qp_b;
 	u8 rc_p_frame_qp;
 };
 
@@ -502,13 +501,15 @@ struct s5p_mfc_vp8_enc_params {
 	u8 vp8_version;
 	u8 rc_min_qp;
 	u8 rc_max_qp;
+	u8 rc_min_qp_p;
+	u8 rc_max_qp_p;
 	u8 rc_frame_qp;
 	u8 rc_p_frame_qp;
 	u8 vp8_numberofpartitions;
 	u8 vp8_filterlevel;
 	u8 vp8_filtersharpness;
 	u8 vp8_goldenframesel;
-	u8 vp8_gfrefreshperiod;
+	u16 vp8_gfrefreshperiod;
 	u8 hier_qp_enable;
 	u8 hier_qp_layer[3];
 	u32 hier_bit_layer[3];
@@ -527,6 +528,10 @@ struct s5p_mfc_hevc_enc_params {
 	u32 rc_framerate;
 	u8 rc_min_qp;
 	u8 rc_max_qp;
+	u8 rc_min_qp_p;
+	u8 rc_max_qp_p;
+	u8 rc_min_qp_b;
+	u8 rc_max_qp_b;
 	u8 rc_lcu_dark;
 	u8 rc_lcu_smooth;
 	u8 rc_lcu_static;
@@ -537,11 +542,9 @@ struct s5p_mfc_hevc_enc_params {
 	u8 max_partition_depth;
 	u8 num_refs_for_p;
 	u8 refreshtype;
-	u8 refreshperiod;
-	s8 croma_qp_offset_cr;
-	s8 croma_qp_offset_cb;
-	s8 lf_beta_offset_div2;
-	s8 lf_tc_offset_div2;
+	u16 refreshperiod;
+	s32 lf_beta_offset_div2;
+	s32 lf_tc_offset_div2;
 	u8 loopfilter_disable;
 	u8 loopfilter_across;
 	u8 nal_control_length_filed;
@@ -552,10 +555,11 @@ struct s5p_mfc_hevc_enc_params {
 	u8 wavefront_enable;
 	u8 enable_ltr;
 	u8 hier_qp_enable;
-	u8 hier_qp_type;
+	enum v4l2_mpeg_video_hevc_hierarchical_coding_type hier_qp_type;
+	u8 hier_ref_type;
 	u8 num_hier_layer;
-	u8 hier_qp_layer[5];
-	u8 hier_bit_layer[5];
+	u8 hier_qp_layer[7];
+	u32 hier_bit_layer[7];
 	u8 sign_data_hiding;
 	u8 general_pb_enable;
 	u8 temporal_id_enable;
@@ -568,6 +572,7 @@ struct s5p_mfc_hevc_enc_params {
 	u8 size_of_length_field;
 	u8 user_ref;
 	u8 store_ref;
+	u8 prepend_sps_pps_to_idr;
 };
 
 /**
@@ -581,8 +586,8 @@ struct s5p_mfc_enc_params {
 	enum v4l2_mpeg_video_multi_slice_mode slice_mode;
 	u32 slice_mb;
 	u32 slice_bit;
-	u16 slice_mb_row;
-	u16 intra_refresh_mb;
+	u32 slice_mb_row;
+	u32 intra_refresh_mb;
 	u8 pad;
 	u8 pad_luma;
 	u8 pad_cb;
@@ -590,6 +595,8 @@ struct s5p_mfc_enc_params {
 	u8 rc_frame;
 	u32 rc_bitrate;
 	u16 rc_reaction_coeff;
+	u32 config_qp;
+	u32 dynamic_qp;
 	u8 frame_tag;
 
 	u8 num_b_frame;		/* H.264/MPEG4 */
@@ -815,6 +822,8 @@ struct s5p_mfc_dec {
 	struct mfc_user_shared_handle sh_handle;
 
 	int dynamic_ref_filled;
+
+	unsigned int err_sync_flag;
 };
 
 struct s5p_mfc_enc {
@@ -844,7 +853,6 @@ struct s5p_mfc_enc {
 	unsigned int buf_full;
 
 	int stored_tag;
-	int config_qp;
 	struct mfc_user_shared_handle sh_handle;
 };
 
@@ -949,16 +957,15 @@ struct s5p_mfc_ctx {
 	struct list_head qos_list;
 #endif
 	int qos_ratio;
+	int qos_changed;
 	int framerate;
 	int last_framerate;
 	int avg_framerate;
 	int frame_count;
 	struct timeval last_timestamp;
-	int qp_min_change;
-	int qp_max_change;
 
 	int is_max_fps;
-	int buf_process_type;
+	int use_extra_qos;
 
 	struct mfc_timestamp ts_array[MFC_TIME_INDEX];
 	struct list_head ts_list;
@@ -1077,8 +1084,6 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 					(dev->fw.date >= 0x121005)) ||	\
 					(IS_MFCv5X(dev) &&		\
 					(dev->fw.date >= 0x120823)))
-#define FW_HAS_VUI_PARAMS(dev)		(IS_MFCV6(dev) &&		\
-					(dev->fw.date >= 0x121214))
 #define FW_HAS_ADV_RC_MODE(dev)		(IS_MFCV6(dev) &&		\
 					(dev->fw.date >= 0x130329))
 #define FW_HAS_I_LIMIT_RC_MODE(dev)	((IS_MFCv7X(dev) &&		\
@@ -1150,6 +1155,7 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 #define	ENC_SET_SPARE_SIZE		(1 << 1)
 #define	ENC_SET_TEMP_SVC_CH		(1 << 2)
 #define	ENC_SET_SKYPE_FLAG		(1 << 3)
+#define	ENC_SET_QP_BOUND_PB		(1 << 5)
 
 #define MFC_QOS_FLAG_NODATA		0xFFFFFFFF
 

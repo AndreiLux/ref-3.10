@@ -1189,19 +1189,14 @@ static void iface_stat_update_from_skb(const struct sk_buff *skb,
 	int bytes = skb->len;
 	int proto;
 
-	if (!skb->dev) {
-		MT_DEBUG("qtaguid[%d]: no skb->dev\n", par->hooknum);
-		el_dev = par->in ? : par->out;
-	} else {
-		const struct net_device *other_dev;
-		el_dev = skb->dev;
-		other_dev = par->in ? : par->out;
-		if (el_dev != other_dev) {
-			MT_DEBUG("qtaguid[%d]: skb->dev=%p %s vs "
-				 "par->(in/out)=%p %s\n",
-				 par->hooknum, el_dev, el_dev->name, other_dev,
-				 other_dev->name);
-		}
+	MT_DEBUG("qtaguid[%d]: no skb->dev\n", par->hooknum);
+	el_dev = par->in ? : par->out;
+
+	if (skb->dev && el_dev != skb->dev) {
+		MT_DEBUG("qtaguid[%d]: skb->dev=%p %s vs "
+			"par->(in/out)=%p %s\n",
+			par->hooknum, skb->dev, skb->dev->name, el_dev,
+			el_dev->name);
 	}
 
 	if (unlikely(!el_dev)) {
@@ -1618,19 +1613,14 @@ static void account_for_uid(const struct sk_buff *skb,
 {
 	const struct net_device *el_dev;
 
-	if (!skb->dev) {
-		MT_DEBUG("qtaguid[%d]: no skb->dev\n", par->hooknum);
-		el_dev = par->in ? : par->out;
-	} else {
-		const struct net_device *other_dev;
-		el_dev = skb->dev;
-		other_dev = par->in ? : par->out;
-		if (el_dev != other_dev) {
-			MT_DEBUG("qtaguid[%d]: skb->dev=%p %s vs "
-				"par->(in/out)=%p %s\n",
-				par->hooknum, el_dev, el_dev->name, other_dev,
-				other_dev->name);
-		}
+	MT_DEBUG("qtaguid[%d]: no skb->dev\n", par->hooknum);
+	el_dev = par->in ? : par->out;
+
+	if (skb->dev && el_dev != skb->dev) {
+		MT_DEBUG("qtaguid[%d]: skb->dev=%p %s vs "
+			"par->(in/out)=%p %s\n",
+			par->hooknum, skb->dev, skb->dev->name, el_dev,
+			el_dev->name);
 	}
 
 	if (unlikely(!el_dev)) {

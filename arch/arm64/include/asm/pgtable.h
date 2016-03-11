@@ -193,7 +193,7 @@ static inline void set_pte(pte_t *ptep, pte_t pte)
 {
 #ifdef CONFIG_TIMA_RKP
 	if (rkp_is_pg_dbl_mapped((u64)(pte)) ) {
-		panic("TIMA RKP : Double mapping Detected");
+		panic("TIMA RKP : Double mapping Detected pte = %llx ptep = %p",(u64)pte, ptep);
 		return;
 	}
 	if (rkp_is_pg_protected((u64)ptep)) {

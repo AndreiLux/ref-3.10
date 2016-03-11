@@ -18,6 +18,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/pm_runtime.h>
+#include <linux/mutex.h>
 
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
@@ -130,6 +131,7 @@ struct i2s_dai {
 
 /* Lock for cross i/f checks */
 static DEFINE_SPINLOCK(lock);
+static DEFINE_MUTEX(mutex);
 
 #ifndef CONFIG_PM_RUNTIME
 static int i2s_disable(struct device *dev);
@@ -440,7 +442,7 @@ static void i2s_txctrl(struct i2s_dai *i2s, int on)
 		con |=  CON_TXCH_PAUSE;
 
 		if (any_rx_active(i2s))
-			mod |= MOD_TXR_RXONLY << i2s->txr_sht;
+			mod |= MOD_TXR_TXRX << i2s->txr_sht;
 		else
 			con &= ~CON_ACTIVE;
 	}
@@ -851,6 +853,7 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 #endif
 	lpass_add_stream();
 
+	mutex_lock(&mutex);
 	pdev = is_secondary(i2s) ? i2s->pri_dai->pdev : i2s->pdev;
 #ifdef CONFIG_PM_RUNTIME
 	pm_runtime_get_sync(&pdev->dev);
@@ -879,6 +882,7 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	}
 
 	spin_unlock_irqrestore(&lock, flags);
+	mutex_unlock(&mutex);
 
 #ifdef CONFIG_SND_SAMSUNG_COMPR
 	pr_info("%s : %s --\n", __func__, dai_name);
@@ -903,6 +907,7 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 #else
 	pr_info("%s : %s ++\n", __func__, is_secondary(i2s)? "sec" : "pri");
 #endif
+	mutex_lock(&mutex);
 	spin_lock_irqsave(&lock, flags);
 
 	i2s->mode &= ~DAI_OPENED;
@@ -923,6 +928,7 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 #else
 	i2s_disable(&pdev->dev);
 #endif
+	mutex_unlock(&mutex);
 	lpass_remove_stream();
 
 #ifdef USE_EXYNOS_AUD_CPU_HOTPLUG

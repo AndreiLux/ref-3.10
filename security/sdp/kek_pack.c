@@ -1,9 +1,22 @@
 /*
- * kek_pack.c
+ * Copyright (c) 2015 Samsung Electronics Co., Ltd.
  *
- *  Created on: Mar 15, 2015
- *      Author: olic.moon@samsung.com
+ * Sensitive Data Protection
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+ 
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/sched.h>
@@ -219,7 +232,7 @@ int del_kek(int engine_id, int kek_type) {
 kek_t *get_kek(int engine_id, int kek_type, int *rc) {
 	kek_pack_t *pack;
 	kek_item_t *item;
-    int userid = current_uid() / PER_USER_RANGE;;
+    int userid = current_uid() / PER_USER_RANGE;
 
 	KEK_PACK_LOGD("entered [%d]\n", current_uid());
 
@@ -229,8 +242,9 @@ kek_t *get_kek(int engine_id, int kek_type, int *rc) {
 	    return NULL;
 	}
 
-	// across user engine access denied.
+	// Across user engine access denied for Knox containers.
 	if(!is_root() &&
+			(pack->user_id >= 100 && pack->user_id < 200) &&
 	        (pack->user_id != userid)) {
 	    KEK_PACK_LOGE("Permission denied to get kek\n");
 	    KEK_PACK_LOGE("pack->user_id[%d] != userid[%d]\n",

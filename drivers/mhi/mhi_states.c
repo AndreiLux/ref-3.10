@@ -14,6 +14,7 @@
 #include "mhi_hwio.h"
 
 extern void set_ap2mdm_errfatal(void);
+extern int mdm_get_modem_status(void);
 extern u32 m3_timer_val_ms;
 int mhi_state_change_thread(void *ctxt)
 {
@@ -884,6 +885,8 @@ MHI_STATUS mhi_process_link_down(mhi_device_ctxt *mhi_dev_ctxt)
 {
 	unsigned long flags;
 	int r;
+	unsigned long end_time;
+
 	mhi_log(MHI_MSG_INFO, "Entered.\n");
 	if (NULL == mhi_dev_ctxt)
 		return MHI_STATUS_ERROR;
@@ -936,6 +939,16 @@ MHI_STATUS mhi_process_link_down(mhi_device_ctxt *mhi_dev_ctxt)
 	if (r)
 		mhi_log(MHI_MSG_INFO,
 				"Failed to scale bus request to sleep set.\n");
+
+	end_time = jiffies + msecs_to_jiffies(5000);
+	while (time_before(jiffies, end_time)) {
+		if (mdm_get_modem_status() == 0) {
+			mhi_log(MHI_MSG_INFO, "Modem status went low\n");
+			break;
+		}
+		msleep(100);
+	}
+
 	mhi_turn_off_pcie_link(mhi_dev_ctxt);
 	mhi_dev_ctxt->dev_info->link_down_cntr++;
 	atomic_set(&mhi_dev_ctxt->flags.data_pending, 0);

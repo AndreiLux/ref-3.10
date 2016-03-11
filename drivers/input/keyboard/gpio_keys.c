@@ -42,6 +42,21 @@
 
 struct device *sec_key;
 EXPORT_SYMBOL(sec_key);
+int wakeup_reason;
+bool irq_in_suspend;
+bool suspend_state;
+
+bool wakeup_by_key(void) {
+	if (irq_in_suspend) {
+		if (wakeup_reason == KEY_HOMEPAGE) {
+			irq_in_suspend = false;
+			wakeup_reason = 0;
+			return true;
+		}
+	}
+	return false;
+}
+EXPORT_SYMBOL(wakeup_by_key);
 
 struct gpio_button_data {
 	struct gpio_keys_button *button;
@@ -492,6 +507,12 @@ static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 
 	BUG_ON(irq != bdata->irq);
 
+	if (suspend_state) {
+		irq_in_suspend = true;
+		wakeup_reason = bdata->button->code;
+		pr_info("%s before resume by %d\n", __func__, wakeup_reason);
+	}
+
 	if (bdata->button->wakeup)
 		pm_stay_awake(bdata->input->dev.parent);
 	if (bdata->timer_debounce)
@@ -883,6 +904,9 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	input->id.vendor = 0x0001;
 	input->id.product = 0x0001;
 	input->id.version = 0x0100;
+	wakeup_reason = 0;
+	suspend_state = false;
+	irq_in_suspend = false;
 
 	/* Enable auto repeat feature of Linux input subsystem */
 	if (pdata->rep)
@@ -1004,6 +1028,9 @@ static int gpio_keys_suspend(struct device *dev)
 	struct input_dev *input = ddata->input;
 	int i;
 
+	suspend_state = true;
+	irq_in_suspend = false;
+	wakeup_reason = 0;
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
@@ -1027,6 +1054,7 @@ static int gpio_keys_resume(struct device *dev)
 	int error = 0;
 	int i;
 
+	suspend_state = false;
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];

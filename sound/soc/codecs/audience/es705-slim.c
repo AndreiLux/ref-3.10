@@ -1336,7 +1336,6 @@ static int es705_slim_dev_init(struct slim_device *sbdev)
 	es705_priv.dev_write = es705_slim_write;
 	es705_priv.dev_write_then_read = es705_slim_write_then_read;
 	es705_priv.vs_streaming = es705_slim_vs_streaming;
-	es705_priv.streamdev = uart_streamdev;
 	es705_priv.boot_setup = es705_slim_boot_setup;
 	es705_priv.boot_finish = es705_slim_boot_finish;
 #if defined(CONFIG_SLIMBUS_MSM_NGD)

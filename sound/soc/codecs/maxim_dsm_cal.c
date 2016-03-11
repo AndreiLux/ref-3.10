@@ -596,7 +596,7 @@ static int __init maxdsm_cal_init(void)
 
 	mdc->info.min = 0;
 	mdc->info.max = 0xFFFFFFFF;
-	mdc->info.duration = 2000; /* 2 secs */
+	mdc->info.duration = 1500; /* 1.5 secs */
 	mdc->info.remaining = mdc->info.duration;
 	mdc->info.interval = 100;
 	mdc->info.ignored_t = 1000;

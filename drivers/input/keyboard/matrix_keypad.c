@@ -26,6 +26,10 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/of_platform.h>
+#ifdef CONFIG_SUPPORT_KEYPAD_LED
+#include <linux/regulator/consumer.h>
+#include <linux/sec_sysfs.h>
+#endif
 
 struct matrix_keypad {
 	const struct matrix_keypad_platform_data *pdata;
@@ -403,7 +407,7 @@ matrix_keypad_parse_dt(struct device *dev)
 	struct matrix_keypad_platform_data *pdata;
 	struct device_node *np = dev->of_node;
 	unsigned int *gpios;
-	int i, nrow, ncol;
+	int i, nrow, ncol, rc;
 
 	if (!np) {
 		dev_err(dev, "device lacks DT data\n");
@@ -429,6 +433,12 @@ matrix_keypad_parse_dt(struct device *dev)
 		pdata->wakeup = true;
 	if (of_get_property(np, "gpio-activelow", NULL))
 		pdata->active_low = true;
+
+	rc = of_property_read_string(np, "matrix,keypad-project", &pdata->project);
+
+	if (rc < 0) {
+		dev_info(dev, "%s: Unable to read matrix,keypad-project\n", __func__);
+	}
 
 	of_property_read_u32(np, "debounce-delay-ms", &pdata->debounce_ms);
 	of_property_read_u32(np, "col-scan-delay-us",
@@ -465,11 +475,62 @@ matrix_keypad_parse_dt(struct device *dev)
 }
 #endif
 
+#ifdef CONFIG_SUPPORT_KEYPAD_LED
+static ssize_t keypadled_poweron(struct device *dev,
+	struct device_attribute *attr, const char *buf,
+	size_t size)
+{
+	int ret;
+	int data;
+	struct matrix_keypad_platform_data *pdata = dev_get_drvdata(dev);
+
+	sscanf(buf, "%d", &data);
+	dev_err(dev,"%s : data = %d", __func__, data);
+
+	if (data){
+		if (pdata->vddo_vreg){
+			ret = regulator_enable(pdata->vddo_vreg);
+			if (ret) {
+				dev_err(dev,"%s: failed to enable vddo, %d\n", __func__, ret);
+				return size;
+			}
+		}
+	} else {
+		if (pdata->vddo_vreg) {
+			ret = regulator_disable(pdata->vddo_vreg);
+			if (ret) {
+				dev_err(dev,"%s: failed to disable vddo, %d\n", __func__, ret);
+				return size;
+			}
+		}
+	}
+
+	pr_cont(" [%d]\n", regulator_is_enabled(pdata->vddo_vreg));
+
+	return size;
+}
+
+static ssize_t keypadled_poweron_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct matrix_keypad_platform_data *pdata = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", regulator_is_enabled(pdata->vddo_vreg));
+}
+
+static DEVICE_ATTR(brightness, S_IRUGO | S_IWUSR | S_IWGRP,
+	keypadled_poweron_show, keypadled_poweron);
+
+#endif
+
 static int matrix_keypad_probe(struct platform_device *pdev)
 {
-	const struct matrix_keypad_platform_data *pdata;
+	struct matrix_keypad_platform_data *pdata;
 	struct matrix_keypad *keypad;
 	struct input_dev *input_dev;
+#ifdef CONFIG_SUPPORT_KEYPAD_LED
+	struct device *sec_keypad;
+#endif
 	int err;
 
 	pdata = dev_get_platdata(&pdev->dev);
@@ -498,7 +559,11 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&keypad->work, matrix_keypad_scan);
 	spin_lock_init(&keypad->lock);
 
-	input_dev->name		= pdev->name;
+	if (pdata->project)
+		input_dev->name		= pdata->project;
+	else
+		input_dev->name		= pdev->name;
+
 	input_dev->id.bustype	= BUS_HOST;
 	input_dev->dev.parent	= &pdev->dev;
 	input_dev->open		= matrix_keypad_start;
@@ -526,6 +591,28 @@ static int matrix_keypad_probe(struct platform_device *pdev)
 	if (err)
 		goto err_free_gpio;
 
+#ifdef CONFIG_SUPPORT_KEYPAD_LED
+/* keypad led control */
+	sec_keypad = sec_device_create(pdata, "sec_keypad");
+	if (IS_ERR(sec_keypad))
+		dev_err(&pdev->dev,"Failed to create device(sec_key)!\n");
+
+	err = device_create_file(sec_keypad, &dev_attr_brightness);
+	if (err) {
+		dev_err(&pdev->dev,"Failed to create device file in sysfs entries(%s)!\n",
+				dev_attr_brightness.attr.name);
+	}
+
+	dev_set_drvdata(sec_keypad, pdata);
+
+	pdata->vddo_vreg = regulator_get(&pdev->dev,"vddo");
+	if (IS_ERR(pdata->vddo_vreg)){
+		pdata->vddo_vreg = NULL;
+		printk(KERN_INFO "pdata->vddo_vreg error\n");
+		err = -EPERM;
+		goto err_free_gpio;
+	}
+#endif
 	device_init_wakeup(&pdev->dev, pdata->wakeup);
 	platform_set_drvdata(pdev, keypad);
 

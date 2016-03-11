@@ -258,39 +258,6 @@ void es705_uart_pin_postset(struct es705_priv *es705)
 {
 	/* reserved */
 }
-
-#define KEY_VOICE_WAKEUP 199
-#define KEY_VOICE_WAKEUP_LPSD 198
-
-int es705_init_input_device(struct es705_priv *es705)
-{
-	int rc;
-
-	es705->input = input_allocate_device();
-	if (!es705->input) {
-		rc = -ENOMEM;
-		goto es705_init_input_device_exit;
-	}
-
-	es705->input->name = "es705 input";
-
-	set_bit(EV_SYN, es705->input->evbit);
-	set_bit(EV_KEY, es705->input->evbit);
-	set_bit(KEY_VOICE_WAKEUP, es705->input->keybit);
-	set_bit(KEY_VOICE_WAKEUP_LPSD, es705->input->keybit);
-
-	rc = input_register_device(es705->input);
-	if (rc < 0)
-		input_free_device(es705->input);
-
-es705_init_input_device_exit:
-	return rc;
-}
-
-void es705_unregister_input_device(struct es705_priv *es705)
-{
-	input_unregister_device(es705->input);
-}
 #endif
 
 #if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)

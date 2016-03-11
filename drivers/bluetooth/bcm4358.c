@@ -190,7 +190,7 @@ static void update_host_wake_locked(int host_wake)
 		 * The chipset deasserts the hostwake lock, when there is no
 		 * more data to send.
 		 */
-		pr_err("[BT] update_host_wake_locked host_wake is deasserted. release wakelock in 1s\n");
+		pr_info("[BT] update_host_wake_locked host_wake is deasserted. release wakelock in 1s\n");
 		wake_lock_timeout(&bt_lpm.host_wake_lock, HZ);
 	}
 }
@@ -233,7 +233,7 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 
 	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC,
 			HRTIMER_MODE_REL);
-	bt_lpm.enter_lpm_delay = ktime_set(5, 0);  /* 1 sec */ /*1->3*//*3->4*/
+	bt_lpm.enter_lpm_delay = ktime_set(1, 0);  /* 1 sec */ /*1->3*//*3->4*/
 	bt_lpm.enter_lpm_timer.function = enter_lpm;
 
 	bt_lpm.host_wake = 0;

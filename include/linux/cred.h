@@ -145,6 +145,23 @@ struct cred {
 #endif /*CONFIG_RKP_KDP*/
 };
 #ifdef CONFIG_RKP_KDP
+typedef struct cred_param{
+	struct cred *cred;
+	struct cred *cred_ro;
+	void *use_cnt_ptr;
+	void *sec_ptr;
+	unsigned long type;
+	union {
+		void *task_ptr;
+		u64 use_cnt;
+	};
+}cred_param_t;
+
+enum {
+	RKP_CMD_COPY_CREDS = 0,
+	RKP_CMD_CMMIT_CREDS,
+	RKP_CMD_OVRD_CREDS,
+};
 #define override_creds(x) rkp_override_creds(&x)
 #endif /*CONFIG_RKP_KDP*/
 
@@ -161,6 +178,8 @@ extern void abort_creds(struct cred *);
 extern const struct cred *override_creds(const struct cred *);
 #else
 extern const struct cred *rkp_override_creds(struct cred **);
+extern unsigned int rkp_get_task_sec_size(void);
+unsigned int rkp_get_offset_bp_cred(void);
 #endif /*CONFIG_RKP_KDP*/
 extern void revert_creds(const struct cred *);
 extern struct cred *prepare_kernel_cred(struct task_struct *);
@@ -394,4 +413,13 @@ do {						\
 	*(_fsgid) = __cred->fsgid;		\
 } while(0)
 
+#define rkp_cred_fill_params(crd,crd_ro,uptr,tsec,rkp_cmd_type,rkp_use_cnt)	\
+do {						\
+	cred_param.cred = crd;		\
+	cred_param.cred_ro = crd_ro;		\
+	cred_param.use_cnt_ptr = uptr;		\
+	cred_param.sec_ptr= tsec;		\
+	cred_param.type = rkp_cmd_type;		\
+	cred_param.use_cnt = (u64)rkp_use_cnt;		\
+} while(0)
 #endif /* _LINUX_CRED_H */

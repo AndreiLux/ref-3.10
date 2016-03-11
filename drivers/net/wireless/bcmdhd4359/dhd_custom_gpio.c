@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_custom_gpio.c 556083 2015-05-12 14:03:00Z $
+ * $Id: dhd_custom_gpio.c 591129 2015-10-07 05:22:14Z $
  */
 
 #include <typedefs.h>
@@ -43,23 +43,11 @@
 #define WL_ERROR(x) printf x
 #define WL_TRACE(x)
 
-#if defined(CUSTOMER_HW4)
-
-#if defined(PLATFORM_MPS)
-int __attribute__ ((weak)) wifi_get_fw_nv_path(char *fw, char *nv) { return 0;};
-#endif
-
-#endif 
-
 #if defined(OOB_INTR_ONLY) || defined(BCMSPI_ANDROID)
 
 #if defined(BCMLXSDMMC)
 extern int sdioh_mmc_irq(int irq);
 #endif /* (BCMLXSDMMC)  */
-
-#if defined(PLATFORM_MPS)
-#include <mach/gpio.h>
-#endif
 
 /* Customer specific Host GPIO defintion  */
 static int dhd_oob_gpio_num = -1;
@@ -82,7 +70,7 @@ int dhd_customer_oob_irq_map(void *adapter, unsigned long *irq_flags_ptr)
 {
 	int  host_oob_irq = 0;
 
-#if defined(CUSTOMER_HW4) && !defined(PLATFORM_MPS)
+#if defined(CUSTOMER_HW4)
 	host_oob_irq = wifi_platform_get_irq_number(adapter, irq_flags_ptr);
 
 #else
@@ -101,11 +89,6 @@ int dhd_customer_oob_irq_map(void *adapter, unsigned long *irq_flags_ptr)
 	WL_ERROR(("%s: customer specific Host GPIO number is (%d)\n",
 	         __FUNCTION__, dhd_oob_gpio_num));
 
-#if defined(PLATFORM_MPS)
-	gpio_request(dhd_oob_gpio_num, "oob irq");
-	host_oob_irq = gpio_to_irq(dhd_oob_gpio_num);
-	gpio_direction_input(dhd_oob_gpio_num);
-#endif 
 #endif 
 
 	return (host_oob_irq);
@@ -146,7 +129,7 @@ dhd_custom_get_mac_address(void *adapter, unsigned char *buf)
 }
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
-#if !defined(CUSTOMER_HW4) || defined(PLATFORM_MPS)
+#ifndef CUSTOMER_HW4
 #if !defined(WL_WIRELESS_EXT)
 struct cntry_locales_custom {
 	char iso_abbrev[WLC_CNTRY_BUF_SZ];	/* ISO 3166-1 country abbreviation */
@@ -209,7 +192,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 *  input : ISO 3166-1 country abbreviation
 *  output: customized cspec
 */
-#ifdef CUSTOM_COUNTRY_COD
+#ifdef CUSTOM_COUNTRY_CODE
 void get_customized_country_code(void *adapter, char *country_iso_code,
   wl_country_t *cspec, u32 flags)
 #else

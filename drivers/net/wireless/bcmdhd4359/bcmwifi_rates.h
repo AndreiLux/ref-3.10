@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: bcmwifi_rates.h 5187 2012-06-29 06:17:50Z $
+ * $Id: bcmwifi_rates.h 591285 2015-10-07 11:56:29Z $
  */
 
 #ifndef _bcmwifi_rates_h_

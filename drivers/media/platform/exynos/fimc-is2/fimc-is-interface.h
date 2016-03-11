@@ -267,12 +267,7 @@ int fimc_is_hw_sensor_mode(struct fimc_is_interface *this,
 	u32 instance, int cfg);
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-#if (HOST_FW_INTERFACE_VER >= 2)
-	u32 instance, u32 group, u32 shot, u32 fcount, u32 rcount
-#else
-	u32 instance, u32 group, u32 bayer, u32 shot, u32 fcount, u32 rcount
-#endif
-	);
+	u32 instance, u32 group, u32 shot, u32 fcount, u32 rcount);
 int fimc_is_hw_s_camctrl_nblk(struct fimc_is_interface *this,
 	u32 instance, u32 address, u32 fcount);
 int fimc_is_hw_msg_test(struct fimc_is_interface *this, u32 sync_id, u32 msg_test_id);

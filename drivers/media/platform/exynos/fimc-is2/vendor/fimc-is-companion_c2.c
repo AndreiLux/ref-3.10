@@ -122,6 +122,7 @@ extern bool companion_lsc_isvalid;
 extern bool companion_front_lsc_isvalid;
 extern bool companion_coef_isvalid;
 extern bool crc32_c1_check;
+extern bool crc32_c1_check_front;
 extern bool is_dumped_c1_fw_loading_needed;
 static u16 companion_ver;
 bool pdaf_valid;
@@ -1526,7 +1527,8 @@ int fimc_is_comp_loadcal(void *core_data, int position)
 		return 0;
 	}
 
-	if (!crc32_c1_check) {
+	if ((!crc32_c1_check && (position == SENSOR_POSITION_REAR))
+	|| (!crc32_c1_check_front && (position == SENSOR_POSITION_FRONT))) {
 		pr_debug("CRC check fail.Do not apply cal data.");
 		return 0;
 	}

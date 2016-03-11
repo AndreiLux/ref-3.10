@@ -81,8 +81,11 @@ static long tui_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		pr_info("TUI_IO_WAITCMD\n");
 
 		ret = tlc_wait_cmd(&cmd_id);
-		if (ret)
+		if (ret) {
+			pr_debug("ERROR %s:%d tlc_wait_cmd returned (0x%08X)\n",
+				__func__, __LINE__, ret);
 			return ret;
+		}
 
 		/* Write command id to user */
 		pr_debug("IOCTL: sending command %d to user.\n", cmd_id);
@@ -91,11 +94,6 @@ static long tui_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			ret = -EFAULT;
 		else
 			ret = 0;
-
-		/* Reset the value of the command, to ensure that commands sent
-		 * due to interrupted wait_for_completion are TLC_TUI_CMD_NONE.
-		*/
-		reset_global_command_id();
 
 		break;
 	}
@@ -126,10 +124,27 @@ static long tui_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+atomic_t fileopened;
+static int tui_open(struct inode *inode, struct file *file)
+{
+	printk(KERN_INFO "TUI file opened");
+	atomic_inc(&fileopened);
+	return 0;
+}
+
+static int tui_release(struct inode *inode, struct file *file)
+{
+	printk(KERN_INFO "TUI file closed");
+	atomic_dec(&fileopened);
+	return 0;
+}
+
 static const struct file_operations tui_fops = {
 	.owner = THIS_MODULE,
-	/*.unlocked_ioctl = tui_ioctl,*/
-	.compat_ioctl = tui_ioctl,
+	.unlocked_ioctl = tui_ioctl,
+	/* .compat_ioctl = tui_ioctl, */
+	.open = tui_open,
+	.release = tui_release,
 };
 
 /*--------------------------------------------------------------------------- */
@@ -142,6 +157,8 @@ static int __init tlc_tui_init(void)
 	dev_t devno;
 	int err;
 	static struct class *tui_class;
+
+	atomic_set(&fileopened, 0);
 
 	err = alloc_chrdev_region(&devno, 0, 1, TUI_DEV_NAME);
 	if (err) {

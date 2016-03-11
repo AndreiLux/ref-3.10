@@ -577,6 +577,30 @@ config TCP_CONG_ILLINOIS
 	For further details see:
 	  http://www.ews.uiuc.edu/~shaoliu/tcpillinois/index.html
 
+config TCP_CONG_LIA
+	tristate "MPTCP Linked Increase"
+	depends on MPTCP
+	default n
+	---help---
+	MultiPath TCP Linked Increase Congestion Control
+	To enable it, just put 'lia' in tcp_congestion_control
+
+config TCP_CONG_OLIA
+	tristate "MPTCP Opportunistic Linked Increase"
+	depends on MPTCP
+	default n
+	---help---
+	MultiPath TCP Opportunistic Linked Increase Congestion Control
+	To enable it, just put 'olia' in tcp_congestion_control
+
+config TCP_CONG_WVEGAS
+	tristate "MPTCP WVEGAS CONGESTION CONTROL"
+	depends on MPTCP
+	default n
+	---help---
+	wVegas congestion control for MPTCP
+	To enable it, just put 'wvegas' in tcp_congestion_control
+
 choice
 	prompt "Default TCP congestion control"
 	default DEFAULT_CUBIC
@@ -605,6 +629,15 @@ choice
 	config DEFAULT_WESTWOOD
 		bool "Westwood" if TCP_CONG_WESTWOOD=y
 
+	config DEFAULT_LIA
+		bool "Lia" if TCP_CONG_LIA=y
+
+	config DEFAULT_OLIA
+		bool "Olia" if TCP_CONG_OLIA=y
+
+	config DEFAULT_WVEGAS
+		bool "Wvegas" if TCP_CONG_WVEGAS=y
+
 	config DEFAULT_RENO
 		bool "Reno"
 
@@ -626,6 +659,8 @@ config DEFAULT_TCP_CONG
 	default "vegas" if DEFAULT_VEGAS
 	default "westwood" if DEFAULT_WESTWOOD
 	default "veno" if DEFAULT_VENO
+	default "lia" if DEFAULT_LIA
+	default "wvegas" if DEFAULT_WVEGAS
 	default "reno" if DEFAULT_RENO
 	default "cubic"
 

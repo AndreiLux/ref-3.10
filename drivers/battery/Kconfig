@@ -434,3 +434,9 @@ config FIX_CHG_FQ_4MHZ
 	depends on CHARGER_MAX77843
 	help
 	  Say Y to fix charging frequency 4MHz
+
+config STORE_MODE
+       bool "enable store mode"
+       default n
+       help
+	 Say Y to enable CONFIG_STORE_MODE

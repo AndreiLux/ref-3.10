@@ -206,7 +206,6 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"BN", "BN", 4},
 	{"BG", "BG", 4},
 	{"KH", "KH", 2},
-	{"CA", "US", 0},
 	{"KY", "KY", 3},
 	{"CN", "CN", 38},
 	{"CO", "CO", 17},
@@ -231,7 +230,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"IN", "IN", 3},
 	{"ID", "ID", 1},
 	{"IE", "IE", 5},
-	{"IL", "IL", 7},
+	{"IL", "IL", 14},
 	{"IT", "IT", 4},
 	{"JP", "JP", 45},
 	{"JO", "JO", 3},
@@ -316,7 +315,11 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"LY", "LI", 4},
 	{"BO", "NG", 0},
 	{"UM", "PR", 38},
-	{"CU", "US", 0},
+	/* Support FCC 15.407 (Part 15E) Changes, effective June 2 2014 */
+	/* US/988, Q2/993 country code with higher power on UNII-1 5G band */
+	{"US", "US", 988},
+	{"CU", "US", 988},
+	{"CA", "Q2", 993},
 #endif /* default ccode/regrev */
 };
 
@@ -1074,16 +1077,16 @@ int dhd_sel_ant_from_file(dhd_pub_t *dhd)
 #endif /* MIMO_ANTENNA_SETTING */
 
 #ifdef USE_WFA_CERT_CONF
-int sec_get_param(dhd_pub_t *dhd, int mode)
+int sec_get_param_wfa_cert(dhd_pub_t *dhd, int mode, uint* read_val)
 {
 	struct file *fp = NULL;
 	char *filepath = NULL;
-	int val, ret = 0;
+	int val = 0;
 
 	if (!dhd || (mode < SET_PARAM_BUS_TXGLOM_MODE) ||
 		(mode >= PARAM_LAST_VALUE)) {
 		DHD_ERROR(("[WIFI_SEC] %s: invalid argument\n", __FUNCTION__));
-		return -EINVAL;
+		return BCME_ERROR;
 	}
 
 	switch (mode) {
@@ -1103,53 +1106,34 @@ int sec_get_param(dhd_pub_t *dhd, int mode)
 			filepath = "/data/.txbf.info";
 			break;
 #endif /* USE_WL_TXBF */
+#ifdef PROP_TXSTATUS
+		case SET_PARAM_PROPTX:
+			filepath = "/data/.proptx.info";
+			break;
+#endif /* PROP_TXSTATUS */
 		default:
-			return -EINVAL;
+			DHD_ERROR(("[WIFI_SEC] %s: File to find file name for index=%d\n",
+				__FUNCTION__, mode));
+			return BCME_ERROR;
 	}
 
 	fp = filp_open(filepath, O_RDONLY, 0);
 	if (IS_ERR(fp) || (fp == NULL)) {
-		ret = -EIO;
+		DHD_ERROR(("[WIFI_SEC] %s: File [%s] doesn't exist \n",
+			__FUNCTION__, filepath));
+		return BCME_ERROR;
 	} else {
-		ret = kernel_read(fp, fp->f_pos, (char *)&val, 4);
+		if (kernel_read(fp, fp->f_pos, (char *)&val, 4) < 0) {
+			filp_close(fp, NULL);
+			/* File operation is failed so we will return error code */
+			DHD_ERROR(("[WIFI_SEC] %s: read failed, file path=%s\n",
+				__FUNCTION__, filepath));
+			return BCME_ERROR;
+		}
 		filp_close(fp, NULL);
 	}
 
-	if (ret < 0) {
-		/* File operation is failed so we will return default value */
-		switch (mode) {
-			case SET_PARAM_BUS_TXGLOM_MODE:
-				val = CUSTOM_GLOM_SETTING;
-				break;
-			case SET_PARAM_ROAMOFF:
-#ifdef ROAM_ENABLE
-				val = 0;
-#elif defined(DISABLE_BUILTIN_ROAM)
-				val = 1;
-#else
-				val = 0;
-#endif /* ROAM_ENABLE */
-				break;
-#ifdef USE_WL_FRAMEBURST
-			case SET_PARAM_FRAMEBURST:
-				val = 1;
-				break;
-#endif /* USE_WL_FRAMEBURST */
-#ifdef USE_WL_TXBF
-			case SET_PARAM_TXBF:
-				val = 1;
-				break;
-#endif /* USE_WL_TXBF */
-		}
-
-		DHD_INFO(("[WIFI_SEC] %s: File open failed, file path=%s,"
-			" default value=%d\n",
-			__FUNCTION__, filepath, val));
-		return val;
-	}
-
 	val = bcm_atoi((char *)&val);
-	DHD_INFO(("[WIFI_SEC] %s: %s = %d\n", __FUNCTION__, filepath, val));
 
 	switch (mode) {
 		case SET_PARAM_ROAMOFF:
@@ -1159,11 +1143,20 @@ int sec_get_param(dhd_pub_t *dhd, int mode)
 #ifdef USE_WL_TXBF
 		case SET_PARAM_TXBF:
 #endif /* USE_WL_TXBF */
-			val = val ? 1 : 0;
+#ifdef PROP_TXSTATUS
+		case SET_PARAM_PROPTX:
+#endif /* PROP_TXSTATUS */
+		if (val < 0 || val > 1) {
+			DHD_ERROR(("[WIFI_SEC] %s: value[%d] is out of range\n",
+				__FUNCTION__, *read_val));
+			return BCME_ERROR;
+		}
 			break;
+		default:
+			return BCME_ERROR;
 	}
-
-	return val;
+	*read_val = (uint)val;
+	return BCME_OK;
 }
 #endif /* USE_WFA_CERT_CONF */
 #ifdef WRITE_WLANINFO
@@ -1460,7 +1453,7 @@ int dhd_write_otp(dhd_pub_t *dhd)
 
 		/* create .otp.info */
 		fp = filp_open("/data/.otp.info", O_RDWR|O_CREAT, 0666);
-		if (!fp) {
+	        if (IS_ERR(fp)) {
 			DHD_ERROR(("%s:(MFG mode) file create error\n", __FUNCTION__));
 			return BCME_ERROR;
 		}
@@ -1469,9 +1462,8 @@ int dhd_write_otp(dhd_pub_t *dhd)
 		fp->f_op->write(fp, buf, CIS_BUF_SIZE, &pos);
 	}
 
-	if (fp) {
-		filp_close(fp, current->files);
-	}
+	filp_close(fp, current->files);
+
 	DHD_ERROR(("%s: .otp.info is created or existing already\n", __FUNCTION__));
 	/* restore previous address limit */
 	set_fs(old_fs);

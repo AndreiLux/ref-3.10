@@ -80,7 +80,7 @@ struct mc_context {
 	/* General list of contiguous buffers allocated by the kernel */
 	struct list_head	cont_bufs;
 	/* Lock for the list of contiguous buffers */
-	struct mutex		bufs_lock;
+	struct mutex		cont_bufs_lock;
 	/* Lock for core switch processing */
 	struct mutex		core_switch_lock;
 };

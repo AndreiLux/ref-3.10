@@ -207,7 +207,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "The number of MB in a slice",
 		.minimum = 1,
-		.maximum = ENC_MULTI_SLICE_MB_MAX,
+		.maximum = INT_MAX,
 		.step = 1,
 		.default_value = 1,
 	},
@@ -215,17 +215,17 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_BYTES,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "The maximum bits per slices",
-		.minimum = ENC_MULTI_SLICE_BYTE_MIN,
-		.maximum = (1 << 30) - 1,
+		.minimum = 350,
+		.maximum = INT_MAX / 8,
 		.step = 1,
-		.default_value = ENC_MULTI_SLICE_BYTE_MIN,
+		.default_value = 350,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB_ROW,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "The number of MB row in a slice",
 		.minimum = 1,
-		.maximum = ENC_MULTI_SLICE_MB_ROW_MAX,
+		.maximum = INT_MAX / 256,
 		.step = 1,
 		.default_value = 1,
 	},
@@ -234,7 +234,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "The number of intra refresh MBs",
 		.minimum = 0,
-		.maximum = ENC_INTRA_REFRESH_MB_MAX,
+		.maximum = (1 << 18) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -252,7 +252,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Padding Color YUV Value",
 		.minimum = 0,
-		.maximum = (1 << 25) - 1,
+		.maximum = (1 << 24) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -270,7 +270,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Target bit rate rate-control",
 		.minimum = 1,
-		.maximum = (1 << 30) - 1,
+		.maximum = INT_MAX,
 		.step = 1,
 		.default_value = 1,
 	},
@@ -288,7 +288,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Encoded stream size",
 		.minimum = 0,
-		.maximum = (1 << 30) - 1,
+		.maximum = INT_MAX,
 		.step = 1,
 		.default_value = 0,
 		.flags = V4L2_CTRL_FLAG_READ_ONLY,
@@ -298,7 +298,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Encoded frame count",
 		.minimum = 0,
-		.maximum = (1 << 30) - 1,
+		.maximum = INT_MAX,
 		.step = 1,
 		.default_value = 0,
 		.flags = V4L2_CTRL_FLAG_READ_ONLY,
@@ -328,7 +328,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "VBV buffer size (1Kbits)",
 		.minimum = 0,
-		.maximum = ENC_VBV_BUF_SIZE_MAX,
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -417,8 +417,8 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_ALPHA,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "H264 loop filter alpha offset",
-		.minimum = ENC_H264_LOOP_FILTER_AB_MIN,
-		.maximum = ENC_H264_LOOP_FILTER_AB_MAX,
+		.minimum = -12,
+		.maximum = 12,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -426,8 +426,8 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_BETA,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "H264 loop filter beta offset",
-		.minimum = ENC_H264_LOOP_FILTER_AB_MIN,
-		.maximum = ENC_H264_LOOP_FILTER_AB_MAX,
+		.minimum = -12,
+		.maximum = 12,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -472,7 +472,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "H264 Frame rate",
 		.minimum = 1,
-		.maximum = ENC_H264_RC_FRAME_RATE_MAX,
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 1,
 	},
@@ -480,25 +480,6 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "H264 Frame QP value",
-		.minimum = 0,
-		.maximum = 51,
-		.step = 1,
-		.default_value = 0,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "H264 Minimum QP value",
-		.minimum = 0,
-		.maximum = 51,
-		.step = 1,
-		.default_value = 0,
-	},
-	{
-		/* MAX_QP must be greater than or equal to MIN_QP */
-		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "H264 Maximum QP value",
 		.minimum = 0,
 		.maximum = 51,
 		.step = 1,
@@ -628,7 +609,7 @@ static struct v4l2_queryctrl controls[] = {
 		.minimum = V4L2_MPEG_VIDEO_H264_HIERARCHICAL_CODING_B,
 		.maximum = V4L2_MPEG_VIDEO_H264_HIERARCHICAL_CODING_P,
 		.step = 1,
-		.default_value = V4L2_MPEG_VIDEO_H264_HIERARCHICAL_CODING_B,
+		.default_value = V4L2_MPEG_VIDEO_H264_HIERARCHICAL_CODING_P,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER,
@@ -784,24 +765,6 @@ static struct v4l2_queryctrl controls[] = {
 		.step = 1,
 		.default_value = 1,
 	},
-	{
-		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "MPEG4 Minimum QP value",
-		.minimum = 1,
-		.maximum = 31,
-		.step = 1,
-		.default_value = 1,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "MPEG4 Maximum QP value",
-		.minimum = 1,
-		.maximum = 31,
-		.step = 1,
-		.default_value = 1,
-	},
 	{	/* MFC5.x Only */
 		.id = V4L2_CID_MPEG_VIDEO_MPEG4_QPEL,
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
@@ -834,7 +797,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "MPEG4 vop time resolution",
 		.minimum = 0,
-		.maximum = ENC_MPEG4_VOP_TIME_RES_MAX,
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -852,7 +815,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "H263 Frame rate",
 		.minimum = 1,
-		.maximum = ENC_H263_RC_FRAME_RATE_MAX,
+		.maximum = (1 << 8) - 1,
 		.step = 1,
 		.default_value = 1,
 	},
@@ -860,24 +823,6 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_H263_I_FRAME_QP,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "H263 Frame QP value",
-		.minimum = 1,
-		.maximum = 31,
-		.step = 1,
-		.default_value = 1,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDEO_H263_MIN_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "H263 Minimum QP value",
-		.minimum = 1,
-		.maximum = 31,
-		.step = 1,
-		.default_value = 1,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDEO_H263_MAX_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "H263 Maximum QP value",
 		.minimum = 1,
 		.maximum = 31,
 		.step = 1,
@@ -914,8 +859,8 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_QOS_RATIO,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "QoS ratio value",
-		.minimum = 20,
-		.maximum = 200,
+		.minimum = 0,
+		.maximum = 1000,
 		.step = 10,
 		.default_value = 100,
 	},
@@ -947,29 +892,11 @@ static struct v4l2_queryctrl controls[] = {
 		.default_value = 0,
 	},
 	{
-		.id = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "VP8 Frame QP MAX value",
-		.minimum = 0,
-		.maximum = 127,
-		.step = 1,
-		.default_value = 0,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "VP8 Frame QP MIN value",
-		.minimum = 0,
-		.maximum = 127,
-		.step = 1,
-		.default_value = 0,
-	},
-	{
 		.id = V4L2_CID_MPEG_MFC70_VIDEO_VP8_RC_FRAME_RATE,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "VP8 Frame rate",
 		.minimum = 1,
-		.maximum = ENC_H264_RC_FRAME_RATE_MAX,
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -1014,7 +941,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "VP8 indication of golden frame",
 		.minimum = 0,
-		.maximum = ((1 << 16) - 1),
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -1108,26 +1035,6 @@ static struct v4l2_queryctrl controls[] = {
 		.step = 1,
 		.default_value = 0,
 	},
-
-	{
-		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "HEVC Minimum QP value",
-		.minimum = 0,
-		.maximum = 51,
-		.step = 1,
-		.default_value = 0,
-	},
-	{
-		/* MAX_QP must be greater than or equal to MIN_QP */
-		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "HEVC Maximum QP value",
-		.minimum = 0,
-		.maximum = 51,
-		.step = 1,
-		.default_value = 0,
-	},
 	{
 		.id = V4L2_CID_MPEG_MFC90_VIDEO_HEVC_ADAPTIVE_RC_DARK,
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
@@ -1196,7 +1103,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "HEVC Frame rate",
 		.minimum = 1,
-		.maximum = ENC_HEVC_RC_FRAME_RATE_MAX,
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -1294,8 +1201,8 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_TYPE,
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
 		.name = "Hierarchical Coding Type",
-		.minimum = 0,
-		.maximum = 1,
+		.minimum = V4L2_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_B,
+		.maximum = V4L2_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_P,
 		.step = 1,
 		.default_value = 0, /* need to check defualt value */
 	},
@@ -1304,7 +1211,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Hierarchical Coding Layer",
 		.minimum = 0,
-		.maximum = 5,
+		.maximum = 7,
 		.step = 1,
 		.default_value = 0, /* need to check defualt value */
 	},
@@ -1318,13 +1225,76 @@ static struct v4l2_queryctrl controls[] = {
 		.default_value = 0, /* need to check defualt value */
 	},
 	{
-		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT0,
 		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "Hierarchical Coding Layer BIT",
+		.name = "Hierarchical Coding Layer BIT0",
 		.minimum = INT_MIN,
 		.maximum = INT_MAX,
 		.step = 1,
-		.default_value = 0, /* need to check defualt value */
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT1,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer BIT1",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT2,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer BIT2",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT3,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer BIT3",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT4,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer BIT4",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT5,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer BIT5",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT6,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer BIT6",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Hierarchical Coding Layer Change",
+		.minimum = INT_MIN,
+		.maximum = INT_MAX,
+		.step = 1,
+		.default_value = 0,
 	},
 	{
 		.id = V4L2_CID_MPEG_MFC90_VIDEO_HEVC_SIGN_DATA_HIDING,
@@ -1403,25 +1373,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "HEVC Number of reference picture",
 		.minimum = 0,
-		.maximum = 10, /* need to check maximum size */
-		.step = 1,
-		.default_value = 0, /* need to check defualt value */
-	},
-	{
-		.id = V4L2_CID_MPEG_MFC90_VIDEO_HEVC_QP_INDEX_CR,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "Chroma QP index offset Cr",
-		.minimum = ENC_HEVC_QP_INDEX_MIN,
-		.maximum = ENC_HEVC_QP_INDEX_MAX,
-		.step = 1,
-		.default_value = 0, /* need to check defualt value */
-	},
-	{
-		.id = V4L2_CID_MPEG_MFC90_VIDEO_HEVC_QP_INDEX_CB,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "Chroma QP index offset Cb",
-		.minimum = ENC_HEVC_QP_INDEX_MIN,
-		.maximum = ENC_HEVC_QP_INDEX_MAX,
+		.maximum = (1 << 16) - 1,
 		.step = 1,
 		.default_value = 0, /* need to check defualt value */
 	},
@@ -1429,8 +1381,8 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_MFC90_VIDEO_HEVC_LF_BETA_OFFSET_DIV2,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "HEVC loop filter beta offset",
-		.minimum = ENC_HEVC_LOOP_FILTER_MIN,
-		.maximum = ENC_HEVC_LOOP_FILTER_MAX,
+		.minimum = -6,
+		.maximum = 6,
 		.step = 1,
 		.default_value = 0, /* need to check defualt value */
 	},
@@ -1438,8 +1390,8 @@ static struct v4l2_queryctrl controls[] = {
 		.id = V4L2_CID_MPEG_MFC90_VIDEO_HEVC_LF_TC_OFFSET_DIV2,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "HEVC loop filter tc offset",
-		.minimum = ENC_HEVC_LOOP_FILTER_MIN,
-		.maximum = ENC_HEVC_LOOP_FILTER_MAX,
+		.minimum = -6,
+		.maximum = 6,
 		.step = 1,
 		.default_value = 0, /* need to check defualt value */
 	},
@@ -1637,7 +1589,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Hierarchical Base Layer Priority",
 		.minimum = 0,
-		.maximum = (1 << 6) - 1 - 7,
+		.maximum = (1 << 6) - 1 - 6,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -1646,7 +1598,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "QP control per each frame",
 		.minimum = 0,
-		.maximum = (1 << 8) - 1,
+		.maximum = (1 << 7) - 1,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -1658,6 +1610,258 @@ static struct v4l2_queryctrl controls[] = {
 		.maximum = 1,
 		.step = 1,
 		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_PREPEND_SPSPPS_TO_IDR,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Prepend SPS/PPS to every IDR",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_MFC_CONFIG_QP_ENABLE,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "set dynamic qp control",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H264 Min QP value for I frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H264 Max QP value for I frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "HEVC Min QP value for I frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "HEVC Max QP value for I frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "MPEG4 Min QP value for I frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "MPEG4 Max QP value for I frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H263_MIN_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H263 Min QP value for I frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H263_MAX_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H263 Max QP value for I frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Min QP value for I frame",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Max QP value for I frame",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H264 Min QP value for P frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H264 Max QP value for P frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "HEVC Min QP value for P frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "HEVC Max QP value for P frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "MPEG4 Min QP value for P frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "MPEG4 Max QP value for P frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H263 Min QP value for P frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H263_MAX_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H263 Max QP value for P frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Min QP value for P frame",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP_P,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "VP8 Max QP value for P frame",
+		.minimum = 0,
+		.maximum = 127,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP_B,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H264 Min QP value for B frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP_B,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "H264 Max QP value for B frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_B,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "HEVC Min QP value for B frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_B,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "HEVC Max QP value for B frame",
+		.minimum = 0,
+		.maximum = 51,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_B,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "MPEG4 Min QP value for B frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_B,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "MPEG4 Max QP value for B frame",
+		.minimum = 1,
+		.maximum = 31,
+		.step = 1,
+		.default_value = 1,
 	},
 };
 
@@ -1840,102 +2044,319 @@ static struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 		.read_cst = enc_ctrl_read_cst,
 		.write_cst = NULL,
 	},
-	{	/* H.264 QP Max change */
+	{	/* H.264 I frame QP Max change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
-		.shft = 0,
+		.mask = 0x7F,
+		.shft = 8,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* H.264 QP Min change */
+	{	/* H.264 I frame QP Min change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
+		.mask = 0x7F,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* H.263 QP Max change */
+	{	/* H.263 I frame QP Max change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_H263_MAX_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
-		.shft = 0,
+		.mask = 0x7F,
+		.shft = 8,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* H.263 QP Min change */
+	{	/* H.263 I frame QP Min change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_H263_MIN_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
+		.mask = 0x7F,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* MPEG4 QP Max change */
+	{	/* MPEG4 I frame QP Max change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
-		.shft = 0,
+		.mask = 0x7F,
+		.shft = 8,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* MPEG4 QP Min change */
+	{	/* MPEG4 I frame QP Min change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
+		.mask = 0x7F,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* VP8 QP Max change */
+	{	/* VP8 I frame QP Max change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
-		.shft = 0,
+		.mask = 0x7F,
+		.shft = 8,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
-	{	/* VP8 QP Min change */
+	{	/* VP8 I frame QP Min change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
 		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
+		.mask = 0x7F,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 4,
 	},
+	{	/* HEVC I frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_CUSTOM,
+		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
+		.mask = 0x7F,
+		.shft = 8,
+		.flag_mode = MFC_CTRL_MODE_CUSTOM,
+		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
+		.flag_shft = 4,
+	},
+	{	/* HEVC I frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_CUSTOM,
+		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
+		.mask = 0x7F,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_CUSTOM,
+		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
+		.flag_shft = 4,
+	},
+	{	/* H.264 P frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 8,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* H.264 P frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* H.263 P frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_H263_MAX_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 8,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* H.263 P frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* MPEG4 P frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 8,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* MPEG4 P frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* VP8 P frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MAX_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 8,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* VP8 P frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* HEVC P frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 8,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* HEVC P frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 0,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* H.264 B frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP_B,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 24,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* H.264 B frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP_B,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 16,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* MPEG4 B frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_B,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 24,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* MPEG4 B frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_B,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 16,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* HEVC B frame QP Max change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_B,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 24,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+	{	/* HEVC B frame QP Min change */
+		.type = MFC_CTRL_TYPE_SET,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_B,
+		.is_volatile = 1,
+		.mode = MFC_CTRL_MODE_SFR,
+		.addr = S5P_FIMV_E_RC_QP_BOUND_PB,
+		.mask = 0x7F,
+		.shft = 16,
+		.flag_mode = MFC_CTRL_MODE_SFR,
+		.flag_addr = S5P_FIMV_E_PARAM_CHANGE,
+		.flag_shft = 4,
+	},
+
 	{	/* H.264 Dynamic Temporal Layer & bitrate change */
 		.type = MFC_CTRL_TYPE_SET,
 		.id = V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH,
@@ -1948,41 +2369,17 @@ static struct s5p_mfc_ctrl_cfg mfc_ctrl_list[] = {
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 10,
 	},
-	{	/* H.264 Dynamic Temporal Layer change */
+	{	/* HEVC Dynamic Temporal Layer & bitrate change */
 		.type = MFC_CTRL_TYPE_SET,
-		.id = V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER,
+		.id = V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH,
 		.is_volatile = 1,
 		.mode = MFC_CTRL_MODE_CUSTOM,
-		.addr = S5P_FIMV_E_NUM_T_LAYER,
-		.mask = 0x00000007,
+		.addr = S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0,
+		.mask = 0xFFFFFFFF,
 		.shft = 0,
 		.flag_mode = MFC_CTRL_MODE_CUSTOM,
 		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
 		.flag_shft = 10,
-	},
-	{	/* HEVC QP Max change */
-		.type = MFC_CTRL_TYPE_SET,
-		.id = V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP,
-		.is_volatile = 1,
-		.mode = MFC_CTRL_MODE_CUSTOM,
-		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
-		.shft = 0,
-		.flag_mode = MFC_CTRL_MODE_CUSTOM,
-		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
-		.flag_shft = 4,
-	},
-	{	/* HEVC QP Min change */
-		.type = MFC_CTRL_TYPE_SET,
-		.id = V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP,
-		.is_volatile = 1,
-		.mode = MFC_CTRL_MODE_CUSTOM,
-		.addr = S5P_FIMV_NEW_RC_QP_BOUND,
-		.mask = 0xFFFFFFFF,
-		.shft = 0,
-		.flag_mode = MFC_CTRL_MODE_CUSTOM,
-		.flag_addr = S5P_FIMV_PARAM_CHANGE_FLAG,
-		.flag_shft = 4,
 	},
 	{	/* VP8 Dynamic Temporal Layer change */
 		.type = MFC_CTRL_TYPE_SET,
@@ -2503,26 +2900,12 @@ static int enc_set_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_head *head
 		if (buf_ctrl->id == V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG)
 			enc->stored_tag = buf_ctrl->val;
 
-		if (buf_ctrl->id == V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER) {
-			p->codec.h264.num_hier_layer = buf_ctrl->val & 0x7;
-			p->codec.h264.hier_ref_type = (buf_ctrl->val >> 16) & 0x1;
-			value = s5p_mfc_read_reg(dev, S5P_FIMV_E_NUM_T_LAYER);
-			buf_ctrl->old_val2 = value;
-			value &= ~(0x7 << 4);
-			if (p->codec.h264.hier_ref_type) {
-				value |= 0x1 << 7;
-				value |= (p->codec.h264.num_hier_layer & 0x7) << 4;
-			} else {
-				value &= ~(0x1 << 7);
-				value |= 0x7 << 4;
-			}
-			s5p_mfc_write_reg(dev, value, S5P_FIMV_E_NUM_T_LAYER);
-		}
-
 		if (buf_ctrl->id
 			== V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH ||
 			buf_ctrl->id
-			== V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH) {
+			== V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH ||
+			buf_ctrl->id
+			== V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH) {
 			memcpy(&temporal_LC,
 				enc->sh_handle.virt, sizeof(struct temporal_layer_info));
 
@@ -2540,10 +2923,8 @@ static int enc_set_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_head *head
 				goto invalid_layer_count;
 			}
 
-			if (buf_ctrl->id == V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH) {
+			if (ctx->codec_mode == S5P_FIMV_CODEC_H264_ENC)
 				p->codec.h264.num_hier_layer = temporal_LC.temporal_layer_count & 0x7;
-				p->codec.h264.hier_ref_type = (temporal_LC.temporal_layer_count >> 16) & 0x1;
-			}
 
 			/* enable RC_BIT_RATE_CHANGE */
 			value = s5p_mfc_read_reg(dev, buf_ctrl->flag_addr);
@@ -2561,15 +2942,7 @@ static int enc_set_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_head *head
 			value = s5p_mfc_read_reg(dev, S5P_FIMV_E_NUM_T_LAYER);
 			buf_ctrl->old_val2 = value;
 			value &= ~(0x7);
-			value &= ~(0x7 << 4);
 			value |= (temporal_LC.temporal_layer_count & 0x7);
-			if (p->codec.h264.hier_ref_type) {
-				value |= 0x1 << 7;
-				value |= (p->codec.h264.num_hier_layer & 0x7) << 4;
-			} else {
-				value &= ~(0x1 << 7);
-				value |= 0x7 << 4;
-			}
 			s5p_mfc_write_reg(dev, value, S5P_FIMV_E_NUM_T_LAYER);
 			for(i = 0; i < (temporal_LC.temporal_layer_count & 0x7); i++) {
 				mfc_debug(2, "temporal layer bitrate[%d] : %d\n",
@@ -2623,7 +2996,7 @@ static int enc_set_buf_ctrls_val(struct s5p_mfc_ctx *ctx, struct list_head *head
 		}
 		/* per buffer QP setting change */
 		if (buf_ctrl->id == V4L2_CID_MPEG_MFC_CONFIG_QP)
-			enc->config_qp = buf_ctrl->val;
+			p->config_qp = buf_ctrl->val;
 
 invalid_layer_count:
 		mfc_debug(8, "Set buffer control "\
@@ -2631,10 +3004,10 @@ invalid_layer_count:
 				buf_ctrl->id, buf_ctrl->val);
 	}
 
-	if (!p->rc_frame && !p->rc_mb) {
+	if (!p->rc_frame && !p->rc_mb && p->dynamic_qp) {
 		value = s5p_mfc_read_reg(dev, S5P_FIMV_E_FIXED_PICTURE_QP);
 		value &= ~(0xFF000000);
-		value |= (enc->config_qp & 0xFF) << 24;
+		value |= (p->config_qp & 0xFF) << 24;
 		s5p_mfc_write_reg(dev, value, S5P_FIMV_E_FIXED_PICTURE_QP);
 	}
 
@@ -2737,7 +3110,9 @@ static int enc_recover_buf_ctrls_val(struct s5p_mfc_ctx *ctx,
 		if (buf_ctrl->id
 			== V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH ||
 			buf_ctrl->id
-			== V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH) {
+			== V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH ||
+			buf_ctrl->id
+			== V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH) {
 			s5p_mfc_write_reg(dev, buf_ctrl->old_val2, S5P_FIMV_E_NUM_T_LAYER);
 			/* clear RC_BIT_RATE_CHANGE */
 			value = s5p_mfc_read_reg(dev, buf_ctrl->flag_addr);
@@ -3569,9 +3944,10 @@ static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 calc_again:
 #endif
 			if (ctx->last_framerate != 0 &&
-				ctx->last_framerate != ctx->framerate) {
-				mfc_debug(2, "fps changed: %d -> %d\n",
-					ctx->framerate, ctx->last_framerate);
+				((ctx->last_framerate != ctx->framerate) || ctx->qos_changed)) {
+				mfc_debug(2, "fps changed: %d -> %d (%s)\n",
+					ctx->framerate, ctx->last_framerate,
+					ctx->use_extra_qos ? "extra" : "normal");
 				ctx->framerate = ctx->last_framerate;
 				s5p_mfc_qos_on(ctx);
 			}
@@ -3693,6 +4069,8 @@ static int enc_ext_info(struct s5p_mfc_ctx *ctx)
 
 	if (FW_SUPPORT_SKYPE(dev))
 		val |= ENC_SET_SKYPE_FLAG;
+
+	val |= ENC_SET_QP_BOUND_PB;
 
 	return val;
 }
@@ -3966,6 +4344,18 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H264_MAX_QP:
 		p->codec.h264.rc_max_qp = ctrl->value;
 		break;
+	case V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P:
+		p->codec.h264.rc_min_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_H264_MAX_QP_P:
+		p->codec.h264.rc_max_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_H264_MIN_QP_B:
+		p->codec.h264.rc_min_qp_b = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_H264_MAX_QP_B:
+		p->codec.h264.rc_max_qp_b = ctrl->value;
+		break;
 	case V4L2_CID_MPEG_MFC51_VIDEO_H264_ADAPTIVE_RC_DARK:
 		p->codec.h264.rc_mb_dark = ctrl->value;
 		break;
@@ -4123,6 +4513,18 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP:
 		p->codec.mpeg4.rc_max_qp = ctrl->value;
 		break;
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P:
+		p->codec.mpeg4.rc_min_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_P:
+		p->codec.mpeg4.rc_max_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_B:
+		p->codec.mpeg4.rc_min_qp_b = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_B:
+		p->codec.mpeg4.rc_max_qp_b = ctrl->value;
+		break;
 	case V4L2_CID_MPEG_VIDEO_MPEG4_QPEL:
 		p->codec.mpeg4.quarter_pixel = ctrl->value;
 		break;
@@ -4150,6 +4552,12 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H263_MAX_QP:
 		p->codec.mpeg4.rc_max_qp = ctrl->value;
 		break;
+	case V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P:
+		p->codec.mpeg4.rc_min_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_H263_MAX_QP_P:
+		p->codec.mpeg4.rc_max_qp_p = ctrl->value;
+		break;
 	case V4L2_CID_MPEG_VIDEO_H263_P_FRAME_QP:
 		p->codec.mpeg4.rc_p_frame_qp = ctrl->value;
 		break;
@@ -4164,6 +4572,12 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_VIDEO_VP8_MAX_QP:
 		p->codec.vp8.rc_max_qp = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P:
+		p->codec.vp8.rc_min_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_VP8_MAX_QP_P:
+		p->codec.vp8.rc_max_qp_p = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_VIDEO_VP8_I_FRAME_QP:
 		p->codec.vp8.rc_frame_qp = ctrl->value;
@@ -4237,6 +4651,18 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP:
 		p->codec.hevc.rc_max_qp = ctrl->value;
 		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P:
+		p->codec.hevc.rc_min_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_P:
+		p->codec.hevc.rc_max_qp_p = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_B:
+		p->codec.hevc.rc_min_qp_b = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_B:
+		p->codec.hevc.rc_max_qp_b = ctrl->value;
+		break;
 	case V4L2_CID_MPEG_VIDEO_HEVC_LEVEL:
 		p->codec.hevc.level = ctrl->value;
 		break;
@@ -4279,7 +4705,7 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		p->codec.hevc.loopfilter_disable = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_LF_SLICE_BOUNDARY:
-		p->codec.hevc.loopfilter_disable = ctrl->value;
+		p->codec.hevc.loopfilter_across = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_LTR_ENABLE:
 		p->codec.hevc.enable_ltr = ctrl->value;
@@ -4288,17 +4714,37 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		p->codec.hevc.hier_qp_enable = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_TYPE:
-		p->codec.hevc.hier_qp_type = ctrl->value;
+		p->codec.hevc.hier_qp_type =
+		(enum v4l2_mpeg_video_hevc_hierarchical_coding_type)(ctrl->value);
 		break;
 	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER:
-		p->codec.hevc.num_hier_layer = ctrl->value;
+		p->codec.hevc.num_hier_layer = ctrl->value & 0x7;
+		p->codec.hevc.hier_ref_type = (ctrl->value >> 16) & 0x1;
 		break;
 	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_QP:
 		p->codec.hevc.hier_qp_layer[(ctrl->value >> 16) & 0x7]
 			 = ctrl->value & 0xFF;
 		break;
-	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT:
-		p->codec.hevc.hier_bit_layer[0] = ctrl->value & 0xFF;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT0:
+		p->codec.hevc.hier_bit_layer[0] = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT1:
+		p->codec.hevc.hier_bit_layer[1] = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT2:
+		p->codec.hevc.hier_bit_layer[2] = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT3:
+		p->codec.hevc.hier_bit_layer[3] = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT4:
+		p->codec.hevc.hier_bit_layer[4] = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT5:
+		p->codec.hevc.hier_bit_layer[5] = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_BIT6:
+		p->codec.hevc.hier_bit_layer[6] = ctrl->value;
 		break;
 	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_SIGN_DATA_HIDING:
 		p->codec.hevc.sign_data_hiding = ctrl->value;
@@ -4327,12 +4773,6 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_REFRESH_PERIOD:
 		p->codec.hevc.refreshperiod = ctrl->value;
 		break;
-	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_QP_INDEX_CR:
-		p->codec.hevc.croma_qp_offset_cr = ctrl->value;
-		break;
-	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_QP_INDEX_CB:
-		p->codec.hevc.croma_qp_offset_cb = ctrl->value;
-		break;
 	case V4L2_CID_MPEG_MFC90_VIDEO_HEVC_LF_BETA_OFFSET_DIV2:
 		p->codec.hevc.lf_beta_offset_div2 = ctrl->value;
 		break;
@@ -4350,6 +4790,15 @@ static int set_enc_param(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_MFC_H264_VUI_RESTRICTION_ENABLE:
 		p->codec.h264.vui_enable = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_VIDEO_HEVC_PREPEND_SPSPPS_TO_IDR:
+		p->codec.hevc.prepend_sps_pps_to_idr = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC_CONFIG_QP_ENABLE:
+		p->dynamic_qp = ctrl->value;
+		break;
+	case V4L2_CID_MPEG_MFC_CONFIG_QP:
+		p->config_qp = ctrl->value;
 		break;
 	default:
 		v4l2_err(&dev->v4l2_dev, "Invalid control\n");
@@ -4430,23 +4879,45 @@ static int set_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 			ctx->cacheable = 0;
 		break;
 	case V4L2_CID_MPEG_VIDEO_QOS_RATIO:
+		if (ctrl->value > 150)
+			ctrl->value = 1000;
+		if (ctrl->value == 0) {
+			ctrl->value = 100;
+			ctx->use_extra_qos = 1;
+			mfc_info_ctx("QOS_RATIO is 0, use extra qos!\n");
+		} else {
+			ctx->use_extra_qos = 0;
+			mfc_info_ctx("QOS_RATIO is %d, use extra qos!\n", ctrl->value);
+		}
 		ctx->qos_ratio = ctrl->value;
+		ctx->qos_changed = 1;
 		break;
 	case V4L2_CID_MPEG_VIDEO_H264_MAX_QP:
 	case V4L2_CID_MPEG_VIDEO_H263_MAX_QP:
 	case V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP:
 	case V4L2_CID_MPEG_VIDEO_VP8_MAX_QP:
 	case V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP:
-		ctx->qp_max_change = ctrl->value;
-		break;
 	case V4L2_CID_MPEG_VIDEO_H264_MIN_QP:
 	case V4L2_CID_MPEG_VIDEO_H263_MIN_QP:
 	case V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP:
 	case V4L2_CID_MPEG_VIDEO_VP8_MIN_QP:
 	case V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP:
-		ctx->qp_min_change = ctrl->value;
-		ctrl->value = ((ctx->qp_max_change << 8)
-			| (ctx->qp_min_change));
+	case V4L2_CID_MPEG_VIDEO_H264_MAX_QP_P:
+	case V4L2_CID_MPEG_VIDEO_H263_MAX_QP_P:
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_P:
+	case V4L2_CID_MPEG_VIDEO_VP8_MAX_QP_P:
+	case V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_P:
+	case V4L2_CID_MPEG_VIDEO_H264_MIN_QP_P:
+	case V4L2_CID_MPEG_VIDEO_H263_MIN_QP_P:
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_P:
+	case V4L2_CID_MPEG_VIDEO_VP8_MIN_QP_P:
+	case V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_P:
+	case V4L2_CID_MPEG_VIDEO_H264_MAX_QP_B:
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MAX_QP_B:
+	case V4L2_CID_MPEG_VIDEO_HEVC_MAX_QP_B:
+	case V4L2_CID_MPEG_VIDEO_H264_MIN_QP_B:
+	case V4L2_CID_MPEG_VIDEO_MPEG4_MIN_QP_B:
+	case V4L2_CID_MPEG_VIDEO_HEVC_MIN_QP_B:
 	case V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG:
 	case V4L2_CID_MPEG_MFC51_VIDEO_FORCE_FRAME_TYPE:
 	case V4L2_CID_MPEG_MFC51_VIDEO_I_PERIOD_CH:
@@ -4454,12 +4925,12 @@ static int set_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_MFC51_VIDEO_BIT_RATE_CH:
 	case V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH:
 	case V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH:
+	case V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH:
 	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
 	case V4L2_CID_MPEG_VIDEO_H264_LEVEL:
 	case V4L2_CID_MPEG_MFC_H264_MARK_LTR:
 	case V4L2_CID_MPEG_MFC_H264_USE_LTR:
 	case V4L2_CID_MPEG_MFC_H264_BASE_PRIORITY:
-	case V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER:
 	case V4L2_CID_MPEG_MFC_CONFIG_QP:
 		list_for_each_entry(ctx_ctrl, &ctx->ctrls, list) {
 			if (!(ctx_ctrl->type & MFC_CTRL_TYPE_SET))
@@ -4475,7 +4946,9 @@ static int set_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 				if (((ctx_ctrl->id == \
 					V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH) ||
 					(ctx_ctrl->id == \
-					V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH)) &&
+					V4L2_CID_MPEG_VIDEO_VP8_HIERARCHICAL_CODING_LAYER_CH) ||
+					(ctx_ctrl->id == \
+					V4L2_CID_MPEG_VIDEO_HEVC_HIERARCHICAL_CODING_LAYER_CH)) &&
 					(enc->sh_handle.fd == -1)) {
 						enc->sh_handle.fd = ctrl->value;
 						if (process_user_shared_handle_enc(ctx)) {
@@ -5122,7 +5595,6 @@ int s5p_mfc_init_enc_ctx(struct s5p_mfc_ctx *ctx)
 	INIT_LIST_HEAD(&enc->ref_queue);
 	enc->ref_queue_cnt = 0;
 	enc->sh_handle.fd = -1;
-	enc->config_qp = 34;
 
 	/* Init videobuf2 queue for OUTPUT */
 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;

@@ -973,6 +973,13 @@ static ssize_t set_int_gyro_enable(struct device *dev,
 	return size;
 }
 
+static ssize_t show_sensor_state(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct ssp_data *data  = dev_get_drvdata(dev);
+	return sprintf(buf, "%s\n", data->sensor_state);
+}
+
 
 static DEVICE_ATTR(mcu_rev, S_IRUGO, mcu_revision_show, NULL);
 static DEVICE_ATTR(mcu_name, S_IRUGO, mcu_model_name_show, NULL);
@@ -1049,6 +1056,7 @@ static struct device_attribute dev_attr_step_cnt_poll_delay
 	show_step_cnt_delay, set_step_cnt_delay);
 static DEVICE_ATTR(int_gyro_enable, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_int_gyro_enable, set_int_gyro_enable);
+static DEVICE_ATTR(sensor_state, S_IRUGO, show_sensor_state, NULL);
 
 static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_enable,
@@ -1077,6 +1085,7 @@ static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_ssp_flush,
 	&dev_attr_shake_cam,
 	&dev_attr_int_gyro_enable,
+	&dev_attr_sensor_state,
 	NULL,
 };
 

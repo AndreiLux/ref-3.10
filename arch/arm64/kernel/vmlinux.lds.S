@@ -75,14 +75,9 @@ SECTIONS
 #ifdef CONFIG_RKP_KDP
 	 /* Creating a new section to store task credentials */
 	. = ALIGN(PAGE_SIZE);
-	.tima.rkp.initcred : {
+	.rkp.prot.page : {
 		__rkp_ro_start = .;
 	}
-	.tima.rkp.ro : {
-		. = __rkp_ro_start + 0x500;
-		__rkp_ro_end = .;
-	}
-	. = __rkp_ro_end + 0x500;
 	. = ALIGN(PAGE_SIZE);
 	. = ALIGN(1 << 21);
 #endif /* CONFIG_RKP_KDP*/

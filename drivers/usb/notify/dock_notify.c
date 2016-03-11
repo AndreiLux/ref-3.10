@@ -233,3 +233,10 @@ void register_usbdev_notify(void)
 	usb_register_notify(&dev_nb);
 }
 EXPORT_SYMBOL(register_usbdev_notify);
+
+void unregister_usbdev_notify(void)
+{
+	usb_unregister_notify(&dev_nb);
+}
+EXPORT_SYMBOL(unregister_usbdev_notify);
+

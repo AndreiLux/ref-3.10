@@ -46,6 +46,7 @@
  * level 0 = Wired access is disalbed/stopped
 */
 #define P61_SET_WIRED_ACCESS _IOW(PN547_MAGIC, 0x04, unsigned int)
+#define P547_SET_NFC_SERVICE_PID _IOW(PN547_MAGIC, 0x05, long)
 
 #ifdef CONFIG_NFC_PN547_LDO_CONTROL
 #define NFC_I2C_LDO_ON	1
@@ -53,11 +54,14 @@
 #endif
 
 typedef enum p61_access_state{
-    P61_STATE_IDLE, /* p61 is free to use */
-    P61_STATE_WIRED,  /* p61 is being accessed by DWP (NFCC)*/
-    P61_STATE_SPI, /* P61 is being accessed by SPI */
-    P61_STATE_DWNLD, /* NFCC fw download is in progress */
-    P61_STATE_INVALID
+	P61_STATE_INVALID = 0x0000,
+	P61_STATE_IDLE = 0x0100, /* p61 is free to use */
+	P61_STATE_WIRED = 0x0200,  /* p61 is being accessed by DWP (NFCC)*/
+	P61_STATE_SPI = 0x0400, /* P61 is being accessed by SPI */
+	P61_STATE_DWNLD = 0x0800, /* NFCC fw download is in progress */
+	P61_STATE_SPI_PRIO = 0x1000, /*Start of p61 access by SPI on priority*/
+	P61_STATE_SPI_PRIO_END = 0x2000, /*End of p61 access by SPI on priority*/
+	P61_STATE_SPI_END = 0x4000,
 }p61_access_state_t;
 #endif
 

@@ -45,6 +45,8 @@ int ssp_spi_write_sync(struct spi_device *spi, const u8 *addr, const int len)
 
 	struct spi_message msg;
 
+	msg.spi->mode = SPI_MOD_3;
+
 	struct spi_transfer xfer = {
 		.len = len,
 #if !defined(CHANGE_ENDIAN)

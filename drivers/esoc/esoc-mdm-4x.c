@@ -646,6 +646,12 @@ static void mdm_notify(enum esoc_notify notify, struct esoc_clink *esoc)
 		gpio_set_value(MDM_GPIO(mdm, AP2MDM_ERRFATAL), 1);
 		gpio_set_value(MDM_GPIO(mdm, AP2MDM_VDDMIN), 1);
 		break;
+	case ESOC_CP_SILENT_RESET:
+		dev_err(mdm->dev, "Force CP Silent Reset\n");
+		set_silent_reset();
+		gpio_set_value(MDM_GPIO(mdm, AP2MDM_ERRFATAL), 1);
+		gpio_set_value(MDM_GPIO(mdm, AP2MDM_VDDMIN), 1);
+		break;
 	};
 	return;
 }
@@ -761,6 +767,18 @@ int mdm_get_fatal_status(void)
 }
 
 EXPORT_SYMBOL(mdm_get_fatal_status);
+
+int mdm_get_modem_status(void)
+{
+	if(!g_mdm) {
+		pr_err("[MIF] %s, esoc driver is not initialized\n", __func__);
+		return 1;
+	}
+
+	return gpio_get_value(MDM_GPIO(g_mdm, MDM2AP_STATUS));
+}
+
+EXPORT_SYMBOL(mdm_get_modem_status);
 
 static void mdm_set_hsic_ready(struct esoc_clink *esoc)
 {

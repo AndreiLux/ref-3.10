@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wlioctl.h 523075 2014-12-26 07:05:16Z $
+ * $Id: wlioctl.h 601781 2015-11-24 06:02:20Z $
  */
 
 #ifndef _wlioctl_h_
@@ -5917,5 +5917,59 @@ typedef struct wl_roam_prof_band {
 
 /* no default structure packing */
 #include <packed_section_end.h>
+
+/*
+ * Neighbor Discover Offload: enable NDO feature
+ * Called  by ipv6 event handler when interface comes up
+ * Set RA rate limit interval value(%)
+ */
+typedef struct nd_ra_ol_limits {
+	uint16 version;         /* version of the iovar buffer */
+	uint16 type;            /* type of data provided */
+	uint16 length;          /* length of the entire structure */
+	uint16 pad1;            /* pad union to 4 byte boundary */
+	union {
+		struct {
+			uint16 min_time;         /* seconds, min time for RA offload hold */
+			uint16 lifetime_percent;
+			/* percent, lifetime percentage for offload hold time */
+		} lifetime_relative;
+		struct {
+			uint16 hold_time;        /* seconds, RA offload hold time */
+			uint16 pad2;             /* unused */
+		} fixed;
+	} limits;
+} nd_ra_ol_limits_t;
+
+#define ND_RA_OL_LIMITS_VER 1
+
+/* nd_ra_ol_limits sub-types */
+#define ND_RA_OL_LIMITS_REL_TYPE   0     /* relative, percent of RA lifetime */
+#define ND_RA_OL_LIMITS_FIXED_TYPE 1     /* fixed time */
+
+/* buffer lengths for the different nd_ra_ol_limits types */
+#define ND_RA_OL_LIMITS_REL_TYPE_LEN   12
+#define ND_RA_OL_LIMITS_FIXED_TYPE_LEN  10
+
+#define ND_RA_OL_SET    "SET"
+#define ND_RA_OL_GET    "GET"
+#define ND_PARAM_SIZE   50
+#define ND_VALUE_SIZE   5
+#define ND_PARAMS_DELIMETER " "
+#define ND_PARAM_VALUE_DELLIMETER   '='
+#define ND_LIMIT_STR_FMT ("%50s %50s")
+
+#define ND_RA_TYPE  "TYPE"
+#define ND_RA_MIN_TIME  "MIN"
+#define ND_RA_PER   "PER"
+#define ND_RA_HOLD  "HOLD"
+
+/*
+ * Temperature Throttling control mode
+ */
+typedef struct wl_temp_control {
+	bool enable;
+	uint16 control_bit;
+} wl_temp_control_t;
 
 #endif /* _wlioctl_h_ */

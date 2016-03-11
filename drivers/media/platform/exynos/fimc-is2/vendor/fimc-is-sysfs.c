@@ -60,6 +60,8 @@ static struct fimc_is_cam_info cam_infos[2];
 #endif
 
 extern bool force_caldata_dump;
+static bool check_ois_power = false;
+static bool check_module_init = false;
 
 #ifdef CAMERA_SYSFS_V2
 int fimc_is_get_cam_info(struct fimc_is_cam_info **caminfo)
@@ -89,13 +91,14 @@ static int read_from_firmware_version(int position)
 		if (ret) {
 			err("fimc_is_sec_run_fw_sel is fail(%d)", ret);
 		}
-
-		if ((position == SENSOR_POSITION_REAR)) {
-#ifdef CONFIG_COMPANION_USE
-			fimc_is_sec_concord_fw_sel(sysfs_core, is_dev);
-#endif
-		}
 	}
+
+#ifdef CONFIG_COMPANION_USE
+	if ((position == SENSOR_POSITION_REAR) && (!finfo->is_c1_caldata_read)) {
+		fimc_is_sec_concord_fw_sel(sysfs_core, is_dev);
+	}
+#endif
+
 	return 0;
 }
 
@@ -241,6 +244,7 @@ static ssize_t camera_front_camfw_show(struct device *dev,
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
 	char command_ack[20] = {0, };
 
+	fimc_is_sec_check_hw_init_running();
 	read_from_firmware_version(SENSOR_POSITION_FRONT);
 
 	if (!fimc_is_sec_check_from_ver(sysfs_core, SENSOR_POSITION_FRONT)) {
@@ -343,7 +347,7 @@ static ssize_t camera_front_checkfw_factory_show(struct device *dev,
 static ssize_t camera_front_info_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	char camera_info[100] = {0, };
+	char camera_info[110] = {0, };
 #ifdef CONFIG_OF
 	struct fimc_is_cam_info *front_cam_info = &(cam_infos[1]);
 	strcpy(camera_info, "ISP=");
@@ -419,6 +423,38 @@ static ssize_t camera_front_info_show(struct device *dev,
 			break;
 	}
 
+	strcat(camera_info, "FWWRITE=");
+	switch(front_cam_info->fw_write) {
+		case CAM_INFO_FW_WRITE_NONE :
+			strcat(camera_info, "N;");
+			break;
+		case CAM_INFO_FW_WRITE_OS :
+			strcat(camera_info, "OS;");
+			break;
+		case CAM_INFO_FW_WRITE_SD :
+			strcat(camera_info, "SD;");
+			break;
+		case CAM_INFO_FW_WRITE_ALL :
+			strcat(camera_info, "ALL;");
+			break;
+		default :
+			strcat(camera_info, "NULL;");
+			break;
+	}
+
+	strcat(camera_info, "FWDUMP=");
+	switch(front_cam_info->fw_dump) {
+		case CAM_INFO_FW_DUMP_NONE :
+			strcat(camera_info, "N;");
+			break;
+		case CAM_INFO_FW_DUMP_USE :
+			strcat(camera_info, "Y;");
+			break;
+		default :
+			strcat(camera_info, "NULL;");
+			break;
+	}
+
 	strcat(camera_info, "CC=");
 	switch(front_cam_info->companion) {
 		case CAM_INFO_COMPANION_NONE :
@@ -447,7 +483,8 @@ static ssize_t camera_front_info_show(struct device *dev,
 
 	return sprintf(buf, "%s\n", camera_info);
 #endif
-	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;CC=NULL;OIS=NULL");
+	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;"
+		"FWWRITE=NULL;FWDUMP=NULL;CC=NULL;OIS=NULL");
 
 	return sprintf(buf, "%s\n", camera_info);
 }
@@ -505,6 +542,7 @@ static ssize_t camera_rear_camfw_show(struct device *dev,
 
 	core_pdata = dev_get_platdata(fimc_is_dev);
 
+	fimc_is_sec_check_hw_init_running();
 	read_from_firmware_version(SENSOR_POSITION_REAR);
 
 	if (!fimc_is_sec_check_from_ver(sysfs_core, SENSOR_POSITION_REAR)) {
@@ -738,7 +776,7 @@ static ssize_t camera_rear_checkfw_factory_show(struct device *dev,
 static ssize_t camera_rear_info_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	char camera_info[100] = {0, };
+	char camera_info[110] = {0, };
 #ifdef CONFIG_OF
 	struct fimc_is_cam_info *rear_cam_info = &(cam_infos[0]);
 
@@ -815,6 +853,38 @@ static ssize_t camera_rear_info_show(struct device *dev,
 			break;
 	}
 
+	strcat(camera_info, "FWWRITE=");
+	switch(rear_cam_info->fw_write) {
+		case CAM_INFO_FW_WRITE_NONE :
+			strcat(camera_info, "N;");
+			break;
+		case CAM_INFO_FW_WRITE_OS :
+			strcat(camera_info, "OS;");
+			break;
+		case CAM_INFO_FW_WRITE_SD :
+			strcat(camera_info, "SD;");
+			break;
+		case CAM_INFO_FW_WRITE_ALL :
+			strcat(camera_info, "ALL;");
+			break;
+		default :
+			strcat(camera_info, "NULL;");
+			break;
+	}
+
+	strcat(camera_info, "FWDUMP=");
+	switch(rear_cam_info->fw_dump) {
+		case CAM_INFO_FW_DUMP_NONE :
+			strcat(camera_info, "N;");
+			break;
+		case CAM_INFO_FW_DUMP_USE :
+			strcat(camera_info, "Y;");
+			break;
+		default :
+			strcat(camera_info, "NULL;");
+			break;
+	}
+
 	strcat(camera_info, "CC=");
 	switch(rear_cam_info->companion) {
 		case CAM_INFO_COMPANION_NONE :
@@ -843,7 +913,8 @@ static ssize_t camera_rear_info_show(struct device *dev,
 
 	return sprintf(buf, "%s\n", camera_info);
 #endif
-	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;CC=NULL;OIS=NULL");
+	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;"
+		"FWWRITE=NULL;FWDUMP=NULL;CC=NULL;OIS=NULL");
 
 	return sprintf(buf, "%s\n", camera_info);
 }
@@ -877,6 +948,7 @@ static ssize_t camera_rear_companionfw_show(struct device *dev,
 {
 	char *loaded_c1_fw;
 
+	fimc_is_sec_check_hw_init_running();
 	read_from_firmware_version(SENSOR_POSITION_REAR);
 	fimc_is_sec_get_loaded_c1_fw(&loaded_c1_fw);
 
@@ -983,12 +1055,16 @@ static ssize_t camera_ois_power_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 
 {
+	fimc_is_sec_check_hw_init_running();
+
 	switch (buf[0]) {
 	case '0':
 		fimc_is_ois_gpio_off(sysfs_core);
+		check_ois_power = false;
 		break;
 	case '1':
 		fimc_is_ois_gpio_on(sysfs_core);
+		check_ois_power = true;
 		msleep(150);
 		break;
 	default:
@@ -1007,42 +1083,48 @@ static ssize_t camera_ois_selftest_show(struct device *dev,
 	int selftest_ret = 0;
 	long raw_data_x = 0, raw_data_y = 0;
 
-	fimc_is_ois_offset_test(sysfs_core, &raw_data_x, &raw_data_y);
-	msleep(50);
-	selftest_ret = fimc_is_ois_self_test(sysfs_core);
+	if (check_ois_power) {
+		fimc_is_ois_offset_test(sysfs_core, &raw_data_x, &raw_data_y);
+		msleep(50);
+		selftest_ret = fimc_is_ois_self_test(sysfs_core);
 
-	if (selftest_ret == 0x0) {
-		result_selftest = true;
+		if (selftest_ret == 0x0) {
+			result_selftest = true;
+		} else {
+			result_selftest = false;
+		}
+
+		if (abs(raw_data_x) > 35000 || abs(raw_data_y) > 35000)  {
+			result_offset = false;
+		} else {
+			result_offset = true;
+		}
+
+		if (result_offset && result_selftest) {
+			result_total = 0;
+		} else if (!result_offset && !result_selftest) {
+			result_total = 3;
+		} else if (!result_offset) {
+			result_total = 1;
+		} else if (!result_selftest) {
+			result_total = 2;
+		}
+
+		if (raw_data_x < 0 && raw_data_y < 0) {
+			return sprintf(buf, "%d,-%ld.%03ld,-%ld.%03ld\n", result_total, abs(raw_data_x /1000), abs(raw_data_x % 1000),
+				abs(raw_data_y /1000), abs(raw_data_y % 1000));
+		} else if (raw_data_x < 0) {
+			return sprintf(buf, "%d,-%ld.%03ld,%ld.%03ld\n", result_total, abs(raw_data_x /1000), abs(raw_data_x % 1000),
+				raw_data_y /1000, raw_data_y % 1000);
+		} else if (raw_data_y < 0) {
+			return sprintf(buf, "%d,%ld.%03ld,-%ld.%03ld\n", result_total, raw_data_x /1000, raw_data_x % 1000,
+				abs(raw_data_y /1000), abs(raw_data_y % 1000));
+		} else {
+			return sprintf(buf, "%d,%ld.%03ld,%ld.%03ld\n", result_total, raw_data_x /1000, raw_data_x % 1000,
+				raw_data_y /1000, raw_data_y % 1000);
+		}
 	} else {
-		result_selftest = false;
-	}
-
-	if (abs(raw_data_x) > 35000 || abs(raw_data_y) > 35000)  {
-		result_offset = false;
-	} else {
-		result_offset = true;
-	}
-
-	if (result_offset && result_selftest) {
-		result_total = 0;
-	} else if (!result_offset && !result_selftest) {
-		result_total = 3;
-	} else if (!result_offset) {
-		result_total = 1;
-	} else if (!result_selftest) {
-		result_total = 2;
-	}
-
-	if (raw_data_x < 0 && raw_data_y < 0) {
-		return sprintf(buf, "%d,-%ld.%03ld,-%ld.%03ld\n", result_total, abs(raw_data_x /1000), abs(raw_data_x % 1000),
-			abs(raw_data_y /1000), abs(raw_data_y % 1000));
-	} else if (raw_data_x < 0) {
-		return sprintf(buf, "%d,-%ld.%03ld,%ld.%03ld\n", result_total, abs(raw_data_x /1000), abs(raw_data_x % 1000),
-			raw_data_y /1000, raw_data_y % 1000);
-	} else if (raw_data_y < 0) {
-		return sprintf(buf, "%d,%ld.%03ld,-%ld.%03ld\n", result_total, raw_data_x /1000, raw_data_x % 1000,
-			abs(raw_data_y /1000), abs(raw_data_y % 1000));
-	} else {
+		err("OIS power is not enabled.");
 		return sprintf(buf, "%d,%ld.%03ld,%ld.%03ld\n", result_total, raw_data_x /1000, raw_data_x % 1000,
 			raw_data_y /1000, raw_data_y % 1000);
 	}
@@ -1053,18 +1135,24 @@ static ssize_t camera_ois_rawdata_show(struct device *dev,
 {
 	long raw_data_x = 0, raw_data_y = 0;
 
-	fimc_is_ois_get_offset_data(sysfs_core, &raw_data_x, &raw_data_y);
+	if (check_ois_power) {
+		fimc_is_ois_get_offset_data(sysfs_core, &raw_data_x, &raw_data_y);
 
-	if (raw_data_x < 0 && raw_data_y < 0) {
-		return sprintf(buf, "-%ld.%03ld,-%ld.%03ld\n", abs(raw_data_x /1000), abs(raw_data_x % 1000),
-			abs(raw_data_y /1000), abs(raw_data_y % 1000));
-	} else if (raw_data_x < 0) {
-		return sprintf(buf, "-%ld.%03ld,%ld.%03ld\n", abs(raw_data_x /1000), abs(raw_data_x % 1000),
-			raw_data_y /1000, raw_data_y % 1000);
-	} else if (raw_data_y < 0) {
-		return sprintf(buf, "%ld.%03ld,-%ld.%03ld\n", raw_data_x /1000, raw_data_x % 1000,
-			abs(raw_data_y /1000), abs(raw_data_y % 1000));
+		if (raw_data_x < 0 && raw_data_y < 0) {
+			return sprintf(buf, "-%ld.%03ld,-%ld.%03ld\n", abs(raw_data_x /1000), abs(raw_data_x % 1000),
+				abs(raw_data_y /1000), abs(raw_data_y % 1000));
+		} else if (raw_data_x < 0) {
+			return sprintf(buf, "-%ld.%03ld,%ld.%03ld\n", abs(raw_data_x /1000), abs(raw_data_x % 1000),
+				raw_data_y /1000, raw_data_y % 1000);
+		} else if (raw_data_y < 0) {
+			return sprintf(buf, "%ld.%03ld,-%ld.%03ld\n", raw_data_x /1000, raw_data_x % 1000,
+				abs(raw_data_y /1000), abs(raw_data_y % 1000));
+		} else {
+			return sprintf(buf, "%ld.%03ld,%ld.%03ld\n", raw_data_x /1000, raw_data_x % 1000,
+				raw_data_y /1000, raw_data_y % 1000);
+		}
 	} else {
+		err("OIS power is not enabled.");
 		return sprintf(buf, "%ld.%03ld,%ld.%03ld\n", raw_data_x /1000, raw_data_x % 1000,
 			raw_data_y /1000, raw_data_y % 1000);
 	}
@@ -1077,6 +1165,7 @@ static ssize_t camera_ois_version_show(struct device *dev,
 	struct fimc_is_ois_info *ois_pinfo = NULL;
 	bool ret = false;
 
+	fimc_is_sec_check_hw_init_running();
 	ret = read_ois_version();
 	fimc_is_ois_get_module_version(&ois_minfo);
 	fimc_is_ois_get_phone_version(&ois_pinfo);
@@ -1096,32 +1185,25 @@ static ssize_t camera_ois_diff_show(struct device *dev,
 	int result = 0;
 	int x_diff = 0, y_diff = 0;
 
-	result = fimc_is_ois_diff_test(sysfs_core, &x_diff, &y_diff);
+	if (check_ois_power) {
+		result = fimc_is_ois_diff_test(sysfs_core, &x_diff, &y_diff);
 
-	return sprintf(buf, "%d,%d,%d\n", result == true ? 0 : 1, x_diff, y_diff);
+		return sprintf(buf, "%d,%d,%d\n", result == true ? 0 : 1, x_diff, y_diff);
+	} else {
+		err("OIS power is not enabled.");
+		return sprintf(buf, "%d,%d,%d\n", 0, x_diff, y_diff);
+	}
 }
 
-static ssize_t camera_ois_fw_update_show(struct device *dev,
+static ssize_t camera_hw_init_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-#ifdef CONFIG_OIS_FW_UPDATE_THREAD_USE
-	fimc_is_ois_init_thread(sysfs_core);
-#else
-	bool ret = false;
-	ret = fimc_is_ois_check_sensor(sysfs_core);
-	if (ret) {
-		err("Do not update ois fw update. Check sensor failed!\n");
-		return sprintf(buf, "%s\n", "Ois update failed.");
+	if (!check_module_init) {
+		fimc_is_sec_hw_init(sysfs_core);
+		check_module_init = true;
 	}
 
-	fimc_is_ois_gpio_on(sysfs_core);
-	msleep(150);
-
-	fimc_is_ois_fw_update(sysfs_core);
-	fimc_is_ois_gpio_off(sysfs_core);
-#endif
-
-	return sprintf(buf, "%s\n", "Ois update done.");
+	return sprintf(buf, "%s\n", "HW init done.");
 }
 
 static ssize_t camera_ois_exif_show(struct device *dev,
@@ -1174,6 +1256,8 @@ static DEVICE_ATTR(rear_caminfo, S_IRUGO,
 static DEVICE_ATTR(isp_core, S_IRUGO,
 		camera_isp_core_show, NULL);
 #endif
+static DEVICE_ATTR(fw_update, S_IRUGO,
+		camera_hw_init_show, NULL);
 #ifdef CONFIG_OIS_USE
 static DEVICE_ATTR(selftest, S_IRUGO,
 		camera_ois_selftest_show, NULL);
@@ -1185,8 +1269,6 @@ static DEVICE_ATTR(oisfw, S_IRUGO,
 		camera_ois_version_show, NULL);
 static DEVICE_ATTR(ois_diff, S_IRUGO,
 		camera_ois_diff_show, NULL);
-static DEVICE_ATTR(fw_update, S_IRUGO,
-		camera_ois_fw_update_show, NULL);
 static DEVICE_ATTR(ois_exif, S_IRUGO,
 		camera_ois_exif_show, NULL);
 #endif
@@ -1328,12 +1410,10 @@ int fimc_is_create_sysfs(struct fimc_is_core *core)
 				dev_attr_isp_core.attr.name);
 		}
 #endif
-#ifdef CONFIG_OIS_USE
 		if (device_create_file(camera_rear_dev, &dev_attr_fw_update) < 0) {
 			printk(KERN_ERR "failed to create rear device file, %s\n",
 				dev_attr_fw_update.attr.name);
 		}
-#endif
 #ifdef FORCE_CAL_LOAD
 		if (device_create_file(camera_rear_dev, &dev_attr_rear_force_cal_load) < 0) {
 			printk(KERN_ERR "failed to create rear device file, %s\n",
@@ -1419,6 +1499,7 @@ int fimc_is_destroy_sysfs(struct fimc_is_core *core)
 #ifdef FORCE_CAL_LOAD
 		device_remove_file(camera_rear_dev, &dev_attr_rear_force_cal_load);
 #endif
+		device_remove_file(camera_rear_dev, &dev_attr_fw_update);
 	}
 
 #ifdef CONFIG_OIS_USE
@@ -1429,7 +1510,6 @@ int fimc_is_destroy_sysfs(struct fimc_is_core *core)
 		device_remove_file(camera_ois_dev, &dev_attr_oisfw);
 		device_remove_file(camera_ois_dev, &dev_attr_ois_diff);
 		device_remove_file(camera_ois_dev, &dev_attr_ois_exif);
-		device_remove_file(camera_ois_dev, &dev_attr_fw_update);
 	}
 #endif
 

@@ -522,6 +522,7 @@ struct es_datablock_device {
 	int (*read) (struct es705_priv *es705, void *buf, int len);
 	int (*close) (struct es705_priv *es705);
 	int (*wait) (struct es705_priv *es705);
+	int (*config)(struct es705_priv *es705);
 	int (*rdb) (struct es705_priv *es705, void *buf, int id);
 	int (*wdb) (struct es705_priv *es705, const void *buf, int len);
 	int intf;
@@ -635,11 +636,12 @@ struct es705_priv {
 	unsigned int wakeup_method;
 
 #if defined(SAMSUNG_ES705_FEATURE)
-	struct input_dev *input;
 	int (*power_control) (unsigned int value, unsigned int reg);
 	unsigned int voice_wakeup_enable;
 	unsigned int voice_lpm_enable;
+#if defined(CONFIG_SND_SOC_ESXXX_UART_WAKEUP)
 	unsigned int change_uart_config;
+#endif
 	unsigned int vs_grammar_set_flag;
 	unsigned int vs_net_set_flag;
 	int current_bwe;

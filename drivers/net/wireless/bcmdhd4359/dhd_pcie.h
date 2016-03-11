@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pcie.h 554122 2015-05-04 13:06:16Z $
+ * $Id: dhd_pcie.h 607208 2015-12-18 06:32:21Z $
  */
 
 
@@ -35,13 +35,39 @@
 #include <hnd_cons.h>
 #ifdef SUPPORT_LINKDOWN_RECOVERY
 #ifdef CONFIG_ARCH_MSM
-#ifdef CONFIG_ARCH_MSM8994
+#ifdef CONFIG_PCI_MSM
 #include <linux/msm_pcie.h>
 #else
 #include <mach/msm_pcie.h>
-#endif /* CONFIG_ARCH_MSM8994 */
+#endif /* CONFIG_PCI_MSM */
 #endif /* CONFIG_ARCH_MSM */
+#ifdef EXYNOS_PCIE_LINKDOWN_RECOVERY
+#ifdef CONFIG_SOC_EXYNOS8890
+#include <linux/exynos-pci-noti.h>
+extern int exynos_pcie_register_event(struct exynos_pcie_register_event *reg);
+extern int exynos_pcie_deregister_event(struct exynos_pcie_register_event *reg);
+#endif /* CONFIG_SOC_EXYNOS8890 */
+#endif /* EXYNOS_PCIE_LINKDOWN_RECOVERY */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
+
+#ifdef DHD_PCIE_RUNTIMEPM
+#include <linux/mutex.h>
+#include <linux/wait.h>
+
+#define DEFAULT_DHD_RUNTIME_MS 100
+#ifndef CUSTOM_DHD_RUNTIME_MS
+#define CUSTOM_DHD_RUNTIME_MS DEFAULT_DHD_RUNTIME_MS
+#endif /* CUSTOM_DHD_RUNTIME_MS */
+
+
+#ifndef MAX_IDLE_COUNT
+#define MAX_IDLE_COUNT 16
+#endif /* MAX_IDLE_COUNT */
+
+#ifndef MAX_RESUME_WAIT
+#define MAX_RESUME_WAIT 100
+#endif /* MAX_RESUME_WAIT */
+#endif /* DHD_PCIE_RUNTIMEPM */
 
 /* defines */
 
@@ -56,6 +82,19 @@
 #define	REMAP_ENAB(bus)			((bus)->remap)
 #define	REMAP_ISADDR(bus, a)		(((a) >= ((bus)->orig_ramsize)) && ((a) < ((bus)->ramsize)))
 
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+#define struct_pcie_notify		struct msm_pcie_notify
+#define struct_pcie_register_event	struct msm_pcie_register_event
+#endif /* CONFIG_ARCH_MSM */
+#ifdef EXYNOS_PCIE_LINKDOWN_RECOVERY
+#ifdef CONFIG_SOC_EXYNOS8890
+#define struct_pcie_notify		struct exynos_pcie_notify
+#define struct_pcie_register_event	struct exynos_pcie_register_event
+#endif /* CONFIG_SOC_EXYNOS8890 */
+#endif /* EXYNOS_PCIE_LINKDOWN_RECOVERY */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+
 /*
  * Router with 4366 can have 128 stations and 16 BSS,
  * hence (128 stations x 4 access categories for ucast) + 16 bc/mc flowrings
@@ -65,7 +104,7 @@
 /* user defined data structures */
 /* Device console log buffer state */
 #define CONSOLE_LINE_MAX	192
-#define CONSOLE_BUFFER_MAX	2024
+#define CONSOLE_BUFFER_MAX	(8 * 1024)
 
 #ifndef MAX_CNTL_D3ACK_TIMEOUT
 #define MAX_CNTL_D3ACK_TIMEOUT 2
@@ -178,19 +217,33 @@ typedef struct dhd_bus {
 
 	dhd_timeout_t doorbell_timer;
 	bool	device_wake_state;
+	bool	irq_registered;
 #ifdef PCIE_OOB
 	bool	oob_enabled;
 #endif /* PCIE_OOB */
 #ifdef SUPPORT_LINKDOWN_RECOVERY
+#if defined(CONFIG_ARCH_MSM) || (defined(EXYNOS_PCIE_LINKDOWN_RECOVERY) && \
+	defined(CONFIG_SOC_EXYNOS8890))
 #ifdef CONFIG_ARCH_MSM
-	struct msm_pcie_register_event pcie_event;
-	uint8 islinkdown;
+	uint8 no_cfg_restore;
 #endif /* CONFIG_ARCH_MSM */
+	struct_pcie_register_event pcie_event;
+#endif /* CONFIG_ARCH_MSM || (EXYNOS_PCIE_LINKDOWN_RECOVERY && CONFIG_SOC_EXYNOS8890) */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
+#ifdef DHD_PCIE_RUNTIMEPM
+	int32 idlecount;                /* Activity timeout counter */
+	int32 idletime;                 /* Control for activity timeout */
+	int32 bus_wake;                 /* For wake up the bus */
+	bool runtime_resume_done;       /* For check runtime suspend end */
+	struct mutex pm_lock;            /* Synchronize for system PM & runtime PM */
+	wait_queue_head_t rpm_queue;    /* wait-queue for bus wake up */
+#endif /* DHD_PCIE_RUNTIMEPM */
 	uint32 d3_inform_cnt;
 	uint32 d0_inform_cnt;
 	uint32 d0_inform_in_use_cnt;
 	uint8 force_suspend;
+	uint32 d3_ack_war_cnt;
+	uint8 is_linkdown;
 } dhd_bus_t;
 
 /* function declarations */
@@ -213,6 +266,7 @@ extern void dhdpcie_bus_ringbell_fast(struct dhd_bus *bus, uint32 value);
 extern int dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state);
 extern int dhdpcie_pci_suspend_resume(struct  dhd_bus *bus, bool state);
 extern bool dhdpcie_tcm_valid(dhd_bus_t *bus);
+extern void dhdpcie_bus_dongle_print_hwregs(struct dhd_bus *bus);
 #ifndef BCMPCIE_OOB_HOST_WAKE
 extern void dhdpcie_pme_active(osl_t *osh, bool enable);
 #endif /* !BCMPCIE_OOB_HOST_WAKE */
@@ -233,6 +287,28 @@ extern void dhdpcie_oob_intr_set(dhd_bus_t *bus, bool enable);
 extern void dhd_oob_set_bt_reg_on(struct dhd_bus *bus, bool val);
 extern int dhd_oob_get_bt_reg_on(struct dhd_bus *bus);
 #endif /* PCIE_OOB */
+
+#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+#if defined(CONFIG_MACH_UNIVERSAL5433)
+#define SAMSUNG_PCIE_DEVICE_ID 0xa5e3
+#define SAMSUNG_PCIE_CH_NUM
+#elif defined(CONFIG_MACH_UNIVERSAL7420)
+#define SAMSUNG_PCIE_DEVICE_ID 0xa575
+#define SAMSUNG_PCIE_CH_NUM 1
+#elif defined(CONFIG_SOC_EXYNOS8890)
+#define SAMSUNG_PCIE_DEVICE_ID 0xa544
+#define SAMSUNG_PCIE_CH_NUM 0
+#else
+#error "Not supported platform"
+#endif
+#ifdef CONFIG_MACH_UNIVERSAL5433
+extern int exynos_pcie_pm_suspend(void);
+extern int exynos_pcie_pm_resume(void);
+#else
+extern int exynos_pcie_pm_suspend(int ch_num);
+extern int exynos_pcie_pm_resume(int ch_num);
+#endif /* CONFIG_MACH_UNIVERSAL5433 */
+#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
 
 extern int dhd_buzzz_dump_dngl(dhd_bus_t *bus);
 #endif /* dhd_pcie_h */

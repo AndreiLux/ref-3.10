@@ -28,6 +28,7 @@
 #include <linux/of_i2c.h>
 #include <linux/of_gpio.h>
 #include "../../pinctrl/core.h"
+#include <linux/smc.h>
 
 #include <mach/exynos-pm.h>
 #ifdef CONFIG_EXYNOS_APM
@@ -260,6 +261,7 @@ struct exynos5_i2c {
 	unsigned int		cmd_pointer;
 	unsigned int		desc_pointer;
 	unsigned int		batcher_read_addr;
+	unsigned int		secure_mode;
 };
 
 static const struct of_device_id exynos5_i2c_match[] = {
@@ -339,6 +341,17 @@ static void change_i2c_gpio(struct exynos5_i2c *i2c)
 			dev_err(i2c->dev, "Can't set default i2c pins!!!\n");
 	} else {
 		dev_err(i2c->dev, "Can't get default pinstate!!!\n");
+	}
+}
+
+static void recover_gpio_pins_secure(struct exynos5_i2c *i2c)
+{
+	dev_err(i2c->dev, "Recover GPIO pins in secure\n");
+
+	if(i2c->bus_id == exynos_smc((0x83000012), i2c->bus_id, 0, 0)){
+		dev_err(i2c->dev, "SDA line(%d) is recovered in secure!!!\n", i2c->bus_id);
+	}else{
+		dev_err(i2c->dev, "SDA line(%d) is not recovered in secure!!!\n", i2c->bus_id);
 	}
 }
 
@@ -458,7 +471,11 @@ static inline void dump_i2c_register(struct exynos5_i2c *i2c)
 	}
 #endif
 
-	recover_gpio_pins(i2c);
+	if(i2c->secure_mode) /* this is for secure gpio port recovery (zero model only) */
+		recover_gpio_pins_secure(i2c);
+	else
+		recover_gpio_pins(i2c);
+
 }
 
 static void write_batcher(struct exynos5_i2c *i2c, unsigned int description,
@@ -1478,6 +1495,11 @@ static int exynos5_i2c_probe(struct platform_device *pdev)
 		i2c->cmd_buffer = HSI2C_BATCHER_INIT_CMD;
 	} else
 		i2c->support_hsi2c_batcher = 0;
+
+	if (of_get_property(np, "secure-mode", NULL)) {
+		i2c->secure_mode = 1;
+	} else
+		i2c->secure_mode = 0;
 
 	strlcpy(i2c->adap.name, "exynos5-i2c", sizeof(i2c->adap.name));
 	i2c->adap.owner   = THIS_MODULE;

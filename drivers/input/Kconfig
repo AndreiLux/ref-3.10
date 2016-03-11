@@ -201,6 +201,13 @@ config HALL_LOOPCHECK_WA
 	help
 	  Enable Hall loop-check for workaround
 
+config SENSORS_HALL_IRQ_CTRL
+	bool "SENSORS_HALL_IRQ_CTRL"
+	depends on !SEC_FACTORY
+	default n
+	help
+	  Say Y here to enable the IRQ control function
+
 config CERTIFY_HALL
 	tristate "Enable CERTIFY HALL"
 	default n
@@ -228,6 +235,13 @@ config INPUT_KEYCOMBO
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called keycombo.
+
+config SENSORS_HALL_FOLDER
+	bool "HALL for FOLDER"
+	depends on HALL
+	default n
+	help
+	  Say Y here to use HALL IC for FOLDER.
 
 comment "Input Device Drivers"
 

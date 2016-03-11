@@ -588,7 +588,11 @@ static bool batadv_dat_send_data(struct batadv_priv *bat_priv,
 		if (!neigh_node)
 			goto free_orig;
 
+#ifdef CONFIG_MPTCP
+		tmp_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+#else
 		tmp_skb = pskb_copy(skb, GFP_ATOMIC);
+#endif
 		if (!batadv_unicast_4addr_prepare_skb(bat_priv, tmp_skb,
 						      cand[i].orig_node,
 						      packet_subtype)) {

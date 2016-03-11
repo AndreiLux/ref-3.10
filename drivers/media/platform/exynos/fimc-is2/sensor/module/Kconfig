@@ -154,3 +154,9 @@ config CAMERA_SENSOR_4E6_C2_OBJ
         default n
         help
           Use to build 4E6 camera sensor.
+config CAMERA_SENSOR_5E3_OBJ
+        bool "Use 5E3 camera sensor"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          Use to build 5E3 camera sensor.

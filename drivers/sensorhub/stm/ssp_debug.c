@@ -256,6 +256,7 @@ void sync_sensor_state(struct ssp_data *data)
 	udelay(10);
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++) {
+		mutex_lock(&data->enable_mutex);
 		if (atomic64_read(&data->aSensorEnable) & (1 << uSensorCnt)) {
 			s32 dMsDelay
 				= get_msdelay(data->adDelayBuf[uSensorCnt]);
@@ -265,6 +266,7 @@ void sync_sensor_state(struct ssp_data *data)
 			send_instruction(data, ADD_SENSOR, uSensorCnt, uBuf, 9);
 			udelay(10);
 		}
+		mutex_unlock(&data->enable_mutex);
 	}
 
 	if (data->bProximityRawEnabled == true) {
@@ -277,6 +279,8 @@ void sync_sensor_state(struct ssp_data *data)
 	data->buf[PROXIMITY_SENSOR].prox = 0;
 	report_sensordata(data, PROXIMITY_SENSOR, &data->buf[PROXIMITY_SENSOR]);
 
+	set_gyro_cal_lib_enable(data, true);
+	
 #if 1
     if(sec_debug_get_debug_level() > 0)
     {
@@ -448,6 +452,9 @@ static void debug_work_func(struct work_struct *work)
 		recovery_mcu(data);
 
 	data->uIrqCnt = 0;
+
+	if(data->gyro_lib_state == GYRO_CALIBRATION_STATE_EVENT_OCCUR)
+        set_gyro_cal_lib_enable(data, false);
 }
 
 static void debug_timer_func(unsigned long ptr)

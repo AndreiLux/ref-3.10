@@ -1650,12 +1650,12 @@ osl_pkt_orphan_partial(struct sk_buff *skb)
 	if (unlikely(skb->destructor != p_tcp_wfree || !skb->sk))
 		return;
 
-		/* abstract a certain portion of skb truesize from the socket
-		 * sk_wmem_alloc to allow more skb can be allocated for this
-		 * socket for better cusion meeting WiFi device requirement
-		 */
-		fraction = skb->truesize * (TSQ_MULTIPLIER - 1) / TSQ_MULTIPLIER;
-		skb->truesize -= fraction;
-		atomic_sub(fraction, &skb->sk->sk_wmem_alloc);
-	}
+	/* abstract a certain portion of skb truesize from the socket
+	 * sk_wmem_alloc to allow more skb can be allocated for this
+	 * socket for better cusion meeting WiFi device requirement
+	 */
+	fraction = skb->truesize * (TSQ_MULTIPLIER - 1) / TSQ_MULTIPLIER;
+	skb->truesize -= fraction;
+	atomic_sub(fraction, &skb->sk->sk_wmem_alloc);
+}
 #endif /* LINUX_VERSION >= 3.6.0 && TSQ_MULTIPLIER */

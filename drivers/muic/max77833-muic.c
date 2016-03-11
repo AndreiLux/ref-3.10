@@ -27,10 +27,12 @@
 #include <linux/err.h>
 #include <linux/platform_device.h>
 #include <linux/of_gpio.h>
+#include <linux/workqueue.h>
 #include <linux/battery/sec_charging_common.h>
 #if (defined(CONFIG_SWITCH_ANTENNA_IF) || defined(CONFIG_SWITCH_ANTENNA_EARJACK_IF)) && !defined(CONFIG_SEC_FACTORY)
 #include <linux/antenna_switch.h>
 #endif
+#include <linux/switch.h>
 
 #include <linux/mfd/max77833.h>
 #include <linux/mfd/max77833-private.h>
@@ -45,6 +47,8 @@
 #if defined(CONFIG_MUIC_NOTIFIER)
 #include <linux/muic/muic_notifier.h>
 #endif /* CONFIG_MUIC_NOTIFIER */
+
+#include <linux/sec_debug.h>
 
 extern struct muic_platform_data muic_pdata;
 static bool debug_en_vps = false;
@@ -109,14 +113,6 @@ static const struct max77833_muic_vps_data muic_vps_table[] = {
 		.adc		= MAX77833_ADC_OPEN,
 		.chgdetrun	= CHGDETRUN_FALSE,
 		.chgtyp		= CHGTYP_DEDICATED_CHARGER,
-		.muic_switch	= COM_OPEN,
-		.vps_name	= "TA",
-		.attached_dev	= ATTACHED_DEV_TA_MUIC,
-	},
-	{
-		.adc		= MAX77833_ADC_AUDIOMODE_W_REMOTE,
-		.chgdetrun	= CHGDETRUN_FALSE,
-		.chgtyp		= CHGTYP_ANY,
 		.muic_switch	= COM_OPEN,
 		.vps_name	= "TA",
 		.attached_dev	= ATTACHED_DEV_TA_MUIC,
@@ -337,6 +333,18 @@ static const struct max77833_muic_vps_data muic_vps_table[] = {
 		.attached_dev	= ATTACHED_DEV_UNSUPPORTED_ID_VB_MUIC,
 	},
 };
+
+static struct switch_dev wc_otg_check = {
+	.name = "otg_blocking",
+};
+
+/* For user popup when connect to OTG+Wireless PAD */
+static void max77833_muic_send_wcotg_intent(int type, struct max77833_muic_data *muic_data)
+{
+	pr_info("%s: %s: otg_block_status[%d]\n", MUIC_DEV_NAME, __func__, type);
+	muic_data->otg_block_status = type;
+	switch_set_state(&wc_otg_check, type);
+}
 
 static int muic_lookup_vps_table(muic_attached_dev_t new_dev, struct max77833_muic_data *muic_data)
 {
@@ -945,13 +953,15 @@ static void muic_cmd_run(struct max77833_muic_data *muic_data)
 					break;
 				case 0x03:
 					if (pass_rev < MUIC_PASS4) // For PASS3
-						max77833_muic_hv_chgin_read(muic_data);
+						/* For QC enable */
+						max77833_muic_hv_fchv_disable(muic_data);
 					else
 						max77833_muic_hv_fchv_capa_read(muic_data);
 					break;
 				case 0x04:
 					if (pass_rev >= MUIC_PASS4)
-						max77833_muic_hv_chgin_read(muic_data);
+						/* For QC enable */
+						max77833_muic_hv_fchv_disable(muic_data);
 					break;
 				default:
 					break;
@@ -961,9 +971,9 @@ static void muic_cmd_run(struct max77833_muic_data *muic_data)
 				max77833_read_reg(i2c, MAX77833_MUIC_REG_DAT_OUT2, &reg_data[0]);
 				chgin = (int)(reg_data[0] * 794 / 10000);        // Calculate CHGIN Volt.
 
-				pr_info("%s:%s Read CHGIN val: %d mV\n", MUIC_DEV_NAME, __func__, (int)(reg_data[0] * 794 / 10));
+				pr_info("%s:%s Read AFC CHGIN val: %d mV\n", MUIC_DEV_NAME, __func__, (int)(reg_data[0] * 794 / 10));
 				if (read_data == HV_CMD_PASS) {
-					if ((chgin >= 8) && (chgin <= 9)) {
+					if ((chgin >= 7) && (chgin <= 9)) {
 						pr_info("%s:%s AFC Charger ATTACHED.\n",MUIC_DEV_NAME,__func__);
 						max77833_muic_set_afc_ready(muic_data, false);
 						val = muic_lookup_vps_table(ATTACHED_DEV_AFC_CHARGER_9V_MUIC, muic_data);
@@ -991,6 +1001,7 @@ static void muic_cmd_run(struct max77833_muic_data *muic_data)
 						if (reg_data[0] < reg_data[val])
 							reg_data[0] = reg_data[val];
 					}
+					pr_info("%s:%s: CAPA Value[0x%02x]\n", MUIC_DEV_NAME, __func__, reg_data[0]);
 					max77833_muic_hv_fchv_set(muic_data, reg_data[0], 0xff);
 				}
 				else
@@ -1012,8 +1023,9 @@ static void muic_cmd_run(struct max77833_muic_data *muic_data)
 				max77833_read_reg(i2c, MAX77833_MUIC_REG_DAT_OUT2, &reg_data[0]);
 				chgin = (int)(reg_data[0] * 794 / 10000);	// Calculate CHGIN Volt.
 
+				pr_info("%s:%s Read QC CHGIN val: %d mV\n", MUIC_DEV_NAME, __func__, (int)(reg_data[0] * 794 / 10));
 				if (read_data == HV_CMD_PASS) {
-					if ((chgin >= 8) && (chgin <= 9)) {
+					if ((chgin >= 7) && (chgin <= 9)) {
 						pr_info("%s:%s QC Charger ATTACHED.\n",MUIC_DEV_NAME,__func__);
 						max77833_muic_set_afc_ready(muic_data, false);
 						val = muic_lookup_vps_table(ATTACHED_DEV_QC_CHARGER_9V_MUIC, muic_data);
@@ -1390,6 +1402,7 @@ static int switch_to_ap_uart(struct max77833_muic_data *muic_data,
 	switch (new_dev) {
 	case ATTACHED_DEV_JIG_UART_OFF_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_MUIC:
+	case ATTACHED_DEV_JIG_UART_ON_MUIC:
 		com_to_uart_ap(muic_data);
 		break;
 	default:
@@ -1409,6 +1422,7 @@ static int switch_to_cp_uart(struct max77833_muic_data *muic_data,
 	switch (new_dev) {
 	case ATTACHED_DEV_JIG_UART_OFF_MUIC:
 	case ATTACHED_DEV_JIG_UART_OFF_VB_MUIC:
+	case ATTACHED_DEV_JIG_UART_ON_MUIC:
 		com_to_uart_cp(muic_data);
 		break;
 	default:
@@ -1425,7 +1439,6 @@ static void max77833_muic_enable_chgdet(struct max77833_muic_data *muic_data)
 	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
 
 	/* write command - config */
-	max77833_muic_read_config(muic_data);
 	max77833_muic_write_config(muic_data, CHGDET_ENABLE, 0xff);
 }
 
@@ -1795,11 +1808,20 @@ static ssize_t max77833_muic_set_afc_disable(struct device *dev,
 {
 	struct max77833_muic_data *muic_data = dev_get_drvdata(dev);
 	struct muic_platform_data *pdata = muic_data->pdata;
+	int ret;
 
 	if (!strncasecmp(buf, "1", 1)) {
-		pdata->afc_disable = true;
+		ret = set_param(CM_OFFSET + 1, '1');
+		if (ret < 0)
+			pr_err("%s:set_param failed\n", __func__);
+		else
+			pdata->afc_disable = true;
 	} else if (!strncasecmp(buf, "0", 1)) {
-		pdata->afc_disable = false;
+		ret = set_param(CM_OFFSET + 1, '0');
+		if (ret < 0)
+			pr_err("%s:set_param failed\n", __func__);
+		else
+			pdata->afc_disable = false;
 	} else {
 		pr_warn("%s:%s invalid value\n", MUIC_DEV_NAME, __func__);
 	}
@@ -1847,6 +1869,10 @@ static ssize_t max77833_muic_set_wireless(struct device *dev,
 		/* For OTG Re-detect */
 		if (muic_data->attached_dev == ATTACHED_DEV_OTG_MUIC) {
 			pr_info("%s: %s: OTG -> WirelessPAD\n", MUIC_DEV_NAME, __func__);
+			// popup event for user(OTG+WirelessPAD)
+			max77833_muic_send_wcotg_intent(OTG_BLOCKING, muic_data);
+			pr_info("%s: %s: OTG block enable\n", MUIC_DEV_NAME, __func__);
+
 			ret = max77833_muic_handle_attach(muic_data, ATTACHED_DEV_WIRELESS_PAD_MUIC);
 			if (ret)
 				pr_err("%s:%s cannot handle attach(%d)\n", MUIC_DEV_NAME, __func__, ret);
@@ -1861,6 +1887,10 @@ static ssize_t max77833_muic_set_wireless(struct device *dev,
 		adc = max77833_muic_get_adc_value(muic_data);
 		if (adc == MAX77833_ADC_GND) {
 			pr_info("%s: %s: WirelessPAD -> OTG\n", MUIC_DEV_NAME, __func__);
+			// popup none event
+			max77833_muic_send_wcotg_intent(POPUP_NONE, muic_data);
+			pr_info("%s: %s: OTG block disable\n", MUIC_DEV_NAME, __func__);
+
 			ret = max77833_muic_handle_attach(muic_data, ATTACHED_DEV_OTG_MUIC);
 			if (ret)
 				pr_err("%s:%s cannot handle attach(%d)\n", MUIC_DEV_NAME, __func__, ret);
@@ -2102,8 +2132,8 @@ static int max77833_muic_handle_detach(struct max77833_muic_data *muic_data)
 		goto out_without_noti;
 	}
 
-	/* Enable Factory Accessory Detection State Machine */
-//	max77833_muic_enable_accdet(muic_data);
+	/* Enable Charger Detection */
+	max77833_muic_enable_chgdet(muic_data);
 
 	muic_lookup_vps_table(muic_data->attached_dev, muic_data);
 
@@ -2111,8 +2141,6 @@ static int max77833_muic_handle_detach(struct max77833_muic_data *muic_data)
 	case ATTACHED_DEV_OTG_MUIC:
 	case ATTACHED_DEV_CHARGING_CABLE_MUIC:
 	case ATTACHED_DEV_HMT_MUIC:
-		/* Enable Charger Detection */
-		max77833_muic_enable_chgdet(muic_data);
 		break;
 	case ATTACHED_DEV_UNOFFICIAL_ID_MUIC:
 		goto out_without_noti;
@@ -2298,6 +2326,8 @@ static int max77833_muic_handle_attach(struct max77833_muic_data *muic_data,
 		new_dev = check_jig_uart_on_factory_test(muic_data, new_dev);
 		if (new_dev != ATTACHED_DEV_JIG_UART_ON_MUIC)
 			goto out;
+#else
+		ret = max77833_muic_attach_uart_path(muic_data, new_dev);
 #endif
 		break;
 	case ATTACHED_DEV_TA_MUIC:
@@ -2353,7 +2383,16 @@ static int max77833_muic_handle_attach(struct max77833_muic_data *muic_data,
 		max77833_muic_write_switch(muic_data, COM_OPEN, 0xff);
 		break;
 	case ATTACHED_DEV_TIMEOUT_OPEN_MUIC:	// For chgtyp 0x04
-		ret = write_vps_regs(muic_data, new_dev);
+		muic_acokb = !gpio_get_value(muic_data->gpio_acokb);
+		pr_info("%s:%s muic_acokb[%d]\n", MUIC_DEV_NAME, __func__, muic_acokb);
+		if (muic_acokb) {
+			pr_info("%s:%s: Cable+Chgtyp 0x04\n", MUIC_DEV_NAME, __func__);
+			ret = write_vps_regs(muic_data, new_dev);
+		}
+		else {
+			pr_info("%s:%s: Only Chgtyp 0x04\n", MUIC_DEV_NAME, __func__);
+			goto out_without_noti;
+		}
 		break;
 	case ATTACHED_DEV_WIRELESS_PAD_MUIC:
 		pr_info("%s:%s Wireless PAD ATTACHED\n", MUIC_DEV_NAME, __func__);
@@ -2397,8 +2436,6 @@ static int max77833_muic_handle_attach(struct max77833_muic_data *muic_data,
 	/* chgdet Re-run for timeout or D+/D- open */
 	if ((muic_data->attached_dev == ATTACHED_DEV_NONE_MUIC) &&
 				(new_dev == ATTACHED_DEV_TIMEOUT_OPEN_MUIC)) {
-		muic_acokb = !gpio_get_value(muic_data->gpio_acokb);
-		pr_info("%s:%s muic_acokb[%d]\n", MUIC_DEV_NAME, __func__, muic_acokb);
 		if (muic_acokb)
 			max77833_muic_read_chgdet(muic_data);
 	}
@@ -2491,14 +2528,15 @@ static bool muic_check_vps_chgtyp
 		/* These chargers have spchgtyp but also detected as USB   */
 		/* rule them out from USB/CDP, so that they can be matched */
 		/* as CHGTYP_ANY with spchgtyp values they have.           */
-		/* may need to add all styp but no other cases reported yet*/
-			switch (spchgtyp) {
-			// AT&T TA + USB cables without ID : chg 2 : spchg 3
-			case SPCHGTYP_APPLE_1A:	
-			// IPAD TA : chg 1 : spchg 4
-			case SPCHGTYP_APPLE_2A:	
-				break;
-			default:
+		/* 1. AT&T TA + USB cables without ID : chg 2 : spchg 3    */
+		/* 2. IPAD TA : chg 1 : spchg 4                            */
+		/* 3. Samsung TA : chg 1 : spchg 1                         */
+			if ((spchgtyp > SPCHGTYP_UNKNOWN) && (spchgtyp <= SPCHGTYP_GENERIC_500MA)) {
+				pr_info("%s:%s: CHGTYP_USB and SPCHGTYP are detected at the same time. ",
+							MUIC_DEV_NAME, __func__);
+				pr_info("CHGTYP_USB is ignored.\n");
+			}
+			else {
 				ret = true;
 				goto out;
 			}
@@ -2545,6 +2583,7 @@ static muic_attached_dev_t muic_check_second_device
 	(struct max77833_muic_data *muic_data, muic_attached_dev_t new_dev)
 {
 	muic_attached_dev_t tmp_dev = new_dev;
+	struct muic_platform_data *pdata = muic_data->pdata;
 
 	/* For OTG test */
 	if (new_dev == ATTACHED_DEV_JIG_UART_OFF_VB_MUIC) {
@@ -2560,6 +2599,14 @@ static muic_attached_dev_t muic_check_second_device
 		if (muic_data->attached_dev == ATTACHED_DEV_WIRELESS_PAD_MUIC) {
 			pr_info("%s: %s: Ignore OTG.\n", MUIC_DEV_NAME, __func__);
 			tmp_dev = muic_data->attached_dev;
+		}
+		/* For OTG re-detect issue in WirelessPAD */
+		else if ((muic_data->attached_dev == ATTACHED_DEV_USB_MUIC) ||
+				(muic_data->attached_dev == ATTACHED_DEV_CDP_MUIC)) {
+			if (pdata->wireless) {
+				pr_info("%s: %s: Ignore OTG detect.\n", MUIC_DEV_NAME, __func__);
+				tmp_dev = ATTACHED_DEV_WIRELESS_PAD_MUIC;
+			}
 		}
 	}
 
@@ -2585,6 +2632,12 @@ muic_attached_dev_t max77833_muic_check_new_dev(struct max77833_muic_data *muic_
 	u8 chgtyp = muic_data->status2 & STATUS2_CHGTYP_MASK;
 	u8 spchgtyp = (muic_data->status2 & STATUS2_SPCHGTYP_MASK) >> 3;
 	unsigned long i;
+
+	/* Workaround for 1Mohm wrong detect issue */
+	if (adc == MAX77833_ADC_AUDIOMODE_W_REMOTE) {
+		pr_info("%s:%s: Change ID value: 1Mohm->OPEN\n", MUIC_DEV_NAME, __func__);
+		adc = MAX77833_ADC_OPEN;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(muic_vps_table); i++) {
 		tmp_vps = &(muic_vps_table[i]);
@@ -2688,7 +2741,14 @@ static void max77833_muic_detect_dev(struct max77833_muic_data *muic_data, int i
 	pr_info("%s:%s adc:0x%x chgdetrun:0x%x chgtyp:0x%x spchgtyp:0x%x sysmsg:0x%x wireless:%d\n",
 		MUIC_DEV_NAME, __func__, adc, chgdetrun, chgtyp, spchgtyp, sysmsg, wcvalue.intval);
 
+	/* Workaround for 1Mohm wrong detect issue */
+	if (adc == MAX77833_ADC_AUDIOMODE_W_REMOTE) {
+		pr_info("%s:%s: Change ID value: 1Mohm->OPEN\n", MUIC_DEV_NAME, __func__);
+		adc = MAX77833_ADC_OPEN;
+	}
+
 #ifdef CONFIG_MUIC_MAX77833_SHAKEID_WA
+#ifdef CONFIG_SEC_FACTORY
 	/* Workaround for Factory mode.
 	 * Abandon adc interrupt of approximately +-100K range
 	 * if previous cable status was JIG UART BOOT OFF.
@@ -2703,7 +2763,7 @@ static void max77833_muic_detect_dev(struct max77833_muic_data *muic_data, int i
 			}
 		}
 	}
-#ifdef CONFIG_SEC_FACTORY
+
 	/* Workaround for JIG Download issue in Factory mode. */
 	if (muic_data->attached_dev == ATTACHED_DEV_JIG_USB_ON_MUIC) {
 		if (adc == (MAX77833_ADC_JIG_USB_ON - 1)) {
@@ -2720,33 +2780,70 @@ static void max77833_muic_detect_dev(struct max77833_muic_data *muic_data, int i
 			return;
 		}
 	}
+
+	/* Workaround for HMT disconnect issue in User binary. */
+	if (muic_data->attached_dev == ATTACHED_DEV_HMT_MUIC) {
+		if (adc == (MAX77833_ADC_HMT - 1)) {
+			pr_warn("%s:%s abandon SMARTDOCK\n", MUIC_DEV_NAME, __func__);
+			return;
+		}
+	}
+
+	/* Workaround for OTG disconnect issue in User binary. */
+	if (muic_data->attached_dev == ATTACHED_DEV_OTG_MUIC) {
+		if (adc != MAX77833_ADC_OPEN) {
+			pr_warn("%s:%s abandon DEVICE(OTG)\n", MUIC_DEV_NAME, __func__);
+			return;
+		}
+	}
 #endif
 
 	new_dev = max77833_muic_check_new_dev(muic_data, &intr, wcvalue.intval);
 	if (wcvalue.intval) {
+		// OTG block popup event for User.
+		if (adc == MAX77833_ADC_GND) {
+			if (muic_data->otg_block_status != OTG_BLOCKING) {
+				max77833_muic_send_wcotg_intent(OTG_PENDING, muic_data);
+				pr_info("%s: %s: OTG block enable\n", MUIC_DEV_NAME, __func__);
+			}
+		}
+		else if (adc == MAX77833_ADC_OPEN) {
+			if (muic_data->otg_block_status != POPUP_NONE) {
+				max77833_muic_send_wcotg_intent(POPUP_NONE, muic_data);
+				pr_info("%s: %s: OTG block disable\n", MUIC_DEV_NAME, __func__);
+			}
+		}
+
 		if (new_dev == ATTACHED_DEV_OTG_MUIC) {
 			pr_warn("%s:%s abandon OTG\n", MUIC_DEV_NAME, __func__);
 			return;
 		}
 	}
 
+#if !defined(CONFIG_SEC_FACTORY)
 	if (pass_rev >= MUIC_PASS4) { // For PASS4/Old rev onebinary
-		pr_info("%s: %s: ADCMODE / PASS4\n",MUIC_DEV_NAME,__func__);
-
 		if (is_need_muic_idmode_continuous(new_dev)) {
+			pr_info("%s: %s: Change ADCMODE: For Accessary\n",MUIC_DEV_NAME,__func__);
 			/* ADC Mode switch to the Continuous Mode */
 			max77833_muic_set_idmode_continuous(muic_data);
 		} else {
-			/* ADC Mode restore to the One Shot Mode */
-#if !defined(CONFIG_SEC_FACTORY)
-			max77833_muic_set_idmode_pulse(muic_data);
-#else
-			max77833_muic_set_idmode_oneshot(muic_data);
-#endif
+			if (pass_rev == MUIC_PASS4) {
+				pr_info("%s: %s: Change ADCMODE: For PASS4 or PASS5\n",MUIC_DEV_NAME,__func__);
+				/* ADC Mode restore to the Pulse Mode */
+				max77833_muic_set_idmode_pulse(muic_data);
+			}
+			else {
+				pr_info("%s: %s: Change ADCMODE: For PASS6 or later\n",MUIC_DEV_NAME,__func__);
+				/* ADC Mode restore to the One Shot Mode */
+				max77833_muic_set_idmode_oneshot(muic_data);
+			}
 		}
 	}
 	else
-		pr_info("%s: %s: ADCMODE / Not PASS4\n",MUIC_DEV_NAME,__func__);
+		pr_info("%s: %s: ADCMODE never change: For PASS1~3\n",MUIC_DEV_NAME,__func__);
+#else // For FACTORY mode.
+	max77833_muic_set_idmode_oneshot(muic_data);
+#endif
 
 	if (intr == MUIC_INTR_ATTACH) {
 		pr_info("%s:%s ATTACHED\n", MUIC_DEV_NAME, __func__);
@@ -2772,17 +2869,17 @@ static void max77833_muic_detect_dev(struct max77833_muic_data *muic_data, int i
 	return;
 }
 
-static int max77833_muic_direct_set_pulse(struct max77833_muic_data *muic_data)
+#if !defined(CONFIG_SEC_FACTORY)
+static int max77833_muic_direct_set_adcmode(struct max77833_muic_data *muic_data, u8 set_val)
 {
-	u8 op, set_pulse;
+	u8 op;
 	int delay = 0, flag = 0;
 	u8 uic_int3 = 0, out_op = 0;
 
 	op = COMMAND_MONITOR_WRITE;
-	set_pulse = 0x20;	// Pulse & Vref: 0.5V
 
 	max77833_muic_write_reg(muic_data->i2c, MAX77833_MUIC_REG_DAT_IN_OP, op, true);
-	max77833_muic_write_reg(muic_data->i2c, MAX77833_MUIC_REG_DAT_IN1, set_pulse, true);
+	max77833_muic_write_reg(muic_data->i2c, MAX77833_MUIC_REG_DAT_IN1, set_val, true);
 	max77833_muic_write_reg(muic_data->i2c, MAX77833_MUIC_REG_DAT_IN8, 0x00, true);
 
 	do{
@@ -2807,7 +2904,9 @@ static int max77833_muic_direct_set_pulse(struct max77833_muic_data *muic_data)
 
 	return 0;	// Pass
 }
+#endif
 
+static irqreturn_t max77833_muic_irq_cmd(int irq, void *data);
 static void max77833_muic_restore(struct max77833_muic_data *muic_data)
 {
 	u8 reset_val = 0x0;
@@ -2828,10 +2927,17 @@ static void max77833_muic_restore(struct max77833_muic_data *muic_data)
 				MUIC_DEV_NAME, __func__, MAX77833_MUIC_REG_INTMASK3, INTMASK3_INIT);
 
 #if !defined(CONFIG_SEC_FACTORY)
-		ret = max77833_muic_direct_set_pulse(muic_data);
+		if (pass_rev == MUIC_PASS4)
+			ret = max77833_muic_direct_set_adcmode(muic_data, 0x20); // Pulse & Vref: 0.5V
+		else if (pass_rev >= MUIC_PASS6)
+			ret = max77833_muic_direct_set_adcmode(muic_data, 0x25); // Oneshot & Vref: 1.3V
+
 		if (ret)
 			pr_info("%s:%s Cannot pulsemode set.\n", MUIC_DEV_NAME, __func__);
 #endif
+		/* Like max77833_muic_irq_cmd(-1, muic_data); */
+		pr_info("%s:%s CMD irq: %d\n", MUIC_DEV_NAME, __func__, -1);
+		max77833_muic_handle_cmd(muic_data, -1);
 	}
 	else
 		pr_info("%s:%s MUIC was not reset, just return\n", MUIC_DEV_NAME, __func__);
@@ -2938,15 +3044,21 @@ static irqreturn_t acokb_detect(int irq, void *data)
 	bool empty_q;
 	bool muic_acokb = false;
 	u8 adc;
+	struct muic_platform_data *pdata = muic_data->pdata;
 
 	mutex_lock(&muic_data->muic_mutex);
 	empty_q = is_empty_muic_cmd_queue(&(muic_data->muic_cmd_queue));
 	adc = max77833_muic_get_adc_value(muic_data);
+	/* Workaround for 1Mohm wrong detect issue */
+	if (adc == MAX77833_ADC_AUDIOMODE_W_REMOTE) {
+		pr_info("%s:%s: Change ID value: 1Mohm->OPEN\n", MUIC_DEV_NAME, __func__);
+		adc = MAX77833_ADC_OPEN;
+	}
 
 	muic_acokb = !gpio_get_value(muic_data->gpio_acokb);
 	pr_info("%s: %s: acokb_status[%d]\n", MUIC_DEV_NAME, __func__, muic_acokb);
 
-	if (muic_data->attached_dev == ATTACHED_DEV_WIRELESS_PAD_MUIC) {
+	if ((pdata->wireless == true) || (muic_data->attached_dev == ATTACHED_DEV_WIRELESS_PAD_MUIC)) {
 		if (muic_acokb) {
 			if (adc == MAX77833_ADC_OPEN) {
 				pr_info("%s: %s: Wireless + TA/USB\n", MUIC_DEV_NAME, __func__);
@@ -3043,6 +3155,30 @@ do {									\
 		goto err_kfree;						\
 	}								\
 } while (0)
+
+static void max77833_muic_init_second_detect(struct work_struct *work)
+{
+	struct max77833_muic_data *muic_data =
+		container_of(work, struct max77833_muic_data, init_work.work);
+	bool empty_q;
+	int ret;
+
+	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
+
+	mutex_lock(&muic_data->muic_mutex);
+	empty_q = is_empty_muic_cmd_queue(&(muic_data->muic_cmd_queue));
+	if (muic_data->attached_dev == ATTACHED_DEV_TIMEOUT_OPEN_MUIC) {
+		// Detach prev cable & Charger detect re-run.
+		ret = max77833_muic_handle_detach(muic_data);
+		if (ret)
+			pr_err("%s:%s cannot handle detach(%d)\n", MUIC_DEV_NAME, __func__, ret);
+
+		max77833_muic_read_chgdet(muic_data);
+		if (empty_q)
+			max77833_muic_handle_cmd(muic_data, -1);
+	}
+	mutex_unlock(&muic_data->muic_mutex);
+}
 
 static void max77833_muic_init_detect(struct max77833_muic_data *muic_data)
 {
@@ -3179,21 +3315,20 @@ static int max77833_muic_init_regs(struct max77833_muic_data *muic_data)
 
 	max77833_muic_clear_interrupt(muic_data);
 
-	if (pass_rev >= MUIC_PASS4) { // For PASS4/Old rev onebinary
-		pr_info("%s: %s: init ADCMODE / PASS4\n",MUIC_DEV_NAME,__func__);
-		/* Default ADC Mode switch to the Oneshot Mode */
 #if !defined(CONFIG_SEC_FACTORY)
+	if (pass_rev < MUIC_PASS4)
+		pr_info("%s: %s: ADCMODE never change: For PASS1~3\n", MUIC_DEV_NAME, __func__);
+	else if (pass_rev == MUIC_PASS4) { // For PASS4 or PASS5
+		pr_info("%s: %s: init ADCMODE: For PASS4 or PASS5\n",MUIC_DEV_NAME,__func__);
 		max77833_muic_set_idmode_pulse(muic_data);
-#else
+	}
+	else if (pass_rev >= MUIC_PASS6) {
+		pr_info("%s: %s: init ADCMODE: For PASS6 or later\n",MUIC_DEV_NAME,__func__);
 		max77833_muic_set_idmode_oneshot(muic_data);
+	}
+#else // For FACTORY mode.
+	max77833_muic_set_idmode_oneshot(muic_data);
 #endif
-	}
-	else {
-		pr_info("%s: %s: init ADCMODE / Not PASS4\n",MUIC_DEV_NAME,__func__);
-		pr_info("%s:%s ***** Test pulsemode - HE, advanced HW group *****\n",
-			MUIC_DEV_NAME, __func__);
-		max77833_muic_set_idmode_pulse(muic_data);
-	}
 
 	ret = max77833_muic_irq_init(muic_data);
 	if (ret < 0) {
@@ -3255,6 +3390,7 @@ static int max77833_muic_probe(struct platform_device *pdev)
 	max77833_muic_set_afc_ready(muic_data, false);
 	muic_data->adcmode = MAX77833_MUIC_IDMODE_NONE;
 	muic_data->switch_val = COM_OPEN;
+	muic_data->otg_block_status = POPUP_NONE;
 
 	muic_data->muic_cmd_queue.front = NULL;
 	muic_data->muic_cmd_queue.rear = NULL;
@@ -3296,8 +3432,17 @@ static int max77833_muic_probe(struct platform_device *pdev)
 	device_init_wakeup(&pdev->dev, muic_data->wakeup);
 	mutex_unlock(&muic_data->muic_mutex);
 
+	/* For user popup when connect to OTG+Wireless PAD */
+	ret = switch_dev_register(&wc_otg_check);
+	if (ret < 0) {
+		pr_err("%s: %s: Failed to register wc_otg_check(%d)\n",
+				MUIC_DEV_NAME, __func__, ret);
+	}
+
 	/* initial cable detection */
 	max77833_muic_init_detect(muic_data);
+	INIT_DELAYED_WORK(&muic_data->init_work, max77833_muic_init_second_detect);
+	schedule_delayed_work(&muic_data->init_work, msecs_to_jiffies(4000));
 
 	return 0;
 

@@ -655,6 +655,7 @@ static int max77826_regulator_probe(struct i2c_client *client,
 
 	struct regulator_config config;
 	int rc, i;
+	unsigned int val;
 
 	pr_info("<%s> probe start\n", client->name);
 
@@ -679,6 +680,14 @@ static int max77826_regulator_probe(struct i2c_client *client,
 							client->name, rc);
 		goto abort;
 	}
+
+	rc = regmap_read(max77826_reg->regmap, REG_DEVICE_ID, &val);
+	if (rc < 0 && !(val & BIT_CHIP_REV))
+	{
+		pr_err("<%s> Invalid DEVICE_ID=0x%02x [%d]. skip probe...\n",client->name, val, rc);
+		return -ENODEV;
+	}
+	pr_info("<%s> DEVICE_ID=0x%02x [%d]\n",client->name, val, rc);
 
 	max77826_reg->num_regulators = pdata->num_regulators;
 	if (pdata->num_regulators > MAX77826_REGULATORS + 1) {
