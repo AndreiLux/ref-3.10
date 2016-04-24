@@ -23,7 +23,6 @@
 
 #define AMBA_NR_IRQS	9
 #define AMBA_CID	0xb105f00d
-#define CORESIGHT_CID	0xb105900d
 
 struct clk;
 

@@ -473,10 +473,13 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 		ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
 	}
 
-	/* msleep for 20ms only if code is trying to resume port */
+	/*
+	 * msleep for USB_RESUME_TIMEOUT ms only if code is trying to resume
+	 * port
+	 */
 	if (resume_needed) {
 		spin_unlock_irq(&ehci->lock);
-		msleep(20);
+		msleep(USB_RESUME_TIMEOUT);
 		spin_lock_irq(&ehci->lock);
 		if (ehci->shutdown)
 			goto shutdown;
@@ -574,6 +577,19 @@ static int check_reset_complete (
 				"Failed to enable port %d on root hub TT\n",
 				index+1);
 			return port_status;
+		}
+
+		/* W/A for Synopsys HC HSIC port.
+		 * Return at this point to prevent port owner change
+		 * and retry port reset.
+		 */
+		if (ehci->has_synopsys_hsic_bug) {
+			if ((index + 1) == ehci->hsic_ports) {
+				ehci_err (ehci,
+					"Failed to enable HSIC port %d\n",
+					index + 1);
+				return port_status;
+			}
 		}
 
 		ehci_dbg (ehci, "port %d full speed --> companion\n",
@@ -944,7 +960,7 @@ int ehci_hub_control(
 			temp &= ~PORT_WAKE_BITS;
 			ehci_writel(ehci, temp | PORT_RESUME, status_reg);
 			ehci->reset_done[wIndex] = jiffies
-					+ msecs_to_jiffies(20);
+					+ msecs_to_jiffies(USB_RESUME_TIMEOUT);
 			set_bit(wIndex, &ehci->resuming_ports);
 			usb_hcd_start_port_resume(&hcd->self, wIndex);
 			break;
@@ -1206,6 +1222,20 @@ int ehci_hub_control(
 					wIndex + 1);
 				temp |= PORT_OWNER;
 			} else {
+				ehci_vdbg (ehci, "port %d reset\n", wIndex + 1);
+
+				/* W/A for Synopsys HC HSIC port.
+				 * Disable HSIC port to prevent
+				 * the port reset failure.
+				 */
+				if (ehci->has_synopsys_hsic_bug) {
+					if ((wIndex + 1) == ehci->hsic_ports) {
+						ehci_writel(ehci,
+							temp & ~PORT_PE,
+							status_reg);
+					}
+				}
+
 				temp |= PORT_RESET;
 				temp &= ~PORT_PE;
 

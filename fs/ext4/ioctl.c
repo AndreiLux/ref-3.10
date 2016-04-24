@@ -622,6 +622,11 @@ resizefs_out:
 	case EXT4_IOC_PRECACHE_EXTENTS:
 		return ext4_ext_precache(inode);
 
+	case FS_IOC_INVAL_MAPPING:
+	{
+		return invalidate_mapping_pages(inode->i_mapping, 0, -1);
+	}
+
 	default:
 		return -ENOTTY;
 	}

@@ -1607,6 +1607,7 @@ static struct sock *qtaguid_find_sk(const struct sk_buff *skb,
 		if (sk->sk_state  == TCP_TIME_WAIT) {
 			if (sk != skb->sk)
 				sock_gen_put(sk);
+
 			sk = NULL;
 		}
 	}

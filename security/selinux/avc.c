@@ -34,6 +34,10 @@
 #include "avc_ss.h"
 #include "classmap.h"
 
+#ifdef SEC_SELINUX_DEBUG
+#include <linux/signal.h>
+#endif
+
 #define AVC_CACHE_SLOTS			512
 #define AVC_DEF_CACHE_THRESHOLD		512
 #define AVC_CACHE_RECLAIM		16
@@ -1000,7 +1004,59 @@ static noinline int avc_denied(u32 ssid, u32 tsid,
 	if (flags & AVC_STRICT)
 		return -EACCES;
 
+#ifdef SEC_SELINUX_DEBUG
+
+        /* SEC_SELINUX : denied && auditallow means "never happen" at current sepolicy. */
+	if ( requested & avd->auditallow )  {
+		char *scontext, *tcontext;
+		const char **perms;
+		int i, perm;
+		int rc1, rc2;
+		u32 scontext_len, tcontext_len;
+
+		perms = secclass_map[tclass-1].perms;
+		i = 0;
+		perm = 1;
+		while (i < (sizeof(requested) * 8)) {
+			if ((perm & requested) && perms[i])
+				break;
+			i++;
+			perm <<= 1;
+		}
+
+		rc1 = security_sid_to_context(ssid, &scontext, &scontext_len);
+		rc2 = security_sid_to_context(tsid, &tcontext, &tcontext_len);
+
+		if (rc1 || rc2) {
+			printk(KERN_ERR "SELinux DEBUG : %s: ssid=%d tsid=%d tclass=%s perm=%s cmd(%x) requested(%d) auditallow(%d)\n",
+		       __func__, ssid, tsid, secclass_map[tclass-1].name, perms[i], cmd, requested, avd->auditallow);
+		}
+		else {
+			printk(KERN_ERR "SELinux DEBUG : %s: scontext=%s tcontext=%s tclass=%s perm=%s cmd(%x) requested(%d) auditallow(%d)\n",
+		       __func__, scontext, tcontext, secclass_map[tclass-1].name, perms[i], cmd, requested, avd->auditallow);
+		}
+
+		/* print call stack */
+		printk(KERN_ERR "SELinux DEBUG : FATAL denial and start dump_stack\n");
+		dump_stack();
+
+		/* enforcing : SIGABRT and take debuggerd log */
+		if (selinux_enforcing && !(avd->flags & AVD_FLAGS_PERMISSIVE)) {
+			printk(KERN_ERR "SELinux DEBUG : send SIGABRT to current tsk\n");
+			send_sig(SIGABRT, current, 2);
+		}
+
+		if (!rc1) kfree(scontext);
+		if (!rc2) kfree(tcontext);
+
+	}
+#endif
+
+#ifdef CONFIG_ALWAYS_ENFORCE
+	if (!(avd->flags & AVD_FLAGS_PERMISSIVE))
+#else
 	if (selinux_enforcing && !(avd->flags & AVD_FLAGS_PERMISSIVE))
+#endif
 		return -EACCES;
 
 	avc_update_node(AVC_CALLBACK_GRANT, requested, cmd, ssid,

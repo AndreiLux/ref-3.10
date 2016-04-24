@@ -1599,13 +1599,11 @@ static struct sk_buff *netlink_alloc_large_skb(unsigned int size,
 	if (data == NULL)
 		return NULL;
 
-	skb = build_skb(data, size);
+	skb = __build_skb(data, size);
 	if (skb == NULL)
 		vfree(data);
-	else {
-		skb->head_frag = 0;
+	else
 		skb->destructor = netlink_skb_destructor;
-	}
 
 	return skb;
 }
@@ -1914,7 +1912,7 @@ static void do_one_broadcast(struct sock *sk,
 	sock_hold(sk);
 	if (p->skb2 == NULL) {
 		if (skb_shared(p->skb)) {
-			p->skb2 = skb_clone(p->skb, p->allocation);
+			p->skb2 = skb_copy(p->skb, p->allocation);
 		} else {
 			p->skb2 = skb_get(p->skb);
 			/*

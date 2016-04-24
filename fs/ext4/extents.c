@@ -436,6 +436,48 @@ static int ext4_valid_extent_entries(struct inode *inode,
 	return 1;
 }
 
+/* for debugging if ext4_extent is not valid */
+static void
+ext4_ext_show_eh(struct inode *inode, struct ext4_extent_header *eh)
+{
+	int i;
+
+	if (eh == NULL)
+		return;
+	printk(KERN_ERR "eh_magic : 0x%x eh_entries : %u "
+			"eh_max : %u eh_depth : %u \n",
+			le16_to_cpu(eh->eh_magic), le16_to_cpu(eh->eh_entries),
+			le16_to_cpu(eh->eh_max) ,le16_to_cpu(eh->eh_depth));
+
+	if (le16_to_cpu(eh->eh_depth) == 0) {
+		/* leaf entries */
+		struct ext4_extent *ex = EXT_FIRST_EXTENT(eh);
+
+		printk(KERN_ERR "Displaying leaf extents for inode %lu\n",
+				inode->i_ino);
+
+		for (i = 0; i < 4; i++, ex++) {
+			printk(KERN_ERR "leaf - block : %d / length : [%d]%d /"
+				" pblock : %llu\n",le32_to_cpu(ex->ee_block),
+				ext4_ext_is_unwritten(ex),
+				ext4_ext_get_actual_len(ex),
+				ext4_ext_pblock(ex));
+		}
+	}
+	else {
+		struct ext4_extent_idx *ei = EXT_FIRST_INDEX(eh);
+
+		printk(KERN_ERR "Displaying index extents for inode %lu\n",
+				inode->i_ino);
+
+		for (i = 0; i < 4; i++, ei++) {
+			printk(KERN_ERR "idx - block : %d / pblock : %llu\n",
+					le32_to_cpu(ei->ei_block),
+					ext4_idx_pblock(ei));
+		}
+	}
+}
+
 static int __ext4_ext_check(const char *function, unsigned int line,
 			    struct inode *inode, struct ext4_extent_header *eh,
 			    int depth, ext4_fsblk_t pblk)
@@ -477,6 +519,9 @@ static int __ext4_ext_check(const char *function, unsigned int line,
 	return 0;
 
 corrupted:
+	printk(KERN_ERR "Print invalid extent entries\n");
+	ext4_ext_show_eh(inode, eh);
+
 	ext4_error_inode(inode, function, line, 0,
 			 "pblk %llu bad header/extent: %s - magic %x, "
 			 "entries %u, max %u(%u), depth %u(%u)",
@@ -4923,13 +4968,6 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	if (ret)
 		return ret;
 
-	/*
-	 * currently supporting (pre)allocate mode for extent-based
-	 * files _only_
-	 */
-	if (!(ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)))
-		return -EOPNOTSUPP;
-
 	if (mode & FALLOC_FL_COLLAPSE_RANGE)
 		return ext4_collapse_range(inode, offset, len);
 
@@ -4950,6 +4988,14 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 		flags |= EXT4_GET_BLOCKS_KEEP_SIZE;
 
 	mutex_lock(&inode->i_mutex);
+
+	/*
+	 * We only support preallocation for extent-based files only
+	 */
+	if (!(ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))) {
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
 
 	if (!(mode & FALLOC_FL_KEEP_SIZE) &&
 	     offset + len > i_size_read(inode)) {

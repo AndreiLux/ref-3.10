@@ -41,7 +41,7 @@ static pgprot_t __get_dma_pgprot(struct dma_attrs *attrs, pgprot_t prot,
 
 static struct gen_pool *atomic_pool;
 
-#define DEFAULT_DMA_COHERENT_POOL_SIZE  SZ_256K
+#define DEFAULT_DMA_COHERENT_POOL_SIZE  SZ_2M
 static size_t atomic_pool_size = DEFAULT_DMA_COHERENT_POOL_SIZE;
 
 static int __init early_coherent_pool(char *p)
@@ -67,8 +67,7 @@ static void *__alloc_from_pool(size_t size, struct page **ret_page, gfp_t flags)
 
 		*ret_page = phys_to_page(phys);
 		ptr = (void *)val;
-		if (flags & __GFP_ZERO)
-			memset(ptr, 0, size);
+		memset(ptr, 0, size);
 	}
 
 	return ptr;
@@ -113,8 +112,7 @@ static void *__dma_alloc_coherent(struct device *dev, size_t size,
 
 		*dma_handle = phys_to_dma(dev, page_to_phys(page));
 		addr = page_address(page);
-		if (flags & __GFP_ZERO)
-			memset(addr, 0, size);
+		memset(addr, 0, size);
 		return addr;
 	} else {
 		return swiotlb_alloc_coherent(dev, size, dma_handle, flags);
@@ -227,9 +225,11 @@ static int __swiotlb_map_sg_attrs(struct device *dev, struct scatterlist *sgl,
 	int i, ret;
 
 	ret = swiotlb_map_sg_attrs(dev, sgl, nelems, dir, attrs);
-	for_each_sg(sgl, sg, ret, i)
-		__dma_map_area(phys_to_virt(dma_to_phys(dev, sg->dma_address)),
-			       sg->length, dir);
+	if (!dma_get_attr(DMA_ATTR_SKIP_CPU_SYNC, attrs)) {
+		for_each_sg(sgl, sg, ret, i)
+			__dma_map_area(phys_to_virt(dma_to_phys(dev, sg->dma_address)),
+					sg->length, dir);
+	}
 
 	return ret;
 }
@@ -242,9 +242,11 @@ static void __swiotlb_unmap_sg_attrs(struct device *dev,
 	struct scatterlist *sg;
 	int i;
 
-	for_each_sg(sgl, sg, nelems, i)
-		__dma_unmap_area(phys_to_virt(dma_to_phys(dev, sg->dma_address)),
-				 sg->length, dir);
+	if (!dma_get_attr(DMA_ATTR_SKIP_CPU_SYNC, attrs)) {
+		for_each_sg(sgl, sg, nelems, i)
+			__dma_unmap_area(phys_to_virt(dma_to_phys(dev, sg->dma_address)),
+					sg->length, dir);
+	}
 	swiotlb_unmap_sg_attrs(dev, sgl, nelems, dir, attrs);
 }
 
@@ -365,6 +367,36 @@ struct dma_map_ops coherent_swiotlb_dma_ops = {
 	.mapping_error = swiotlb_dma_mapping_error,
 };
 EXPORT_SYMBOL(coherent_swiotlb_dma_ops);
+
+static void *arm_exynos_dma_mcode_alloc(struct device *dev, size_t size,
+	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs);
+static void arm_exynos_dma_mcode_free(struct device *dev, size_t size, void *cpu_addr,
+				  dma_addr_t handle, struct dma_attrs *attrs);
+
+struct dma_map_ops arm_exynos_dma_mcode_ops = {
+	.alloc			= arm_exynos_dma_mcode_alloc,
+	.free			= arm_exynos_dma_mcode_free,
+};
+EXPORT_SYMBOL(arm_exynos_dma_mcode_ops);
+
+static void *arm_exynos_dma_mcode_alloc(struct device *dev, size_t size,
+	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs)
+{
+	void *addr;
+
+	if (!*handle)
+		return NULL;
+
+	addr = ioremap(*handle, size);
+
+	return addr;
+}
+
+static void arm_exynos_dma_mcode_free(struct device *dev, size_t size, void *cpu_addr,
+				  dma_addr_t handle, struct dma_attrs *attrs)
+{
+	iounmap(cpu_addr);
+}
 
 extern int swiotlb_late_init_with_default_size(size_t default_size);
 

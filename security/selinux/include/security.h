@@ -57,6 +57,7 @@
 /* Non-mount related flags */
 #define SE_SBINITIALIZED	0x0100
 #define SE_SBPROC		0x0200
+#define SE_SBGENFS		0x0400
 
 #define CONTEXT_STR	"context="
 #define FSCONTEXT_STR	"fscontext="
@@ -135,7 +136,13 @@ struct operation {
 };
 
 /* definitions of av_decision.flags */
+// START_SEC_SELINUX_PORTING_COMMON
+#ifdef CONFIG_ALWAYS_ENFORCE
+#define AVD_FLAGS_PERMISSIVE	0x0000
+#else
 #define AVD_FLAGS_PERMISSIVE	0x0001
+#endif
+// END_SEC_SELINUX_PORTING_COMMON
 
 void security_compute_av(u32 ssid, u32 tsid,
 			 u16 tclass, struct av_decision *avd,

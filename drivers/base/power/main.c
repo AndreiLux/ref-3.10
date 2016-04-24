@@ -194,6 +194,17 @@ void device_pm_move_last(struct device *dev)
 	list_move_tail(&dev->power.entry, &dpm_list);
 }
 
+/**
+ * device_pm_move_first - Move device to first of the PM core's list of devices.
+ * @dev: Device to move in dpm_list.
+ */
+void device_pm_move_first(struct device *dev)
+{
+	pr_debug("PM: Moving %s:%s to first of list\n",
+		 dev->bus ? dev->bus->name : "No Bus", dev_name(dev));
+	list_move(&dev->power.entry, &dpm_list);
+}
+
 static ktime_t initcall_debug_start(struct device *dev)
 {
 	ktime_t calltime = ktime_set(0, 0);
@@ -374,6 +385,7 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 	usecs = usecs64;
 	if (usecs == 0)
 		usecs = 1;
+
 	pr_info("PM: %s%s%s of devices complete after %ld.%03ld msecs\n",
 		info ?: "", info ? " " : "", pm_verb(state.event),
 		usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
@@ -392,7 +404,9 @@ static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 
 	pm_dev_dbg(dev, state, info);
 	trace_device_pm_callback_start(dev, info, state.event);
+	exynos_ss_suspend(cb, dev, ESS_FLAG_IN);
 	error = cb(dev);
+	exynos_ss_suspend(cb, dev, ESS_FLAG_OUT);
 	trace_device_pm_callback_end(dev, error);
 	suspend_report_result(cb, error);
 
@@ -1396,7 +1410,7 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
 	if (dev->power.syscore)
 		goto Complete;
-	
+
 	data.dev = dev;
 	data.tsk = get_current();
 	init_timer_on_stack(&timer);

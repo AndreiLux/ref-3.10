@@ -34,6 +34,33 @@ DEFINE_EVENT(set, cpufreq_interactive_setspeed,
 	TP_ARGS(cpu_id, targfreq, actualfreq)
 );
 
+#ifdef CONFIG_ARCH_EXYNOS
+DEFINE_EVENT(set, cpufreq_interactive_cpu_min_qos,
+	TP_PROTO(u32 cpu_id, unsigned long targfreq,
+	     unsigned long actualfreq),
+	TP_ARGS(cpu_id, targfreq, actualfreq)
+);
+
+DEFINE_EVENT(set, cpufreq_interactive_cpu_max_qos,
+	TP_PROTO(u32 cpu_id, unsigned long targfreq,
+	     unsigned long actualfreq),
+	TP_ARGS(cpu_id, targfreq, actualfreq)
+);
+#ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
+DEFINE_EVENT(set, cpufreq_interactive_kfc_min_qos,
+	TP_PROTO(u32 cpu_id, unsigned long targfreq,
+	     unsigned long actualfreq),
+	TP_ARGS(cpu_id, targfreq, actualfreq)
+);
+
+DEFINE_EVENT(set, cpufreq_interactive_kfc_max_qos,
+	TP_PROTO(u32 cpu_id, unsigned long targfreq,
+	     unsigned long actualfreq),
+	TP_ARGS(cpu_id, targfreq, actualfreq)
+);
+#endif /* CONFIG_ARM_EXYNOS_MP_CPUFREQ */
+#endif /* CONFIG_ARCH_EXYNOS */
+
 DECLARE_EVENT_CLASS(loadeval,
 	    TP_PROTO(unsigned long cpu_id, unsigned long load,
 		     unsigned long curtarg, unsigned long curactual,
@@ -67,6 +94,45 @@ DEFINE_EVENT(loadeval, cpufreq_interactive_target,
 		     unsigned long newtarg),
 	    TP_ARGS(cpu_id, load, curtarg, curactual, newtarg)
 );
+
+#ifdef CONFIG_MODE_AUTO_CHANGE
+DECLARE_EVENT_CLASS(modeeval,
+	    TP_PROTO(unsigned long cpu_id, unsigned long total_load,
+		     unsigned long single_enter, unsigned long multi_enter,
+		     unsigned long single_exit, unsigned long multi_exit, unsigned long mode),
+		    TP_ARGS(cpu_id, total_load, single_enter, multi_enter, single_exit, multi_exit, mode),
+
+	    TP_STRUCT__entry(
+		    __field(unsigned long, cpu_id      )
+		    __field(unsigned long, total_load  )
+		    __field(unsigned long, single_enter)
+		    __field(unsigned long, multi_enter )
+		    __field(unsigned long, single_exit )
+		    __field(unsigned long, multi_exit  )
+		    __field(unsigned long, mode)
+	    ),
+
+	    TP_fast_assign(
+		    __entry->cpu_id = cpu_id;
+		    __entry->total_load = total_load;
+		    __entry->single_enter = single_enter;
+		    __entry->multi_enter = multi_enter;
+		    __entry->single_exit = single_exit;
+		    __entry->multi_exit = multi_exit;
+		    __entry->mode = mode ;
+	    ),
+
+	    TP_printk("cpu=%lu load=%3lu s_en=%6lu m_en=%6lu s_ex=%6lu m_ex=%6lu ret=%lu",
+		      __entry->cpu_id, __entry->total_load, __entry->single_enter,
+		      __entry->multi_enter, __entry->single_exit, __entry->multi_exit, __entry->mode)
+);
+DEFINE_EVENT(modeeval, cpufreq_interactive_mode,
+	    TP_PROTO(unsigned long cpu_id, unsigned long total_load,
+		     unsigned long single_enter, unsigned long multi_enter,
+		     unsigned long single_exit, unsigned long multi_exit, unsigned long mode),
+	    TP_ARGS(cpu_id, total_load, single_enter, multi_enter, single_exit, multi_exit, mode)
+);
+#endif
 
 DEFINE_EVENT(loadeval, cpufreq_interactive_already,
 	    TP_PROTO(unsigned long cpu_id, unsigned long load,

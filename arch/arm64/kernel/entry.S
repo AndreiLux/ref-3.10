@@ -30,6 +30,9 @@
 #include <asm/thread_info.h>
 #include <asm/unistd.h>
 
+#ifdef CONFIG_RKP_CFP
+#include <asm/rkp_cfp.h>
+#endif
 /*
  * Context tracking subsystem.  Used to instrument transitions
  * between user and kernel mode.
@@ -56,6 +59,10 @@
 #endif
 	.endm
 
+#ifdef CONFIG_RKP_CFP_JOPP
+alloc_function_entry_magic_number entry_magic
+#endif
+
 /*
  * Bad Abort numbers
  *-----------------
@@ -76,6 +83,11 @@
 	push	x22, x23
 	push	x20, x21
 	push	x18, x19
+#ifdef CONFIG_RKP_CFP_ROPP
+	.if	\el == 1
+	mov	RRK, xzr
+	.endif
+#endif
 	push	x16, x17
 	push	x14, x15
 	push	x12, x13
@@ -85,12 +97,41 @@
 	push	x4, x5
 	push	x2, x3
 	push	x0, x1
+#ifdef CONFIG_RKP_CFP_JOPP
+	/* Might be in the middle of a blr springboard and RRS != the magic number. Load it again.*/
+	load_function_entry_magic_number_far_away entry_magic
+#endif
+
 	.if	\el == 0
 	mrs	x21, sp_el0
 	get_thread_info tsk			// Ensure MDSCR_EL1.SS is clear,
 	ldr	x19, [tsk, #TI_FLAGS]		// since we can unmask debug
-	disable_step_tsk x19, x20		// exceptions when scheduling.
+#ifdef CONFIG_RKP_CFP_ROPP
+#ifdef CONFIG_RKP_CFP_ROPP_HYPKEY
+	push	x29, x30
+	push	x0, x1
+	mov	x0, #0x1000
+	movk	x0, #0x8389, lsl #16
+	mov	x1, tsk
+	add	x1, x1, #TI_RRK
+	bl	rkp_call
+	pop	x0, x1
+	pop	x29, x30
+#elif defined (CONFIG_RKP_CFP_ROPP_RANDOM_KEY)
+	mrs	RRK, CNTPCT_EL0
+	str	RRK, [tsk, #TI_RRK]
+#else
+	mov	RRK, #0
+	str	RRK, [tsk, #TI_RRK]
+#endif
+#endif
+        disable_step_tsk x19, x20		// exceptions when scheduling.
 	.else
+	/* From el1, don't change key as need for reencrypt*/
+#ifdef CONFIG_RKP_CFP_ROPP
+	get_thread_info tsk //Needed for load key
+	load_key 	tsk
+#endif
 	add	x21, sp, #S_FRAME_SIZE
 	.endif
 	mrs	x22, elr_el1
@@ -122,6 +163,23 @@
 	ldr	x23, [sp, #S_SP]		// load return stack pointer
 
 #ifdef CONFIG_ARM64_ERRATUM_845719
+#ifdef CONFIG_SOC_EXYNOS8890
+	/*
+	 * Skip "Cortex-A53: 845719" on MNGS.
+	 */
+	mrs	x29, midr_el1
+	lsr	x29, x29, #0x04
+	and	x29, x29, #0xfff
+	cmp	x29, #0xd03
+	b.eq	2f
+
+	tlbi	vaae1, xzr
+	dsb	sy
+	isb
+
+	b	3f
+2:
+#endif
 	alternative_insn						\
 	"nop",								\
 	"tbz x22, #4, 1f",						\
@@ -137,6 +195,7 @@
 	"msr contextidr_el1, xzr; 1:",					\
 	ARM64_WORKAROUND_845719
 #endif
+3:
 #endif
 	.endif
 	.if	\ret
@@ -157,7 +216,18 @@
 	pop	x10, x11
 	pop	x12, x13
 	pop	x14, x15
+#ifdef CONFIG_RKP_CFP_ROPP
+	.if	\el == 1
+	/* Might be having an interrupt right after smc call, before any RRK loading code */
+	ldr		x16, [sp], #16
+	get_thread_info x19
+	load_key 	x19 
+	.else
+	pop	x16, RRK
+	.endif
+#else
 	pop	x16, x17
+#endif
 	pop	x18, x19
 	pop	x20, x21
 	pop	x22, x23
@@ -168,10 +238,13 @@
 	eret					// return to kernel
 	.endm
 
+#ifndef CONFIG_RKP_CFP_ROPP
+	/* Move to arch/arm64/include/asm/assembler.h (need it in head.S for loading key on CPU boot).*/
 	.macro	get_thread_info, rd
 	mov	\rd, sp
 	and	\rd, \rd, #~(THREAD_SIZE - 1)	// top of stack
 	.endm
+#endif
 
 /*
  * These are the registers used in the syscall handler, and allow us to
@@ -200,7 +273,11 @@ tsk	.req	x28		// current thread_info
  */
 
 	.align	11
+#ifdef CONFIG_RKP_CFP_JOPP
+VECTOR_ENTRY(vectors)
+#else
 ENTRY(vectors)
+#endif
 	ventry	el1_sync_invalid		// Synchronous EL1t
 	ventry	el1_irq_invalid			// IRQ EL1t
 	ventry	el1_fiq_invalid			// FIQ EL1t
@@ -308,6 +385,14 @@ el1_da:
 	 * Data abort handling
 	 */
 	mrs	x0, far_el1
+
+	/*
+	 * tlb conflict handling
+	*/
+	and 	x24, x1, #ESR_EL1_ISS_DFSC_MASK
+	cmp     x24, #ESR_EL1_ISS_DFSC_TLB_CONFLICT
+	b.eq	el1_da_tlb_conflict
+
 	enable_dbg
 	// re-enable interrupts if they were enabled in the aborted context
 	tbnz	x23, #7, 1f			// PSR_I_BIT
@@ -318,6 +403,10 @@ el1_da:
 
 	// disable interrupts before pulling preserved data off the stack
 	disable_irq
+	kernel_exit 1
+el1_da_tlb_conflict:
+	tlbi vmalle1
+	dsb nsh
 	kernel_exit 1
 el1_sp_pc:
 	/*
@@ -599,6 +688,15 @@ ENTRY(cpu_switch_to)
 	ldp	x29, x9, [x8], #16
 	ldr	lr, [x8]
 	mov	sp, x9
+#ifdef CONFIG_RKP_CFP_ROPP
+	push		x27, x28
+	get_thread_info tsk
+	load_key	tsk
+	pop		x27, x28
+#endif
+#ifdef CONFIG_RKP_CFP_JOPP
+	load_function_entry_magic_number_far_away entry_magic
+#endif
 	ret
 ENDPROC(cpu_switch_to)
 

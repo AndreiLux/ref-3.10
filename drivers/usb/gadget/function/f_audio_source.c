@@ -268,6 +268,7 @@ struct audio_dev {
 	/* number of frames sent since start_time */
 	s64				frames_sent;
 	struct audio_source_config	*config;
+	bool				audio_ep_enabled;
 };
 
 static inline struct audio_dev *func_to_audio(struct usb_function *f)
@@ -295,6 +296,7 @@ static struct config_item_type audio_source_func_type = {
 	.ct_owner       = THIS_MODULE,
 };
 
+#if 0
 static ssize_t audio_source_pcm_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
 
@@ -304,7 +306,7 @@ static struct device_attribute *audio_source_function_attributes[] = {
 	&dev_attr_pcm,
 	NULL
 };
-
+#endif
 /*--------------------------------------------------------------------------*/
 
 static struct usb_request *audio_request_new(struct usb_ep *ep, int buffer_size)
@@ -567,11 +569,27 @@ static int audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 
 	pr_debug("audio_set_alt intf %d, alt %d\n", intf, alt);
 
-	ret = config_ep_by_speed(cdev->gadget, f, audio->in_ep);
-	if (ret)
-		return ret;
-
-	usb_ep_enable(audio->in_ep);
+	if (intf == as_interface_alt_1_desc.bInterfaceNumber) {
+		if (alt && !audio->audio_ep_enabled) {
+			ret = config_ep_by_speed(cdev->gadget, f, audio->in_ep);
+			if (ret) {
+				audio->in_ep->desc = NULL;
+				ERROR(cdev, "config_ep fail ep %s, result %d\n",
+						audio->in_ep->name, ret);
+				return ret;
+			}
+			ret = usb_ep_enable(audio->in_ep);
+			if (ret) {
+				ERROR(cdev, "failedto enable ep%s, result %d\n",
+					audio->in_ep->name, ret);
+				return ret;
+			}
+			audio->audio_ep_enabled = true;
+		} else if (!alt && audio->audio_ep_enabled) {
+			usb_ep_disable(audio->in_ep);
+			audio->audio_ep_enabled = false;
+		}
+	}
 	return 0;
 }
 
@@ -580,7 +598,10 @@ static void audio_disable(struct usb_function *f)
 	struct audio_dev	*audio = func_to_audio(f);
 
 	pr_debug("audio_disable\n");
-	usb_ep_disable(audio->in_ep);
+	if (audio->audio_ep_enabled) {
+		usb_ep_disable(audio->in_ep);
+		audio->audio_ep_enabled = false;
+	}
 }
 
 /*-------------------------------------------------------------------------*/
@@ -971,6 +992,7 @@ static void audio_source_free_inst(struct usb_function_instance *fi)
 	kfree(fi_audio->config);
 }
 
+#if 0
 static ssize_t audio_source_pcm_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -980,6 +1002,7 @@ static ssize_t audio_source_pcm_show(struct device *dev,
 	/* print PCM card and device numbers */
 	return sprintf(buf, "%d %d\n", config->card, config->device);
 }
+#endif
 
 struct device *create_function_device(char *name);
 
@@ -1008,7 +1031,7 @@ static struct usb_function_instance *audio_source_alloc_inst(void)
 
 	config_group_init_type_name(&fi_audio->func_inst.group, "",
 						&audio_source_func_type);
-	dev = create_function_device("f_audio_source");
+//	dev = create_function_device("f_audio_source");
 
 	if (IS_ERR(dev)) {
 		err_ptr = dev;
@@ -1019,7 +1042,7 @@ static struct usb_function_instance *audio_source_alloc_inst(void)
 	fi_audio->config->device = -1;
 	fi_audio->audio_device = dev;
 
-	attrs = audio_source_function_attributes;
+//	attrs = audio_source_function_attributes;
 	if (attrs) {
 		while ((attr = *attrs++) && !err)
 			err = device_create_file(dev, attr);
