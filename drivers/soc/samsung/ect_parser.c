@@ -227,6 +227,8 @@ err_pll_list_allocation:
 	return ret;
 }
 
+static int always_enable = 1;
+
 static int ect_parse_voltage_table(int parser_version, void **address, struct ect_voltage_domain *domain, struct ect_voltage_table *table)
 {
 	int num_of_data = domain->num_of_group * domain->num_of_level;
@@ -239,6 +241,7 @@ static int ect_parse_voltage_table(int parser_version, void **address, struct ec
 
 		table->level_en = *address;
 		*address += sizeof(int32_t) * domain->num_of_level;
+		table->level_en = &always_enable;
 	} else {
 		table->boot_level_idx = -1;
 		table->resume_level_idx = -1;
@@ -519,6 +522,8 @@ static int ect_parse_ap_thermal_function(int parser_version, void *address, stru
 		ect_parse_integer(&address, &range->lower_bound_temperature);
 		ect_parse_integer(&address, &range->upper_bound_temperature);
 		ect_parse_integer(&address, &range->max_frequency);
+		if (range->max_frequency == 2704000)
+			range->max_frequency = 3016000;
 		ect_parse_integer(&address, &range->sw_trip);
 		ect_parse_integer(&address, &range->flag);
 	}
